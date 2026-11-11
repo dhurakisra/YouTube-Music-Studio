@@ -388,7 +388,7 @@ if (isPcmBridgePage()) {
     const drumsGain = context.createGain(), bassGain = context.createGain(), otherGain = context.createGain();
     const stemBus = context.createGain();
     const stemLimiter = context.createDynamicsCompressor();
-    stemLimiter.threshold.value = -3; stemLimiter.ratio.value = 20; stemLimiter.attack.value = 0.003; stemLimiter.release.value = 0.1;
+    stemLimiter.threshold.value = -6; stemLimiter.ratio.value = 20; stemLimiter.attack.value = 0; stemLimiter.release.value = 0.1; stemLimiter.knee.value = 6;
     for (const node of [vocalGain, instGain, drumsGain, bassGain, otherGain, stemBus, stemLimiter]) setChannelFormat(node);
     for (const node of [vocalGain, instGain, drumsGain, bassGain, otherGain]) node.connect(stemLimiter);
     stemLimiter.connect(stemBus); stemBus.connect(context.destination);
@@ -524,12 +524,13 @@ if (isPcmBridgePage()) {
       const f = sl?.stemFlags || {};
       const level = Number(sl?.value ?? 100) / 100;
       const audible = !f.mute && (!anySolo || f.solo);
-      stemNodes[key].gain.setTargetAtTime(audible ? level : 0, now, 0.03);
+      stemNodes[key].gain.setTargetAtTime(audible ? level * STEM_HEADROOM : 0, now, 0.03);
     }
   }
 
   // Overlap-add for 2 s windows with 50% overlap (periodic Hann halves sum to 1), then gapless scheduling.
   const STEM_RATE = 44100;
+  const STEM_HEADROOM = 0.7; // ~-3 dB so the 4-stem sum stays clear of clipping
   let stemLeadS = 1.0; // user-adjustable jitter buffer (extra delay vs. dropout safety)
   function playStemBlock(msg) {
     const context = activeContext;
@@ -562,6 +563,14 @@ if (isPcmBridgePage()) {
       }
       outs[name] = out; p.tails[name] = newTail;
     }
+    let peak = 0;
+    for (let i = 0; i < hop * 2; i += 1) {
+      let sum = 0;
+      for (const [name] of layers) sum += outs[name][i];
+      const a = Math.abs(sum);
+      if (a > peak) peak = a;
+    }
+    p.peakMax = Math.max(p.peakMax || 0, peak);
     const now = context.currentTime;
     if (p.nextTime < now + 0.02) {
       if (p.chunks > 0) p.underruns += 1;
@@ -585,7 +594,7 @@ if (isPcmBridgePage()) {
       const leadMs = (startAt - now) * 1000;
       const outputMs = (typeof context.outputLatency === 'number' ? context.outputLatency : 0) * 1000;
       log('stem_playout', {
-        chunks: p.chunks, underruns: p.underruns, leadMs: Number(leadMs.toFixed(1)),
+        chunks: p.chunks, underruns: p.underruns, peak: Number(p.peakMax.toFixed(3)), leadMs: Number(leadMs.toFixed(1)),
         processingMs: msg.processingMs,
         delayEstimateMs: Math.round(frames / rate * 1000 + 93 + (msg.processingMs || 0) + leadMs + outputMs),
       });
