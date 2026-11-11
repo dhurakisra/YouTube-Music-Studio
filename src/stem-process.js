@@ -241,7 +241,7 @@ function attachPort(port) {
   lastInputSequence = 0;
   port.on('message', (event) => {
     const message = event.data;
-    if (debugSeen < 5) { debugSeen += 1; parentPort.postMessage({ type: 'stem:debug', info: { n: debugSeen, eventKeys: Object.keys(event || {}).join(','), eventType: String(event?.type), dataType: typeof event?.data, dataCtor: String(event?.data?.constructor?.name), dataKeys: Object.keys(event?.data || {}).slice(0, 12).join(','), bytes: event?.data?.byteLength } }); }
+    if (debugSeen < 5) { debugSeen += 1; parentPort.postMessage({ type: 'stem:debug', info: { n: debugSeen, inspect: require('node:util').inspect(event?.data, { depth: 2, maxArrayLength: 4 }).slice(0, 400), own: Reflect.ownKeys(event?.data || {}).map(String).slice(0, 12).join(','), proto: String(Object.getPrototypeOf(event?.data || {}) === null ? 'null' : 'obj'), json: (() => { try { return JSON.stringify(event?.data).slice(0, 200); } catch (e) { return 'err ' + e.message; } })() } }); }
     if (message?.type === 'pcm:block') appendPcm(message);
     if (message?.type === 'pcm:stop') {
       shuttingDown = true;
