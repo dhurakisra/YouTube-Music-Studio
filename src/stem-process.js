@@ -6,13 +6,19 @@ const parentPort = process.parentPort || require('electron').parentPort;
 const ort = require('onnxruntime-node');
 
 const SAMPLE_RATE = 44100;
-const WINDOW_FRAMES = SAMPLE_RATE * 2;
-const HOP_FRAMES = SAMPLE_RATE; // 50% overlap between windows; overlap-add happens in the consumer
+const MODEL_PROFILES = {
+  'umx-hq': { file: path.join(__dirname, '..', 'models', 'umx-hq-vocals.onnx'), windowFrames: SAMPLE_RATE * 2, kind: 'umx' },
+  htdemucs: { file: path.join(__dirname, '..', 'models', 'htdemucs_fp16.onnx'), windowFrames: 343980, kind: 'ht' },
+};
+const requestedModel = process.argv.find((arg) => arg.startsWith('--model='))?.slice('--model='.length);
+const MODEL_ID = Object.hasOwn(MODEL_PROFILES, requestedModel) ? requestedModel : 'umx-hq';
+const PROFILE = MODEL_PROFILES[MODEL_ID];
+const WINDOW_FRAMES = PROFILE.windowFrames;
+const HOP_FRAMES = WINDOW_FRAMES / 2; // contract: 50% overlap; overlap-add happens in the consumer
 const FFT_SIZE = 4096;
 const HOP = 1024;
 const BINS = FFT_SIZE / 2 + 1;
 const WINDOW_COUNT = 1 + Math.floor(WINDOW_FRAMES / HOP);
-const MODEL = path.join(__dirname, '..', 'models', 'umx-hq-vocals.onnx');
 const BENCH_README = path.join(__dirname, '..', 'bench', 'README.md');
 
 let session;
@@ -43,6 +49,8 @@ function percentile(values, p) {
 function reportMetrics() {
   const average = (values) => values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
   parentPort.postMessage({ type: 'stem:metrics', metrics: {
+    model: MODEL_ID,
+    windowFrames: WINDOW_FRAMES,
     windows: windowsDone,
     droppedWindows,
     droppedInputBlocks,
@@ -147,15 +155,35 @@ function makeStems(audio, estimate) {
   return { vocal, instrumental };
 }
 
+function htdemucsStems(data) {
+  const vocal = new Float32Array(WINDOW_FRAMES * 2), instrumental = new Float32Array(WINDOW_FRAMES * 2);
+  for (let i = 0; i < WINDOW_FRAMES; i += 1) for (let channel = 0; channel < 2; channel += 1) {
+    const planeIndex = channel * WINDOW_FRAMES + i;
+    vocal[2 * i + channel] = data[3 * 2 * WINDOW_FRAMES + planeIndex];
+    instrumental[2 * i + channel] = data[planeIndex] + data[2 * WINDOW_FRAMES + planeIndex] + data[4 * WINDOW_FRAMES + planeIndex];
+  }
+  return { vocal, instrumental };
+}
+
 async function runWindow(audio, sequence, readyEpochMs) {
   const queuedAt = Date.now() - readyEpochMs;
   const start = process.hrtime.bigint();
   try {
-    const { tensor, mag } = spectrogram(audio);
-    const result = await session.run({ mag: tensor });
-    const estimate = result.estimate?.data;
-    if (!estimate || estimate.length !== mag.length) throw new Error('Model returned an incompatible estimate tensor');
-    const stems = makeStems(audio, estimate);
+    let stems;
+    if (PROFILE.kind === 'umx') {
+      const { tensor, mag } = spectrogram(audio);
+      const result = await session.run({ mag: tensor });
+      const estimate = result.estimate?.data;
+      if (!estimate || estimate.length !== mag.length) throw new Error('Model returned an incompatible estimate tensor');
+      stems = makeStems(audio, estimate);
+    } else if (PROFILE.kind === 'ht') {
+      const planar = new Float32Array(WINDOW_FRAMES * 2);
+      for (let i = 0; i < WINDOW_FRAMES; i += 1) { planar[i] = audio[2 * i]; planar[WINDOW_FRAMES + i] = audio[2 * i + 1]; }
+      const result = await session.run({ mix: new ort.Tensor('float32', planar, [1, 2, WINDOW_FRAMES]) });
+      const output = result.stems?.data;
+      if (!output || output.length !== 4 * 2 * WINDOW_FRAMES) throw new Error('HT-Demucs returned an incompatible stems tensor');
+      stems = htdemucsStems(output);
+    }
     const processingMs = Number(process.hrtime.bigint() - start) / 1e6;
     processingTimes.push(processingMs); queueTimes.push(Math.max(0, queuedAt));
     windowsDone += 1;
@@ -165,7 +193,7 @@ async function runWindow(audio, sequence, readyEpochMs) {
       sequence: nextOutputSequence + 1, sourceSequence: sequence,
       processingMs: Number(processingMs.toFixed(3)),
       queueLatencyMs: Number(Math.max(0, queuedAt).toFixed(3)),
-      droppedWindows, droppedInputBlocks,
+      droppedWindows, droppedInputBlocks, model: MODEL_ID, windowFrames: WINDOW_FRAMES,
     } });
     activePort.postMessage({
       type: 'stem:block', sequence: ++nextOutputSequence, sourceSequence: sequence,
@@ -249,7 +277,7 @@ function attachPort(port) {
     }
   });
   port.start();
-  port.postMessage({ type: 'stem:ready', sampleRate: SAMPLE_RATE, windowFrames: WINDOW_FRAMES });
+  port.postMessage({ type: 'stem:ready', sampleRate: SAMPLE_RATE, model: MODEL_ID, windowFrames: WINDOW_FRAMES });
 }
 
 async function shutdown() {
@@ -268,12 +296,12 @@ parentPort.on('message', async (event) => {
   }
   if (message?.type === 'stem:port' && event.ports?.length === 1) {
     try {
-      if (!fs.existsSync(MODEL)) throw new Error(`Model not found: ${MODEL}. Download it using the steps in ${BENCH_README}.`);
-      session = await ort.InferenceSession.create(MODEL, {
+      if (!fs.existsSync(PROFILE.file)) throw new Error(`Model not found for profile "${MODEL_ID}": ${PROFILE.file}. Download it using the steps in ${BENCH_README}.`);
+      session = await ort.InferenceSession.create(PROFILE.file, {
         executionProviders: ['cpu'], graphOptimizationLevel: 'all',
         enableCpuMemArena: true, enableMemPattern: true,
       });
-      parentPort.postMessage({ type: 'stem:ready' });
+      parentPort.postMessage({ type: 'stem:ready', model: MODEL_ID, windowFrames: WINDOW_FRAMES });
       attachPort(event.ports[0]);
     } catch (error) {
       parentPort.postMessage({ type: 'stem:error', error: error?.stack || String(error) });

@@ -18,7 +18,7 @@ const ALLOWED_EVENTS = new Set([
   'pcm_worker_attempt', 'pcm_worker_blocked', 'pcm_bridge_ready', 'pcm_transport_started',
   'pcm_transport_stopped', 'pcm_metrics', 'pcm_port_relayed', 'pcm_port_received', 'pcm_worker_port_ready',
   'stem_process_started', 'stem_process_ready', 'stem_process_error', 'stem_metrics', 'stem_process_stopped',
-  'stem_block_received', 'stem_transport_started', 'stem_transport_stopped',
+  'stem_block_received', 'stem_transport_started', 'stem_transport_stopped', 'stem_model_selected', 'stem_model_selection_rejected',
   'stem_window', 'stem_port_ready', 'stem_input_started', 'stem_playout',
 ]);
 
@@ -30,6 +30,11 @@ let smokePageLoaded = false;
 let latestPcmMetrics = {};
 let latestStemMetrics = {};
 let stemProcess;
+let stemProcessRunning = false;
+let selectedStemModel = 'umx-hq';
+let captureActive = false;
+const STEM_MODELS = new Set(['umx-hq', 'htdemucs', 'mdx-kim']);
+const ENABLED_STEM_MODELS = new Set(['umx-hq', 'htdemucs']);
 
 function appendLog(event, fields = {}) {
   fs.mkdirSync(LOG_DIR, { recursive: true });
@@ -40,7 +45,7 @@ function appendLog(event, fields = {}) {
 function safeData(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
   const output = {};
-  for (const key of ['sampleRate', 'channels', 'rms', 'nonzero', 'state', 'error', 'dropoutBlocks', 'timeGaps', 'baseLatency', 'outputLatency', 'cycle', 'total', 'receivedBlocks', 'droppedBlocks', 'latencyAvgMs', 'latencyP95Ms', 'latencyMaxMs', 'feedIntervalDeviationMs', 'sequence', 'transport', 'chunks', 'underruns', 'leadMs', 'processingMs', 'delayEstimateMs']) {
+  for (const key of ['sampleRate', 'channels', 'rms', 'nonzero', 'state', 'error', 'dropoutBlocks', 'timeGaps', 'baseLatency', 'outputLatency', 'cycle', 'total', 'receivedBlocks', 'droppedBlocks', 'latencyAvgMs', 'latencyP95Ms', 'latencyMaxMs', 'feedIntervalDeviationMs', 'sequence', 'transport', 'chunks', 'underruns', 'leadMs', 'processingMs', 'delayEstimateMs', 'model', 'windowFrames']) {
     if (Object.hasOwn(data, key) && (typeof data[key] === 'number' || typeof data[key] === 'string')) {
       output[key] = data[key];
     }
@@ -68,7 +73,20 @@ function isTrustedYtmSender(event) {
 ipcMain.on('poc:log', (event, level, name, data) => {
   if (!isTrustedSender(event) || !['info', 'warn', 'error'].includes(level)) return;
   if (typeof name !== 'string' || !ALLOWED_EVENTS.has(name)) return;
+  if (name === 'capture_start_requested' || name === 'capture_started') captureActive = true;
+  if (name === 'capture_stopped') captureActive = false;
   appendLog(name, { level, ...safeData(data) });
+});
+
+ipcMain.on('poc:stem-model', (event, model) => {
+  if (!isTrustedYtmSender(event) || typeof model !== 'string' || !STEM_MODELS.has(model)) return;
+  if (captureActive || stemProcessRunning) return;
+  if (!ENABLED_STEM_MODELS.has(model)) {
+    appendLog('stem_model_selection_rejected', { model, state: 'unavailable', error: 'mdx-kim CPU window processing exceeded the 50% real-time limit' });
+    return;
+  }
+  selectedStemModel = model;
+  appendLog('stem_model_selected', { model, state: 'selected' });
 });
 
 ipcMain.on('poc:metrics', (event, metrics) => {
@@ -104,12 +122,13 @@ function stopStemProcess() {
 
 function ensureStemProcess() {
   if (stemProcess) return stemProcess;
-  const child = utilityProcess.fork(path.join(__dirname, 'stem-process.js'), [], { serviceName: 'YTM audio stem separation' });
+  const child = utilityProcess.fork(path.join(__dirname, 'stem-process.js'), [`--model=${selectedStemModel}`], { serviceName: 'YTM audio stem separation' });
   stemProcess = child;
+  stemProcessRunning = true;
   appendLog('stem_process_started', { state: 'starting' });
   child.on('message', (message) => {
     if (!message || typeof message !== 'object') return;
-    if (message.type === 'stem:ready') appendLog('stem_process_ready', { state: 'ready' });
+    if (message.type === 'stem:ready') appendLog('stem_process_ready', { state: 'ready', model: message.model, windowFrames: message.windowFrames });
     if (message.type === 'stem:debug') appendLog('stem_debug', message.info || {});
     if (message.type === 'stem:port-attached') appendLog('stem_port_ready', { state: 'ready' });
     if (message.type === 'stem:first-input') appendLog('stem_input_started', { sampleRate: message.sampleRate, frames: message.frames });
@@ -125,6 +144,7 @@ function ensureStemProcess() {
     if (message.type === 'stem:stopped') appendLog('stem_process_stopped', { state: 'stopped' });
   });
   child.on('exit', (code) => {
+    stemProcessRunning = false;
     if (stemProcess === child) stemProcess = undefined;
     appendLog('stem_process_stopped', { state: 'exit', error: code === 0 ? '' : String(code) });
   });
@@ -249,18 +269,18 @@ function writeAppMetrics() {
   const cpuPercentTotal = metrics.reduce((sum, item) => sum + (Number(item.cpu?.percentCPUUsage) || 0), 0);
   const memoryKB = metrics.reduce((sum, item) => sum + (Number(item.memory?.workingSetSize) || 0), 0);
   fs.mkdirSync(LOG_DIR, { recursive: true });
-  const columns = 't,cpuPercentTotal,memoryKB,pcmReceivedBlocks,pcmDroppedBlocks,pcmLatencyAvgMs,pcmLatencyP95Ms,pcmLatencyMaxMs,pcmFeedIntervalDeviationMs,stemWindows,stemDroppedWindows,stemProcessingAvgMs,stemProcessingP95Ms,stemQueueLatencyAvgMs,stemQueueLatencyP95Ms,stemWindowSequence,stemWindowProcessingMs,stemWindowQueueLatencyMs';
+  const columns = 't,cpuPercentTotal,memoryKB,pcmReceivedBlocks,pcmDroppedBlocks,pcmLatencyAvgMs,pcmLatencyP95Ms,pcmLatencyMaxMs,pcmFeedIntervalDeviationMs,stemWindows,stemDroppedWindows,stemProcessingAvgMs,stemProcessingP95Ms,stemQueueLatencyAvgMs,stemQueueLatencyP95Ms,stemWindowSequence,stemWindowProcessingMs,stemWindowQueueLatencyMs,stemModel,stemWindowFrames';
   if (!fs.existsSync(METRICS_FILE)) fs.writeFileSync(METRICS_FILE, `${columns}\n`, 'utf8');
   const p = latestPcmMetrics;
   const s = latestStemMetrics;
-  fs.appendFileSync(METRICS_FILE, `${new Date().toISOString()},${cpuPercentTotal.toFixed(2)},${memoryKB},${p.receivedBlocks ?? ''},${p.droppedBlocks ?? ''},${p.latencyAvgMs ?? ''},${p.latencyP95Ms ?? ''},${p.latencyMaxMs ?? ''},${p.feedIntervalDeviationMs ?? ''},${s.windows ?? ''},${s.droppedWindows ?? ''},${s.processingAvgMs ?? ''},${s.processingP95Ms ?? ''},${s.queueLatencyAvgMs ?? ''},${s.queueLatencyP95Ms ?? ''},,,\n`, 'utf8');
+  fs.appendFileSync(METRICS_FILE, `${new Date().toISOString()},${cpuPercentTotal.toFixed(2)},${memoryKB},${p.receivedBlocks ?? ''},${p.droppedBlocks ?? ''},${p.latencyAvgMs ?? ''},${p.latencyP95Ms ?? ''},${p.latencyMaxMs ?? ''},${p.feedIntervalDeviationMs ?? ''},${s.windows ?? ''},${s.droppedWindows ?? ''},${s.processingAvgMs ?? ''},${s.processingP95Ms ?? ''},${s.queueLatencyAvgMs ?? ''},${s.queueLatencyP95Ms ?? ''},,,,${s.model ?? ''},${s.windowFrames ?? ''}\n`, 'utf8');
 }
 
 function appendStemWindowCsv(window) {
   fs.mkdirSync(LOG_DIR, { recursive: true });
   const s = latestStemMetrics;
   if (!fs.existsSync(METRICS_FILE)) writeAppMetrics();
-  fs.appendFileSync(METRICS_FILE, `${new Date().toISOString()},,,,,,,,,${s.windows ?? ''},${window.droppedWindows ?? s.droppedWindows ?? ''},${s.processingAvgMs ?? ''},${s.processingP95Ms ?? ''},${s.queueLatencyAvgMs ?? ''},${s.queueLatencyP95Ms ?? ''},${window.sequence ?? ''},${window.processingMs ?? ''},${window.queueLatencyMs ?? ''}\n`, 'utf8');
+  fs.appendFileSync(METRICS_FILE, `${new Date().toISOString()},,,,,,,,,${s.windows ?? ''},${window.droppedWindows ?? s.droppedWindows ?? ''},${s.processingAvgMs ?? ''},${s.processingP95Ms ?? ''},${s.queueLatencyAvgMs ?? ''},${s.queueLatencyP95Ms ?? ''},${window.sequence ?? ''},${window.processingMs ?? ''},${window.queueLatencyMs ?? ''},${window.model ?? s.model ?? ''},${window.windowFrames ?? s.windowFrames ?? ''}\n`, 'utf8');
 }
 
 function isYtmUrl(rawUrl) {
