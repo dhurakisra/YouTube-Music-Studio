@@ -15,12 +15,16 @@ const ALLOWED_EVENTS = new Set([
   'capture_start_cycle', 'capture_worklet_error',
   'capture_fallback', 'capture_error', 'media_element_missing', 'capture_metrics',
   'drm_or_silence', 'csp_policy', 'csp_console_message', 'processing_state', 'latency_info',
+  'pcm_worker_attempt', 'pcm_worker_blocked', 'pcm_bridge_ready', 'pcm_transport_started',
+  'pcm_transport_stopped', 'pcm_metrics', 'pcm_port_relayed', 'pcm_port_received', 'pcm_worker_port_ready',
 ]);
 
 let mainWindow;
+let pcmBridgeWindow;
 let smokeTimer;
 let metricsTimer;
 let smokePageLoaded = false;
+let latestPcmMetrics = {};
 
 function appendLog(event, fields = {}) {
   fs.mkdirSync(LOG_DIR, { recursive: true });
@@ -31,7 +35,7 @@ function appendLog(event, fields = {}) {
 function safeData(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
   const output = {};
-  for (const key of ['sampleRate', 'channels', 'rms', 'nonzero', 'state', 'error', 'dropoutBlocks', 'timeGaps', 'baseLatency', 'outputLatency', 'cycle', 'total']) {
+  for (const key of ['sampleRate', 'channels', 'rms', 'nonzero', 'state', 'error', 'dropoutBlocks', 'timeGaps', 'baseLatency', 'outputLatency', 'cycle', 'total', 'receivedBlocks', 'droppedBlocks', 'latencyAvgMs', 'latencyP95Ms', 'latencyMaxMs', 'feedIntervalDeviationMs', 'sequence', 'transport']) {
     if (Object.hasOwn(data, key) && (typeof data[key] === 'number' || typeof data[key] === 'string')) {
       output[key] = data[key];
     }
@@ -50,6 +54,12 @@ function isTrustedSender(event) {
   }
 }
 
+function isTrustedYtmSender(event) {
+  const frame = event.senderFrame;
+  if (!frame || frame !== event.sender.mainFrame) return false;
+  try { return new URL(frame.url).origin === 'https://music.youtube.com'; } catch { return false; }
+}
+
 ipcMain.on('poc:log', (event, level, name, data) => {
   if (!isTrustedSender(event) || !['info', 'warn', 'error'].includes(level)) return;
   if (typeof name !== 'string' || !ALLOWED_EVENTS.has(name)) return;
@@ -61,7 +71,29 @@ ipcMain.on('poc:metrics', (event, metrics) => {
   const fields = safeData(metrics);
   if (typeof fields.sampleRate !== 'number' || typeof fields.channels !== 'number' ||
       typeof fields.rms !== 'number' || typeof fields.nonzero !== 'number') return;
-  appendLog('capture_metrics', { ...fields, state: typeof fields.state === 'string' ? fields.state : 'capturing' });
+  appendLog('capture_metrics', { ...fields, ...latestPcmMetrics, state: typeof fields.state === 'string' ? fields.state : 'capturing' });
+});
+
+ipcMain.on('poc:pcm-worker-url', (event) => {
+  if (!isTrustedYtmSender(event)) return;
+  event.returnValue = require('node:url').pathToFileURL(path.join(__dirname, 'pcm-worker.js')).href;
+});
+
+ipcMain.on('poc:pcm-port', (event, metadata) => {
+  if (!isTrustedYtmSender(event) || !pcmBridgeWindow || pcmBridgeWindow.isDestroyed() || !metadata || metadata.type !== 'pcm-port') return;
+  const port = event.ports?.[0];
+  if (!port) return;
+  // The main process only relays the port. PCM frames never pass through here.
+  pcmBridgeWindow.webContents.postMessage('poc:pcm-port', { type: 'pcm-port' }, [port]);
+  appendLog('pcm_port_relayed', { state: 'relayed' });
+});
+
+ipcMain.on('poc:pcm-metrics', (event, metrics) => {
+  if ((!isTrustedBridgeSender(event) && !isTrustedYtmSender(event)) || !metrics || typeof metrics !== 'object') return;
+  const fields = safeData(metrics);
+  if (typeof fields.receivedBlocks !== 'number' || typeof fields.droppedBlocks !== 'number') return;
+  latestPcmMetrics = fields;
+  appendLog('pcm_metrics', fields);
 });
 
 function sendCommand(command) {
@@ -105,7 +137,10 @@ function createWindow() {
     if (isMainFrame) appendLog('page_load_error', { state: String(code), error: description });
   });
 
-  mainWindow.on('closed', () => { mainWindow = undefined; });
+  mainWindow.on('closed', () => {
+    mainWindow = undefined;
+    if (pcmBridgeWindow && !pcmBridgeWindow.isDestroyed()) pcmBridgeWindow.close();
+  });
   const ytmSession = session.fromPartition(PARTITION);
   ytmSession.webRequest.onHeadersReceived({ urls: ['https://music.youtube.com/*'] }, (details, callback) => {
     if (details.resourceType === 'mainFrame' && isYtmUrl(details.url)) {
@@ -124,13 +159,37 @@ function createWindow() {
   mainWindow.loadURL(YTM_URL);
 }
 
+function isTrustedBridgeSender(event) {
+  const frame = event.senderFrame;
+  if (!frame || frame !== event.sender.mainFrame) return false;
+  try { return new URL(frame.url).protocol === 'file:' && frame.url.endsWith('/pcm-bridge.html'); } catch { return false; }
+}
+
+function createPcmBridgeWindow() {
+  pcmBridgeWindow = new BrowserWindow({
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+      webSecurity: true,
+    },
+  });
+  pcmBridgeWindow.on('closed', () => { pcmBridgeWindow = undefined; });
+  pcmBridgeWindow.webContents.on('did-finish-load', () => appendLog('pcm_bridge_ready', { state: 'ready' }));
+  pcmBridgeWindow.loadFile(path.join(__dirname, 'pcm-bridge.html'));
+}
+
 function writeAppMetrics() {
   const metrics = app.getAppMetrics();
   const cpuPercentTotal = metrics.reduce((sum, item) => sum + (Number(item.cpu?.percentCPUUsage) || 0), 0);
   const memoryKB = metrics.reduce((sum, item) => sum + (Number(item.memory?.workingSetSize) || 0), 0);
   fs.mkdirSync(LOG_DIR, { recursive: true });
-  if (!fs.existsSync(METRICS_FILE)) fs.writeFileSync(METRICS_FILE, 't,cpuPercentTotal,memoryKB\n', 'utf8');
-  fs.appendFileSync(METRICS_FILE, `${new Date().toISOString()},${cpuPercentTotal.toFixed(2)},${memoryKB}\n`, 'utf8');
+  const columns = 't,cpuPercentTotal,memoryKB,pcmReceivedBlocks,pcmDroppedBlocks,pcmLatencyAvgMs,pcmLatencyP95Ms,pcmLatencyMaxMs,pcmFeedIntervalDeviationMs';
+  if (!fs.existsSync(METRICS_FILE)) fs.writeFileSync(METRICS_FILE, `${columns}\n`, 'utf8');
+  const p = latestPcmMetrics;
+  fs.appendFileSync(METRICS_FILE, `${new Date().toISOString()},${cpuPercentTotal.toFixed(2)},${memoryKB},${p.receivedBlocks ?? ''},${p.droppedBlocks ?? ''},${p.latencyAvgMs ?? ''},${p.latencyP95Ms ?? ''},${p.latencyMaxMs ?? ''},${p.feedIntervalDeviationMs ?? ''}\n`, 'utf8');
 }
 
 function isYtmUrl(rawUrl) {
@@ -149,6 +208,7 @@ app.whenReady().then(() => {
       app.quit();
     }, 30_000);
   }
+  createPcmBridgeWindow();
   createWindow();
 
   const template = [{

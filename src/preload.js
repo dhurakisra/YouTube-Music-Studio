@@ -7,6 +7,7 @@ const allowedLogEvents = new Set([
   'capture_stop_requested', 'capture_stopped', 'capture_start_cycle',
   'capture_worklet_error', 'capture_fallback', 'media_element_missing',
   'drm_or_silence', 'capture_error', 'processing_state', 'latency_info',
+  'pcm_worker_attempt', 'pcm_worker_blocked', 'pcm_transport_started', 'pcm_transport_stopped', 'pcm_metrics', 'pcm_port_received', 'pcm_worker_port_ready',
 ]);
 const allowedCommandTypes = new Set(['capture:show-button', 'capture:toggle', 'capture:auto-cycle']);
 
@@ -34,6 +35,48 @@ contextBridge.exposeInMainWorld('poc', Object.freeze({
   onCommand(callback) { return onTrustedCommand(callback); },
 }));
 
+function isPcmBridgePage() {
+  try { return new URL(location.href).protocol === 'file:' && new URL(location.href).pathname.endsWith('/pcm-bridge.html'); } catch { return false; }
+}
+
+if (isPcmBridgePage()) {
+  let bridgeWorker = null;
+  const metricListeners = new Set();
+  function ensureBridgeWorker() {
+    if (bridgeWorker) return bridgeWorker;
+    bridgeWorker = new Worker(new URL('./pcm-worker.js', location.href));
+    bridgeWorker.onmessage = (event) => {
+      if (event.data?.type === 'pcm:stats') {
+        ipcRenderer.send('poc:pcm-metrics', event.data.metrics);
+        for (const listener of metricListeners) listener(event.data.metrics);
+      }
+      if (event.data?.type === 'pcm:consumer-ready') ipcRenderer.send('poc:log', 'info', 'pcm_worker_port_ready', { state: 'ready' });
+      if (event.data?.type === 'pcm:consumer-stopped') {
+        bridgeWorker?.terminate();
+        bridgeWorker = null;
+      }
+    };
+    bridgeWorker.onerror = (event) => {
+      ipcRenderer.send('poc:log', 'error', 'capture_error', { state: 'pcm_worker_error', error: String(event.message || 'PCM worker error').slice(0, 180) });
+      bridgeWorker?.terminate();
+      bridgeWorker = null;
+    };
+    return bridgeWorker;
+  }
+  ipcRenderer.on('poc:pcm-port', (event, metadata) => {
+    if (metadata?.type !== 'pcm-port' || event.ports.length !== 1) return;
+    ipcRenderer.send('poc:log', 'info', 'pcm_port_received', { state: 'received' });
+    ensureBridgeWorker().postMessage({ type: 'pcm:port' }, [event.ports[0]]);
+  });
+  contextBridge.exposeInMainWorld('pcmBridge', Object.freeze({
+    onMetrics(callback) {
+      if (typeof callback !== 'function') return () => {};
+      metricListeners.add(callback);
+      return () => metricListeners.delete(callback);
+    },
+  }));
+} else {
+
 (() => {
   const wiredElements = new WeakSet();
   const graphs = new WeakMap();
@@ -44,6 +87,8 @@ contextBridge.exposeInMainWorld('poc', Object.freeze({
   let scanQueued = false;
   let lastMetricsAt = 0;
   let lastZeroStart = null;
+  let currentPcmTransport = null;
+  let nextSequence = 0;
   let button;
   let overlay;
   let modeSelect;
@@ -114,7 +159,7 @@ contextBridge.exposeInMainWorld('poc', Object.freeze({
     try { node.channelCountMode = 'explicit'; } catch {}
   }
 
-  function beginCapture() {
+  async function beginCapture() {
     if (captureStarting) return Promise.resolve(false);
     captureStarting = true;
     log('capture_start_requested', { state: 'requested' });
@@ -127,7 +172,7 @@ contextBridge.exposeInMainWorld('poc', Object.freeze({
       }
       if (!activeContext || activeContext.state === 'closed') activeContext = new AudioContext({ latencyHint: 'interactive' });
       const context = activeContext;
-      return context.resume().then(() => {
+      return context.resume().then(async () => {
         if (!wiredElements.has(media)) {
           const source = context.createMediaElementSource(media);
           wiredElements.add(media);
@@ -138,7 +183,8 @@ contextBridge.exposeInMainWorld('poc', Object.freeze({
           setMode(graph.mode, false, graph);
           setUserGain(Number(gainSlider?.value || 0), graph);
         }
-        startMeasurement(graph, context, media);
+        currentPcmTransport = await openPcmTransport();
+        startMeasurement(graph, context, media, currentPcmTransport);
         captureActive = true;
         log('capture_started', { sampleRate: context.sampleRate, state: 'capturing' });
         log('latency_info', {
@@ -168,6 +214,7 @@ contextBridge.exposeInMainWorld('poc', Object.freeze({
       const graph = graphs.get(media);
       if (graph) stopMeasurement(graph);
     }
+    closePcmTransport();
     captureActive = false;
     lastMetricsAt = 0;
     lastZeroStart = null;
@@ -250,6 +297,19 @@ contextBridge.exposeInMainWorld('poc', Object.freeze({
         const data = input.getChannelData(channel);
         for (let i = 0; i < data.length; i += 1) if (data[i] !== 0) nonzero += 1;
       }
+      if (currentPcmTransport?.port) {
+        const frames = input.length;
+        const channels = input.numberOfChannels;
+        const pcm = new Float32Array(frames * channels);
+        for (let channel = 0; channel < channels; channel += 1) {
+          const sourceSamples = input.getChannelData(channel);
+          for (let frame = 0; frame < frames; frame += 1) pcm[frame * channels + channel] = sourceSamples[frame];
+        }
+        currentPcmTransport.port.postMessage({
+          type: 'pcm:block', sequence: ++nextSequence, sampleRate: context.sampleRate,
+          channels, frames, timestampEpochMs: performance.timeOrigin + performance.now(), data: pcm.buffer,
+        }, [pcm.buffer]);
+      }
       analyser.getFloatTimeDomainData(meterBuffer);
       let sumSquares = 0;
       let measuredNonzero = 0;
@@ -264,8 +324,10 @@ contextBridge.exposeInMainWorld('poc', Object.freeze({
     return { source, analyser, processor, meterSink, onAudioProcess, counters, previousCallbackAt: () => { previousCallbackAt = 0; }, dryGain, wetGain, userGain, mode, measuring: false };
   }
 
-  function startMeasurement(graph, context) {
+  function startMeasurement(graph, context, media, transport) {
     if (graph.measuring) return;
+    nextSequence = 0;
+    currentPcmTransport = transport;
     graph.source.connect(graph.analyser);
     graph.analyser.connect(graph.processor);
     graph.processor.connect(graph.meterSink);
@@ -283,6 +345,60 @@ contextBridge.exposeInMainWorld('poc', Object.freeze({
     try { graph.meterSink.disconnect(); } catch {}
     graph.previousCallbackAt();
     graph.measuring = false;
+  }
+
+  function waitForWorker(worker, timeoutMs) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { cleanup(); reject(new Error('Worker did not become ready')); }, timeoutMs);
+      const onMessage = (event) => {
+        if (event.data?.type !== 'pcm:ready') return;
+        cleanup(); resolve();
+      };
+      const onError = (event) => { cleanup(); reject(new Error(event.message || 'Worker load blocked')); };
+      function cleanup() { clearTimeout(timer); worker.removeEventListener('message', onMessage); worker.removeEventListener('error', onError); }
+      worker.addEventListener('message', onMessage);
+      worker.addEventListener('error', onError);
+    });
+  }
+
+  async function openPcmTransport() {
+    log('pcm_worker_attempt', { state: 'attempting' });
+    let candidate;
+    try {
+      const workerUrl = ipcRenderer.sendSync('poc:pcm-worker-url');
+      if (typeof workerUrl !== 'string' || !workerUrl.startsWith('file:')) throw new Error('Local worker URL unavailable');
+      candidate = new Worker(workerUrl);
+      candidate.onmessage = (event) => {
+        if (event.data?.type === 'pcm:stats') ipcRenderer.send('poc:pcm-metrics', event.data.metrics);
+      };
+      await waitForWorker(candidate, 800);
+      log('pcm_transport_started', { state: 'worker', transport: 'preload-worker' });
+      const channel = new MessageChannel();
+      candidate.postMessage({ type: 'pcm:port' }, [channel.port1]);
+      return { port: channel.port2, worker: candidate, transport: 'preload-worker' };
+    } catch (error) {
+      candidate?.terminate();
+      log('pcm_worker_blocked', { state: 'blocked', error: String(error?.message || error).slice(0, 180) });
+    }
+    const channel = new MessageChannel();
+    try {
+      ipcRenderer.postMessage('poc:pcm-port', { type: 'pcm-port' }, [channel.port1]);
+      log('pcm_transport_started', { state: 'bridge', transport: 'local-renderer' });
+      return { port: channel.port2, transport: 'local-renderer' };
+    } catch (error) {
+      channel.port2.close();
+      throw error;
+    }
+  }
+
+  function closePcmTransport() {
+    if (!currentPcmTransport) return;
+    const transport = currentPcmTransport;
+    try { transport.port.postMessage({ type: 'pcm:stop' }); } catch {}
+    try { transport.port.close(); } catch {}
+    if (transport.worker) setTimeout(() => transport.worker.terminate(), 50);
+    log('pcm_transport_stopped', { state: 'stopped', transport: transport.transport });
+    currentPcmTransport = null;
   }
 
   function setMode(mode, shouldLog = true, onlyGraph = null) {
@@ -360,3 +476,4 @@ contextBridge.exposeInMainWorld('poc', Object.freeze({
     if (command.type === 'capture:auto-cycle' && Number.isInteger(command.cycles)) runAutoCycles(Math.max(1, Math.min(command.cycles, 100)));
   });
 })();
+}
