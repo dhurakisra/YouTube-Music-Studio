@@ -195,6 +195,7 @@ async function pump() {
 }
 
 function appendPcm(message) {
+  if (ArrayBuffer.isView(message.data)) message = { ...message, data: message.data.buffer.slice(message.data.byteOffset, message.data.byteOffset + message.data.byteLength) };
   if (!(message.data instanceof ArrayBuffer) || !Number.isFinite(message.sampleRate) || message.sampleRate <= 0 || message.channels !== 2) return;
   if (lastInputSequence && message.sequence > lastInputSequence + 1) {
     const missing = message.sequence - lastInputSequence - 1;
@@ -232,6 +233,7 @@ function appendPcm(message) {
   }
 }
 
+let debugSeen = 0;
 function attachPort(port) {
   activePort = port;
   parentPort.postMessage({ type: 'stem:port-attached' });
@@ -239,6 +241,7 @@ function attachPort(port) {
   lastInputSequence = 0;
   port.on('message', (event) => {
     const message = event.data;
+    if (debugSeen < 5) { debugSeen += 1; parentPort.postMessage({ type: 'stem:debug', info: { n: debugSeen, msgType: String(message?.type), dataCtor: String(message?.data?.constructor?.name), channels: message?.channels, sampleRate: message?.sampleRate } }); }
     if (message?.type === 'pcm:block') appendPcm(message);
     if (message?.type === 'pcm:stop') {
       shuttingDown = true;

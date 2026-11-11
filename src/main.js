@@ -110,6 +110,7 @@ function ensureStemProcess() {
   child.on('message', (message) => {
     if (!message || typeof message !== 'object') return;
     if (message.type === 'stem:ready') appendLog('stem_process_ready', { state: 'ready' });
+    if (message.type === 'stem:debug') appendLog('stem_debug', message.info || {});
     if (message.type === 'stem:port-attached') appendLog('stem_port_ready', { state: 'ready' });
     if (message.type === 'stem:first-input') appendLog('stem_input_started', { sampleRate: message.sampleRate, frames: message.frames });
     if (message.type === 'stem:error') appendLog('stem_process_error', { state: 'failed', error: String(message.error || 'Stem process error').slice(0, 500) });
