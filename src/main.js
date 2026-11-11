@@ -8,15 +8,17 @@ const YTM_URL = 'https://music.youtube.com/';
 const PARTITION = process.env.POC_PARTITION || 'persist:ytm-poc';
 const LOG_DIR = path.join(__dirname, '..', 'logs');
 const LOG_FILE = path.join(LOG_DIR, `capture-${new Date().toISOString().replace(/[:.]/g, '-')}.jsonl`);
+const METRICS_FILE = path.join(LOG_DIR, `metrics-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`);
 const ALLOWED_EVENTS = new Set([
   'app_started', 'page_loaded', 'page_load_error', 'capture_button_ready',
   'capture_start_requested', 'capture_started', 'capture_worklet_error',
   'capture_fallback', 'capture_error', 'media_element_missing', 'capture_metrics',
-  'drm_or_silence', 'csp_policy', 'csp_console_message',
+  'drm_or_silence', 'csp_policy', 'csp_console_message', 'processing_state', 'latency_info',
 ]);
 
 let mainWindow;
 let smokeTimer;
+let metricsTimer;
 let smokePageLoaded = false;
 
 function appendLog(event, fields = {}) {
@@ -28,7 +30,7 @@ function appendLog(event, fields = {}) {
 function safeData(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
   const output = {};
-  for (const key of ['sampleRate', 'channels', 'rms', 'nonzero', 'state', 'error', 'dropoutBlocks', 'timeGaps']) {
+  for (const key of ['sampleRate', 'channels', 'rms', 'nonzero', 'state', 'error', 'dropoutBlocks', 'timeGaps', 'baseLatency', 'outputLatency']) {
     if (Object.hasOwn(data, key) && (typeof data[key] === 'number' || typeof data[key] === 'string')) {
       output[key] = data[key];
     }
@@ -88,8 +90,6 @@ function createWindow() {
     if (!isYtmUrl(mainWindow.webContents.getURL())) return;
     appendLog('page_loaded', { state: 'loaded' });
     smokePageLoaded = true;
-    const workletSource = fs.readFileSync(path.join(__dirname, 'worklet.js'), 'utf8');
-    sendCommand({ type: 'capture:init', workletSource });
     if (app.commandLine.hasSwitch('smoke')) app.quit();
   });
 
@@ -123,6 +123,15 @@ function createWindow() {
   mainWindow.loadURL(YTM_URL);
 }
 
+function writeAppMetrics() {
+  const metrics = app.getAppMetrics();
+  const cpuPercentTotal = metrics.reduce((sum, item) => sum + (Number(item.cpu?.percentCPUUsage) || 0), 0);
+  const memoryKB = metrics.reduce((sum, item) => sum + (Number(item.memory?.workingSetSize) || 0), 0);
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+  if (!fs.existsSync(METRICS_FILE)) fs.writeFileSync(METRICS_FILE, 't,cpuPercentTotal,memoryKB\n', 'utf8');
+  fs.appendFileSync(METRICS_FILE, `${new Date().toISOString()},${cpuPercentTotal.toFixed(2)},${memoryKB}\n`, 'utf8');
+}
+
 function isYtmUrl(rawUrl) {
   try { return new URL(rawUrl).origin === 'https://music.youtube.com'; } catch { return false; }
 }
@@ -131,11 +140,13 @@ app.whenReady().then(() => {
   app.setName('YTM Audio POC');
   app.setPath('userData', path.join(app.getPath('appData'), 'YTM-Audio-POC'));
   appendLog('app_started', { state: 'ready' });
+  writeAppMetrics();
+  metricsTimer = setInterval(writeAppMetrics, 5000);
   if (app.commandLine.hasSwitch('smoke')) {
     smokeTimer = setTimeout(() => {
-      if (!smokePageLoaded) appendLog('page_load_error', { state: 'smoke_timeout', error: 'Main page did not load within 10 seconds' });
+      if (!smokePageLoaded) appendLog('page_load_error', { state: 'smoke_timeout', error: 'Main page did not load within 30 seconds' });
       app.quit();
-    }, 10_000);
+    }, 30_000);
   }
   createWindow();
 
@@ -149,6 +160,7 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   if (smokeTimer) clearTimeout(smokeTimer);
+  if (metricsTimer) clearInterval(metricsTimer);
   globalShortcut.unregisterAll();
 });
 
