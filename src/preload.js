@@ -576,7 +576,7 @@ if (isPcmBridgePage()) {
       if (p.chunks > 0) p.underruns += 1;
       p.nextTime = now + stemLeadS;
     }
-    const startAt = p.nextTime;
+    const startAt = Math.round(p.nextTime * (msg.sampleRate || STEM_RATE)) / (msg.sampleRate || STEM_RATE); // whole-sample start: no 1-sample gaps/overlaps between chunks
     const rate = msg.sampleRate || STEM_RATE;
     for (const [name, gainKey] of layers) {
       const data = outs[name], target = stemNodes[gainKey];

@@ -301,9 +301,11 @@ parentPort.on('message', async (event) => {
   if (message?.type === 'stem:port' && event.ports?.length === 1) {
     try {
       if (!fs.existsSync(PROFILE.file)) throw new Error(`Model not found for profile "${MODEL_ID}": ${PROFILE.file}. Download it using the steps in ${BENCH_README}.`);
+      try { require('node:os').setPriority(0, require('node:os').constants.priority.PRIORITY_BELOW_NORMAL); } catch {}
       session = await ort.InferenceSession.create(PROFILE.file, {
         executionProviders: ['cpu'], graphOptimizationLevel: 'all',
         enableCpuMemArena: true, enableMemPattern: true,
+        intraOpNumThreads: Math.max(2, Math.min(6, Math.floor(require('node:os').cpus().length / 2))), // leave cores for the audio thread
       });
       parentPort.postMessage({ type: 'stem:ready', model: MODEL_ID, windowFrames: WINDOW_FRAMES });
       attachPort(event.ports[0]);
