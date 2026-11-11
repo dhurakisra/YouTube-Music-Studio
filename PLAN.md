@@ -35,7 +35,7 @@ Durak noktaları (kullanıcı): T1 sonrası Google girişi denemesi; T3 sonrası
 Master'da: T1+T2, T2b (CSP tani + ScriptProcessor yedegi), T4 (Method A prototipi, `npm run start:a`). Tum isci branch'leri birlestirildi.
 KANITLAR (logs/): (1) YTM CSP script-src blob: VE data: worklet'i KESIN engelliyor (csp_console_message). AudioWorklet sayfada yok.
   (2) Method B yedek ile PCM GELIYOR: 44100 Hz, 2 kanal, rms~0.02-0.04, nonzero=1 (girisli oturum, 2-3 parca, DRM sessizligi gorulmedi).
-  (3) Kullanici: capture aktif oldu, ama ScriptProcessor uzerinden gecen sesde ufak citlar. Log: 11:12:21-11:12:34 arasi ~13 sn sifir blok (279) -> parca gecisi/duraklatma mi, yoksa starvation mi BELIRSIZ (kullaniciya sor).
+  (3) Kullanici: capture aktif oldu, ama ScriptProcessor uzerinden gecen sesde ufak citlar. Log: 11:12:21-11:12:34 arasi ~13 sn sifir blok (279) -> parca gecisi/duraklatma mi, yoksa starvation mi: KULLANICI YANITI muzikte kesinti yoktu, yalniz citlar; buyuk olasilikla duraklatma/sarki degisimi sessizligi (T3 duraklatilmisken saymaz).
   (4) Girissiz test henuz yapilmadi; Google girisi kullanici yanlislikla yapti ve CALISTI (embedded giris reddedilmedi, persist:ytm-poc).
 KARAR: ses yolu yalniz native Web Audio dugumleri (Gain/Biquad/Compressor); ScriptProcessor yalniz yan olcum (bufferSize 4096). Gelecekteki stem motoru icin ana-is-parcacigi PCM sorunu acik risk (Method A kontrol penceresinde AudioWorklet calisir).
 Acik isci: T3 (Codex, dispatch yeni, worktree .../t3-processing): gain+LPF+bypass+rampa+limiter+sessizlik korumasi+metrics CSV. `orca orchestration worker-list` ile sahiplen.
