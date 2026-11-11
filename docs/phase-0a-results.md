@@ -28,3 +28,7 @@ Test D (pause/seek/parca/gorunum degisimi), E (30 dk stabilite + metrics csv), F
   dropoutBlocks=2 (ikisi de 15:00:27, ilk dakikalar, sonra artmadi); timeGaps=4 (15:00 x3, 15:26, 15:42), duyulabilir etkisi yok.
   15:43:32'den sonuna rms=0: kullanici muzigi durdurmustu (beklenen sessizlik).
 - Test F (kurtarma) HENUZ yapilmadi.
+
+## Test F sonuclari (Method B, kullanici)
+- Sayfa yenileme: GECTI. Ag kopmasi: GECTI.
+- Capture'i yeniden baslatma: UYGULANAMADI. "Processing active" dugmesi tiklamayi islemez; kodda durdurma/yeniden baslatma islevi yok (preload.js beginCapture yalniz baslatir, stop yok). Hata degil, kapsam disi eksik ozellik. createMediaElementSource elemente tek seferlik baglandigi icin "durdur" = sayfa sesini de susturmak olurdu; kurtarma yolu sayfa yenilemedir (gecti).
