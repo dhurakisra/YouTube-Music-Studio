@@ -8,6 +8,7 @@ const allowedLogEvents = new Set([
   'capture_worklet_error', 'capture_fallback', 'media_element_missing',
   'drm_or_silence', 'capture_error', 'processing_state', 'latency_info',
   'pcm_worker_attempt', 'pcm_worker_blocked', 'pcm_transport_started', 'pcm_transport_stopped', 'pcm_metrics', 'pcm_port_received', 'pcm_worker_port_ready',
+  'stem_block_received', 'stem_transport_started', 'stem_transport_stopped',
 ]);
 const allowedCommandTypes = new Set(['capture:show-button', 'capture:toggle', 'capture:auto-cycle']);
 
@@ -66,7 +67,7 @@ if (isPcmBridgePage()) {
   ipcRenderer.on('poc:pcm-port', (event, metadata) => {
     if (metadata?.type !== 'pcm-port' || event.ports.length !== 1) return;
     ipcRenderer.send('poc:log', 'info', 'pcm_port_received', { state: 'received' });
-    ensureBridgeWorker().postMessage({ type: 'pcm:port' }, [event.ports[0]]);
+    ipcRenderer.postMessage('poc:stem-port', { type: 'stem-port' }, [event.ports[0]]);
   });
   contextBridge.exposeInMainWorld('pcmBridge', Object.freeze({
     onMetrics(callback) {
@@ -374,29 +375,15 @@ if (isPcmBridgePage()) {
   }
 
   async function openPcmTransport() {
-    log('pcm_worker_attempt', { state: 'attempting' });
-    let candidate;
-    try {
-      const workerUrl = ipcRenderer.sendSync('poc:pcm-worker-url');
-      if (typeof workerUrl !== 'string' || !workerUrl.startsWith('file:')) throw new Error('Local worker URL unavailable');
-      candidate = new Worker(workerUrl);
-      candidate.onmessage = (event) => {
-        if (event.data?.type === 'pcm:stats') ipcRenderer.send('poc:pcm-metrics', event.data.metrics);
-      };
-      await waitForWorker(candidate, 800);
-      log('pcm_transport_started', { state: 'worker', transport: 'preload-worker' });
-      const channel = new MessageChannel();
-      candidate.postMessage({ type: 'pcm:port' }, [channel.port1]);
-      return { port: channel.port2, worker: candidate, transport: 'preload-worker' };
-    } catch (error) {
-      candidate?.terminate();
-      log('pcm_worker_blocked', { state: 'blocked', error: String(error?.message || error).slice(0, 180) });
-    }
+    log('stem_transport_started', { state: 'starting', transport: 'utility-process' });
     const channel = new MessageChannel();
     try {
       ipcRenderer.postMessage('poc:pcm-port', { type: 'pcm-port' }, [channel.port1]);
-      log('pcm_transport_started', { state: 'bridge', transport: 'local-renderer' });
-      return { port: channel.port2, transport: 'local-renderer' };
+      channel.port2.onmessage = (event) => {
+        if (event.data?.type === 'stem:block') log('stem_block_received', { sequence: event.data.sequence });
+      };
+      channel.port2.start();
+      return { port: channel.port2, transport: 'utility-process' };
     } catch (error) {
       channel.port2.close();
       throw error;
@@ -407,9 +394,11 @@ if (isPcmBridgePage()) {
     if (!currentPcmTransport) return;
     const transport = currentPcmTransport;
     try { transport.port.postMessage({ type: 'pcm:stop' }); } catch {}
-    try { transport.port.close(); } catch {}
+    setTimeout(() => { try { transport.port.close(); } catch {} }, 1000);
     if (transport.worker) setTimeout(() => transport.worker.terminate(), 50);
     log('pcm_transport_stopped', { state: 'stopped', transport: transport.transport });
+    ipcRenderer.send('poc:stem-stop');
+    log('stem_transport_stopped', { state: 'stopped', transport: transport.transport });
     currentPcmTransport = null;
   }
 

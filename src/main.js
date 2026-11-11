@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, Menu, globalShortcut, session } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, globalShortcut, session, utilityProcess } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -17,6 +17,9 @@ const ALLOWED_EVENTS = new Set([
   'drm_or_silence', 'csp_policy', 'csp_console_message', 'processing_state', 'latency_info',
   'pcm_worker_attempt', 'pcm_worker_blocked', 'pcm_bridge_ready', 'pcm_transport_started',
   'pcm_transport_stopped', 'pcm_metrics', 'pcm_port_relayed', 'pcm_port_received', 'pcm_worker_port_ready',
+  'stem_process_started', 'stem_process_ready', 'stem_process_error', 'stem_metrics', 'stem_process_stopped',
+  'stem_block_received', 'stem_transport_started', 'stem_transport_stopped',
+  'stem_window', 'stem_port_ready', 'stem_input_started',
 ]);
 
 let mainWindow;
@@ -25,6 +28,8 @@ let smokeTimer;
 let metricsTimer;
 let smokePageLoaded = false;
 let latestPcmMetrics = {};
+let latestStemMetrics = {};
+let stemProcess;
 
 function appendLog(event, fields = {}) {
   fs.mkdirSync(LOG_DIR, { recursive: true });
@@ -86,6 +91,63 @@ ipcMain.on('poc:pcm-port', (event, metadata) => {
   // The main process only relays the port. PCM frames never pass through here.
   pcmBridgeWindow.webContents.postMessage('poc:pcm-port', { type: 'pcm-port' }, [port]);
   appendLog('pcm_port_relayed', { state: 'relayed' });
+});
+
+function stopStemProcess() {
+  if (!stemProcess) return;
+  const child = stemProcess;
+  stemProcess = undefined;
+  try { child.postMessage({ type: 'stem:shutdown' }); } catch {}
+  const killTimer = setTimeout(() => { try { child.kill(); } catch {} }, 3000);
+  child.once('exit', () => clearTimeout(killTimer));
+}
+
+function ensureStemProcess() {
+  if (stemProcess) return stemProcess;
+  const child = utilityProcess.fork(path.join(__dirname, 'stem-process.js'), [], { serviceName: 'YTM audio stem separation' });
+  stemProcess = child;
+  appendLog('stem_process_started', { state: 'starting' });
+  child.on('message', (message) => {
+    if (!message || typeof message !== 'object') return;
+    if (message.type === 'stem:ready') appendLog('stem_process_ready', { state: 'ready' });
+    if (message.type === 'stem:port-attached') appendLog('stem_port_ready', { state: 'ready' });
+    if (message.type === 'stem:first-input') appendLog('stem_input_started', { sampleRate: message.sampleRate, frames: message.frames });
+    if (message.type === 'stem:error') appendLog('stem_process_error', { state: 'failed', error: String(message.error || 'Stem process error').slice(0, 500) });
+    if (message.type === 'stem:metrics' && message.metrics && typeof message.metrics === 'object') {
+      latestStemMetrics = message.metrics;
+      appendLog('stem_metrics', message.metrics);
+    }
+    if (message.type === 'stem:window' && message.window && typeof message.window === 'object') {
+      appendLog('stem_window', message.window);
+      appendStemWindowCsv(message.window);
+    }
+    if (message.type === 'stem:stopped') appendLog('stem_process_stopped', { state: 'stopped' });
+  });
+  child.on('exit', (code) => {
+    if (stemProcess === child) stemProcess = undefined;
+    appendLog('stem_process_stopped', { state: 'exit', error: code === 0 ? '' : String(code) });
+  });
+  child.on('error', (_type, location, report) => {
+    appendLog('stem_process_error', { state: 'process-error', error: `${location || ''} ${report || ''}`.slice(0, 500) });
+  });
+  return child;
+}
+
+ipcMain.on('poc:stem-port', (event, metadata) => {
+  if (!isTrustedBridgeSender(event) || metadata?.type !== 'stem-port' || event.ports.length !== 1) return;
+  const port = event.ports[0];
+  try {
+    ensureStemProcess().postMessage({ type: 'stem:port' }, [port]);
+    appendLog('pcm_port_received', { state: 'stem-process' });
+  } catch (error) {
+    try { port.close(); } catch {}
+    appendLog('stem_process_error', { state: 'port-transfer-failed', error: String(error?.message || error).slice(0, 300) });
+  }
+});
+
+ipcMain.on('poc:stem-stop', (event) => {
+  if (!isTrustedYtmSender(event)) return;
+  stopStemProcess();
 });
 
 ipcMain.on('poc:pcm-metrics', (event, metrics) => {
@@ -186,10 +248,18 @@ function writeAppMetrics() {
   const cpuPercentTotal = metrics.reduce((sum, item) => sum + (Number(item.cpu?.percentCPUUsage) || 0), 0);
   const memoryKB = metrics.reduce((sum, item) => sum + (Number(item.memory?.workingSetSize) || 0), 0);
   fs.mkdirSync(LOG_DIR, { recursive: true });
-  const columns = 't,cpuPercentTotal,memoryKB,pcmReceivedBlocks,pcmDroppedBlocks,pcmLatencyAvgMs,pcmLatencyP95Ms,pcmLatencyMaxMs,pcmFeedIntervalDeviationMs';
+  const columns = 't,cpuPercentTotal,memoryKB,pcmReceivedBlocks,pcmDroppedBlocks,pcmLatencyAvgMs,pcmLatencyP95Ms,pcmLatencyMaxMs,pcmFeedIntervalDeviationMs,stemWindows,stemDroppedWindows,stemProcessingAvgMs,stemProcessingP95Ms,stemQueueLatencyAvgMs,stemQueueLatencyP95Ms,stemWindowSequence,stemWindowProcessingMs,stemWindowQueueLatencyMs';
   if (!fs.existsSync(METRICS_FILE)) fs.writeFileSync(METRICS_FILE, `${columns}\n`, 'utf8');
   const p = latestPcmMetrics;
-  fs.appendFileSync(METRICS_FILE, `${new Date().toISOString()},${cpuPercentTotal.toFixed(2)},${memoryKB},${p.receivedBlocks ?? ''},${p.droppedBlocks ?? ''},${p.latencyAvgMs ?? ''},${p.latencyP95Ms ?? ''},${p.latencyMaxMs ?? ''},${p.feedIntervalDeviationMs ?? ''}\n`, 'utf8');
+  const s = latestStemMetrics;
+  fs.appendFileSync(METRICS_FILE, `${new Date().toISOString()},${cpuPercentTotal.toFixed(2)},${memoryKB},${p.receivedBlocks ?? ''},${p.droppedBlocks ?? ''},${p.latencyAvgMs ?? ''},${p.latencyP95Ms ?? ''},${p.latencyMaxMs ?? ''},${p.feedIntervalDeviationMs ?? ''},${s.windows ?? ''},${s.droppedWindows ?? ''},${s.processingAvgMs ?? ''},${s.processingP95Ms ?? ''},${s.queueLatencyAvgMs ?? ''},${s.queueLatencyP95Ms ?? ''},,,\n`, 'utf8');
+}
+
+function appendStemWindowCsv(window) {
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+  const s = latestStemMetrics;
+  if (!fs.existsSync(METRICS_FILE)) writeAppMetrics();
+  fs.appendFileSync(METRICS_FILE, `${new Date().toISOString()},,,,,,,,,${s.windows ?? ''},${window.droppedWindows ?? s.droppedWindows ?? ''},${s.processingAvgMs ?? ''},${s.processingP95Ms ?? ''},${s.queueLatencyAvgMs ?? ''},${s.queueLatencyP95Ms ?? ''},${window.sequence ?? ''},${window.processingMs ?? ''},${window.queueLatencyMs ?? ''}\n`, 'utf8');
 }
 
 function isYtmUrl(rawUrl) {
@@ -234,6 +304,7 @@ app.on('will-quit', () => {
   if (smokeTimer) clearTimeout(smokeTimer);
   if (metricsTimer) clearInterval(metricsTimer);
   globalShortcut.unregisterAll();
+  stopStemProcess();
 });
 
 app.on('window-all-closed', () => app.quit());
