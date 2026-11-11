@@ -101,3 +101,5 @@ S3 KOD HAZIR (commit asagida): stem-process hop=1 sn (%50 ortusme); preload: Han
 S3 DOGRULANDI (kullanici dinledi): stems modu calisiyor, baslangicta kisa tikler, kalite zayif (UMX-HQ). docs/phase-1-results.md ara rapor yazildi. Sonraki karar: daha guclu model (htdemucs/MDX ONNX) denemesi vs mevcut hali kabul.
 
 PHASE 1b (kullanici onayladi): guclu model denemesi (htdemucs / MDX-Net ONNX), GPU (DirectML) serbest. S1b = Codex benchmark + dinleme ciktilari; sonra entegrasyon (S2b, S3b) Claude/Codex.
+
+PHASE 1b SONUC (kullanici dinledi): model secici calisiyor (log: stem_model_selected htdemucs). HT-Demucs kalite "cok iyi", UMX-HQ'dan bariz ustun. Olculen: pencere 7.8 sn, islem ~0.9-1.1 sn, delayEstimateMs ~9.1-9.4 sn, underruns=0, dropped=0. Gozlem: capture acikken Stems'e gecince sarki ~gecikme kadar geri sicriyor (canli yol -> gecikmeli yol); beklenen davranis. MDX-Kim eklenmedi (CPU ~3.0 sn > 2.96 sn esigi). Sonraki aday: HT-Demucs 4 stem (drums/bass/other/vocals) seviye kaydiricilari; 10 dk stabilite; gecis UX'i.
