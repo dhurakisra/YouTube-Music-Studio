@@ -167,7 +167,23 @@ if (isPcmBridgePage()) {
       slider.setAttribute('aria-label', aria);
       slider.style.width = '80px';
       slider.addEventListener('input', applyStemLevels);
-      overlay.append(caption, slider);
+      const flags = { solo: false, mute: false };
+      slider.stemFlags = flags;
+      const makeToggle = (label, key, aria) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.textContent = label; b.setAttribute('aria-label', aria); b.setAttribute('aria-pressed', 'false');
+        b.style.cssText = 'margin:0 2px;padding:0 5px;font:inherit;cursor:pointer';
+        b.addEventListener('click', () => {
+          flags[key] = !flags[key];
+          b.setAttribute('aria-pressed', String(flags[key]));
+          b.style.background = flags[key] ? (key === 'solo' ? '#e8b400' : '#d33') : '';
+          applyStemLevels();
+        });
+        return b;
+      };
+      const soloBtn = makeToggle('S', 'solo', aria + ' solo'), muteBtn = makeToggle('M', 'mute', aria + ' mute');
+      slider.extraEls = [soloBtn, muteBtn];
+      overlay.append(caption, slider, soloBtn, muteBtn);
       return slider;
     };
     const modelLabel = document.createElement('label');
@@ -181,8 +197,23 @@ if (isPcmBridgePage()) {
       modelSelect.appendChild(option);
     }
     modelSelect.value = 'umx-hq';
+    const bufLabel = document.createElement('label');
+    bufLabel.textContent = 'Buffer';
+    const bufSlider = document.createElement('input');
+    bufSlider.type = 'range'; bufSlider.min = '0.3'; bufSlider.max = '3'; bufSlider.step = '0.1'; bufSlider.value = String(stemLeadS);
+    bufSlider.style.width = '80px';
+    bufSlider.setAttribute('aria-label', 'Stem jitter buffer in seconds (higher = fewer dropouts, more delay)');
+    const bufValue = document.createElement('span');
+    bufValue.textContent = stemLeadS.toFixed(1) + ' s';
+    bufSlider.addEventListener('input', () => {
+      const next = Number(bufSlider.value);
+      if (stemPlayer && next > stemLeadS) stemPlayer.nextTime += next - stemLeadS; // grow cushion now (one short gap)
+      stemLeadS = next;
+      bufValue.textContent = next.toFixed(1) + ' s';
+      log('stem_buffer_changed', { leadS: next });
+    });
     modelSelect.disabled = captureActive;
-    overlay.append(modelLabel, modelSelect, label, modeSelect, gainLabel, gainSlider);
+    overlay.append(modelLabel, modelSelect, bufLabel, bufSlider, bufValue, label, modeSelect, gainLabel, gainSlider);
     vocalSlider = makeStemSlider('Vocal', 'Vocal stem level percent');
     instSlider = makeStemSlider('Instr.', 'Instrumental stem level percent');
     drumsSlider = makeStemSlider('Drums', 'Drums stem level percent');
@@ -190,8 +221,10 @@ if (isPcmBridgePage()) {
     otherSlider = makeStemSlider('Other', 'Other stem level percent');
     const updateSliderVisibility = () => {
       const ht = modelSelect.value === 'htdemucs';
-      for (const slider of [instSlider]) { slider.hidden = ht; if (slider.previousSibling) slider.previousSibling.hidden = ht; }
-      for (const slider of [drumsSlider, bassSlider, otherSlider]) { slider.hidden = !ht; if (slider.previousSibling) slider.previousSibling.hidden = !ht; }
+      const setHidden = (slider, hidden) => { slider.hidden = hidden; slider.previousSibling.hidden = hidden; for (const el of slider.extraEls) el.hidden = hidden; };
+      setHidden(instSlider, ht);
+      for (const slider of [drumsSlider, bassSlider, otherSlider]) setHidden(slider, !ht);
+      applyStemLevels();
     };
     modelSelect.addEventListener('change', updateSliderVisibility);
     updateSliderVisibility();
@@ -467,16 +500,20 @@ if (isPcmBridgePage()) {
   function applyStemLevels() {
     if (!stemNodes || !activeContext) return;
     const now = activeContext.currentTime;
-    stemNodes.vocalGain.gain.setTargetAtTime(Number(vocalSlider?.value ?? 100) / 100, now, 0.03);
-    stemNodes.instGain.gain.setTargetAtTime(Number(instSlider?.value ?? 100) / 100, now, 0.03);
-    stemNodes.drumsGain.gain.setTargetAtTime(Number(drumsSlider?.value ?? 100) / 100, now, 0.03);
-    stemNodes.bassGain.gain.setTargetAtTime(Number(bassSlider?.value ?? 100) / 100, now, 0.03);
-    stemNodes.otherGain.gain.setTargetAtTime(Number(otherSlider?.value ?? 100) / 100, now, 0.03);
+    const ht = modelSelect?.value === 'htdemucs';
+    const entries = [[vocalSlider, 'vocalGain', true], [instSlider, 'instGain', !ht], [drumsSlider, 'drumsGain', ht], [bassSlider, 'bassGain', ht], [otherSlider, 'otherGain', ht]];
+    const anySolo = entries.some(([sl, , visible]) => visible && sl?.stemFlags?.solo);
+    for (const [sl, key] of entries) {
+      const f = sl?.stemFlags || {};
+      const level = Number(sl?.value ?? 100) / 100;
+      const audible = !f.mute && (!anySolo || f.solo);
+      stemNodes[key].gain.setTargetAtTime(audible ? level : 0, now, 0.03);
+    }
   }
 
   // Overlap-add for 2 s windows with 50% overlap (periodic Hann halves sum to 1), then gapless scheduling.
   const STEM_RATE = 44100;
-  const STEM_JITTER_LEAD_S = 0.3;
+  let stemLeadS = 0.6; // user-adjustable jitter buffer (extra delay vs. dropout safety)
   function playStemBlock(msg) {
     const context = activeContext;
     if (!context || !stemNodes || !msg.vocal?.byteLength) return;
@@ -511,7 +548,7 @@ if (isPcmBridgePage()) {
     const now = context.currentTime;
     if (p.nextTime < now + 0.02) {
       if (p.chunks > 0) p.underruns += 1;
-      p.nextTime = now + STEM_JITTER_LEAD_S;
+      p.nextTime = now + stemLeadS;
     }
     const startAt = p.nextTime;
     const rate = msg.sampleRate || STEM_RATE;
