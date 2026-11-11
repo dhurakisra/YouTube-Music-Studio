@@ -45,7 +45,7 @@ function appendLog(event, fields = {}) {
 function safeData(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
   const output = {};
-  for (const key of ['sampleRate', 'channels', 'rms', 'nonzero', 'state', 'error', 'dropoutBlocks', 'timeGaps', 'baseLatency', 'outputLatency', 'cycle', 'total', 'receivedBlocks', 'droppedBlocks', 'latencyAvgMs', 'latencyP95Ms', 'latencyMaxMs', 'feedIntervalDeviationMs', 'sequence', 'transport', 'chunks', 'underruns', 'leadMs', 'processingMs', 'delayEstimateMs', 'model', 'windowFrames', 'leadS', 'peak', 'jump', 'jumpRatio', 'pos']) {
+  for (const key of ['sampleRate', 'channels', 'rms', 'nonzero', 'state', 'error', 'dropoutBlocks', 'timeGaps', 'baseLatency', 'outputLatency', 'cycle', 'total', 'receivedBlocks', 'droppedBlocks', 'latencyAvgMs', 'latencyP95Ms', 'latencyMaxMs', 'feedIntervalDeviationMs', 'sequence', 'transport', 'chunks', 'underruns', 'leadMs', 'processingMs', 'delayEstimateMs', 'model', 'windowFrames', 'leadS', 'peak', 'jump', 'jumpRatio', 'pos', 'handleMs']) {
     if (Object.hasOwn(data, key) && (typeof data[key] === 'number' || typeof data[key] === 'string')) {
       output[key] = data[key];
     }

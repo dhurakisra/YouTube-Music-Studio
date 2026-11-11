@@ -533,6 +533,12 @@ if (isPcmBridgePage()) {
   const STEM_HEADROOM = 0.7; // ~-3 dB so the 4-stem sum stays clear of clipping
   let stemLeadS = 1.0; // user-adjustable jitter buffer (extra delay vs. dropout safety)
   function playStemBlock(msg) {
+    const t0 = performance.now();
+    try { playStemBlockInner(msg); } finally {
+      if (stemPlayer) stemPlayer.handleMaxMs = Math.max(stemPlayer.handleMaxMs || 0, performance.now() - t0);
+    }
+  }
+  function playStemBlockInner(msg) {
     const context = activeContext;
     if (!context || !stemNodes || !msg.vocal?.byteLength) return;
     const frames = msg.frames, hop = frames / 2;
@@ -608,7 +614,7 @@ if (isPcmBridgePage()) {
       const leadMs = (startAt - now) * 1000;
       const outputMs = (typeof context.outputLatency === 'number' ? context.outputLatency : 0) * 1000;
       log('stem_playout', {
-        chunks: p.chunks, underruns: p.underruns, peak: Number(p.peakMax.toFixed(3)), leadMs: Number(leadMs.toFixed(1)),
+        chunks: p.chunks, underruns: p.underruns, peak: Number(p.peakMax.toFixed(3)), handleMs: Number((p.handleMaxMs || 0).toFixed(1)), leadMs: Number(leadMs.toFixed(1)),
         processingMs: msg.processingMs,
         delayEstimateMs: Math.round(frames / rate * 1000 + 93 + (msg.processingMs || 0) + leadMs + outputMs),
       });
