@@ -16,13 +16,10 @@ function trustedMainFrame() {
 
 function onTrustedCommand(callback) {
   if (!trustedMainFrame() || typeof callback !== 'function') return () => {};
-  const listener = (event, command) => {
-    let frameTrusted = false;
-    try {
-      const u = new URL(event.senderFrame?.url || '');
-      frameTrusted = u.origin === 'https://music.youtube.com' || u.protocol === 'file:';
-    } catch { /* Ignore commands without a verifiable frame. */ }
-    if (!frameTrusted || !command || typeof command !== 'object') return;
+  // Mesajlar yalnizca ana surecten gelir; senderFrame ana surec mesajlarinda bos olur.
+  // Guven: trustedMainFrame() (origin + top frame) yukarida zaten dogrulandi.
+  const listener = (_event, command) => {
+    if (!command || typeof command !== 'object') return;
     callback(command);
   };
   ipcRenderer.on('poc:command', listener);
