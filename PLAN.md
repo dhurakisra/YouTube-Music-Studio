@@ -32,5 +32,5 @@ Orijinal tam spec: kullanıcının "PHASE 0A" metni (kapsam: min. pencere, kalı
 Durak noktaları (kullanıcı): T1 sonrası Google girişi denemesi; T3 sonrası dinleme; 30 dk stabilite.
 
 ## Durum / devir notu
-- (2026-11-11) Dizin + git init + PLAN/CONTRACT yazıldı. Henüz kod yok. Sıradaki: Orca repo kaydı, T1'i Codex'e ver.
+- (2026-11-11) T1+T2 Codex tarafından yapıldı, incelendi, master'a birleştirildi (iskelet + Method B ölçer). npm install tamam. SIRADA: kullanıcı durağı 1 (npm start, girişsiz parça çal, "Start capture", logs/ kontrol; CSP worklet sonucu). Sonra T3, T4.
 - Yeni chat başlangıç mesajı: "ajan-ekibi: C:\Projects\YTM-Audio-POC\PLAN.md içindeki devir notundan devam et."
