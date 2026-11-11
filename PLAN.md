@@ -59,3 +59,5 @@ Karar: Method B ana aday, D/E/F B ile yapilacak. Bunlar kullanici dinleme/30 dk 
 Sonraki: 1) Test D (npm start: pause, seek, parca, YTM sayfa/gorunum degisimi; bypass/LPF acikken kesinti/cit?) 2) Test E: 30 dk calma, sonra logs/metrics-*.csv (bellek/cpu artisi, dropoutBlocks, timeGaps) incele 3) Test F: kurtarma (ag kopmasi / sayfa yenileme / capture yeniden baslatma) 4) raporu tamamla -> PASS/CONDITIONAL/FAIL. 5) Istege bagli: Method A kapanma sorunu.
 Tuzaklar: UA degistirme yok, atlatma yok, SharedArrayBuffer yok, 3. mimari yok, CSP header degistirme yok. Takili electron surecini Get-CimInstance ile bulup kapat. Kullanici Turkce.
 Yeni sohbet baslangic mesaji: "ajan-ekibi: C:\Projects\YTM-Audio-POC\PLAN.md icindeki DEVIR NOTU'ndan devam et."
+
+## Guncelleme (sohbet 3): Test D PASS, Test E PASS (kullanici dinledi + metrics analizi, docs'a islendi). Kalan: Test F (ag kopmasi / sayfa yenileme / capture yeniden baslatma), sonra nihai karar. Istege bagli: Method A kapanma sorunu.

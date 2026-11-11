@@ -21,3 +21,10 @@ Karar durumu: **CONDITIONAL PASS (ara)** — Test D/E/F tamamlanmadi.
 
 ## Yapilmayanlar
 Test D (pause/seek/parca/gorunum degisimi), E (30 dk stabilite + metrics csv), F (kurtarma). Nihai karar bunlardan sonra.
+
+## Test D/E sonuclari (Method B, log 14:58-15:53, ~54 dk)
+- Test D (pause, seek, parca, gorunum degisimi; bypass/LPF): kullanici dinledi, sorun/cit/kesinti YOK.
+- Test E: yakalama 54 dk kesintisiz (44100 Hz, 2 kanal), hata olayi 0. Bellek ~861-879 MB sabit (sizinti yok), CPU %0.07-0.17.
+  dropoutBlocks=2 (ikisi de 15:00:27, ilk dakikalar, sonra artmadi); timeGaps=4 (15:00 x3, 15:26, 15:42), duyulabilir etkisi yok.
+  15:43:32'den sonuna rms=0: kullanici muzigi durdurmustu (beklenen sessizlik).
+- Test F (kurtarma) HENUZ yapilmadi.
