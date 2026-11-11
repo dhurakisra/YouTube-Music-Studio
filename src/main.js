@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, Menu, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, globalShortcut, session } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -11,7 +11,8 @@ const LOG_FILE = path.join(LOG_DIR, `capture-${new Date().toISOString().replace(
 const ALLOWED_EVENTS = new Set([
   'app_started', 'page_loaded', 'page_load_error', 'capture_button_ready',
   'capture_start_requested', 'capture_started', 'capture_worklet_error',
-  'media_element_missing', 'capture_metrics', 'drm_or_silence', 'capture_error',
+  'capture_fallback', 'capture_error', 'media_element_missing', 'capture_metrics',
+  'drm_or_silence', 'csp_policy', 'csp_console_message',
 ]);
 
 let mainWindow;
@@ -27,7 +28,7 @@ function appendLog(event, fields = {}) {
 function safeData(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
   const output = {};
-  for (const key of ['sampleRate', 'channels', 'rms', 'nonzero', 'state', 'error']) {
+  for (const key of ['sampleRate', 'channels', 'rms', 'nonzero', 'state', 'error', 'dropoutBlocks', 'timeGaps']) {
     if (Object.hasOwn(data, key) && (typeof data[key] === 'number' || typeof data[key] === 'string')) {
       output[key] = data[key];
     }
@@ -92,11 +93,33 @@ function createWindow() {
     if (app.commandLine.hasSwitch('smoke')) app.quit();
   });
 
+  mainWindow.webContents.on('console-message', (details) => {
+    const message = typeof details === 'object' && details ? details.message : '';
+    if (typeof message !== 'string' || !/worklet|content security policy|\bcsp\b|refused to (?:load|connect)/i.test(message)) return;
+    // Keep this diagnostic limited to CSP/worklet failures; never record arbitrary page console output.
+    appendLog('csp_console_message', { message: message.replace(/nonce-[A-Za-z0-9+/_=-]+/gi, 'nonce-[REDACTED]').slice(0, 1000) });
+  });
+
   mainWindow.webContents.on('did-fail-load', (_event, code, description, validatedURL, isMainFrame) => {
     if (isMainFrame) appendLog('page_load_error', { state: String(code), error: description });
   });
 
   mainWindow.on('closed', () => { mainWindow = undefined; });
+  const ytmSession = session.fromPartition(PARTITION);
+  ytmSession.webRequest.onHeadersReceived({ urls: ['https://music.youtube.com/*'] }, (details, callback) => {
+    if (details.resourceType === 'mainFrame' && isYtmUrl(details.url)) {
+      const headers = details.responseHeaders || {};
+      const cspHeader = Object.entries(headers).find(([name]) => name.toLowerCase() === 'content-security-policy');
+      if (cspHeader) {
+        const policies = Array.isArray(cspHeader[1]) ? cspHeader[1] : [cspHeader[1]];
+        const wanted = policies.flatMap((policy) => String(policy).split(';'))
+          .map((part) => part.trim().replace(/nonce-[A-Za-z0-9+/_=-]+/gi, 'nonce-[REDACTED]'))
+          .filter((part) => /^(?:script-src|worker-src|default-src)(?:\s|$)/i.test(part));
+        appendLog('csp_policy', { directives: wanted });
+      }
+    }
+    callback({ responseHeaders: details.responseHeaders });
+  });
   mainWindow.loadURL(YTM_URL);
 }
 
