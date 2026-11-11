@@ -90,3 +90,4 @@ Tuzaklar 0A/0B ile ayni (atlatma/UA/SAB/CSP header/3. mimari yok). Model dosyasi
 | S3 | Akis entegrasyonu: ortusen pencere + overlap-add, gecikme tamponu, vokal/enstr. seviye kaydiricisi (basit), bypass | Claude (mantik) | S2 | src/stem-mixer.js, src/audio-graph.js | dinleme icin hazir |
 | S4 | Guvenlik incelemesi + olcum + docs/phase-1-results.md | Claude | S1-S3 | docs/ | rapor |
 Durak: S1 sonrasi RTF'ye gore devam/dur karari; S3 sonrasi kullanici dinleme + 10 dk stabilite.
+Donanim (kullanici): RTX 4090 + 64 GB RAM -> S1'de CPU + CUDA/DirectML (ort-node'un destekledigi GPU yolu) olculur. S1 basladi (Codex).
