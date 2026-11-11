@@ -72,3 +72,5 @@ Hedef: Method B PCM'ini MessagePort ile Worker/AudioWorklet'e (Method A kontrol 
 | B2 | PCM'i MessagePort ile ayri Worker/worklet'e tasima + gecikme/dropout olcumu (metrics CSV) | Codex | B1 | src/pcm-bridge.js, src/pcm-worker.js, src/metrics.js | log: PCM Worker'a ulasiyor, gecikme ms |
 | B3 | Guvenlik incelemesi + test + docs/phase-0b-results.md | Claude | B1,B2 | docs/ | rapor |
 Durak: B2 sonrasi kullanici dinleme + 10 dk stabilite. Karar: PASS/CONDITIONAL/FAIL.
+
+B1 BITTI (f02e490): capture durdur/baslat, 10 dongu capture_error=0, diff Claude tarafindan incelendi. Sonraki: B2 (Codex).
