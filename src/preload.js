@@ -185,6 +185,8 @@ if (isPcmBridgePage()) {
         }
         currentPcmTransport = await openPcmTransport();
         startMeasurement(graph, context, media, currentPcmTransport);
+        if (modeSelect) modeSelect.disabled = false;
+        if (gainSlider) gainSlider.disabled = false;
         captureActive = true;
         log('capture_started', { sampleRate: context.sampleRate, state: 'capturing' });
         log('latency_info', {
@@ -215,6 +217,16 @@ if (isPcmBridgePage()) {
       if (graph) stopMeasurement(graph);
     }
     closePcmTransport();
+    // Capture off => no processing: force the dry path but remember the selected mode for restart.
+    for (const media of document.querySelectorAll('audio, video')) {
+      const graph = graphs.get(media);
+      if (!graph) continue;
+      const now = activeContext?.currentTime || 0;
+      graph.dryGain.gain.setTargetAtTime(1, now, 0.02);
+      graph.wetGain.gain.setTargetAtTime(0, now, 0.02);
+    }
+    if (modeSelect) modeSelect.disabled = true;
+    if (gainSlider) gainSlider.disabled = true;
     captureActive = false;
     lastMetricsAt = 0;
     lastZeroStart = null;
