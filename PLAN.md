@@ -78,3 +78,15 @@ B1 BITTI (f02e490): capture durdur/baslat, 10 dongu capture_error=0, diff Claude
 B2 BITTI (6459d98): YTM preload Worker TrustedScriptURL ile ENGELLI; yerel gizli renderer (pcm-bridge.html) + Worker yolu calisiyor. Codex olcumu 60 sn: 660 blok, 0 kayip, gecikme ort 0.12 / p95-max 0.4 ms (NOT: gecikme postMessage->Worker; ScriptProcessor 4096 tampon ~93 ms dahil degil), besleme sapmasi 4.6 ms. Claude diff incelemesi: kritik sorun yok; notlar: (a) PCM interleave+postMessage hala ana thread'de, (b) her baslatmada bosuna 800 ms Worker denemesi. SIRADAKI: kullanici dinleme + 10 dk stabilite (npm start), sonra B3 rapor.
 
 KAPANIS (sohbet 4): Phase 0B CONDITIONAL PASS (docs/phase-0b-results.md). Acik isci yok. Sonraki faz kullanici karari.
+
+## PHASE 1 (sohbet 5) — Stem ayristirma PoC (TASLAK, kullanici onayi bekliyor)
+Kullanici karari: yari-gercek zamanli, hedef toplam gecikme ~3 sn (5-15 sn cok bulundu); calisma ortami: once TEK yol = onnxruntime-node (utility process). 2 stem (vokal / enstrumantal) ile basla.
+Gecikme = pencere + cikarim suresi; olculur, 3 sn tutmazsa raporlanir (daha hafif model / daha uzun pencere / DirectML secenekleri). Kapsam DISI: UI, soz/karaoke, 4+ stem, indirme, kalite iyilestirme.
+Tuzaklar 0A/0B ile ayni (atlatma/UA/SAB/CSP header/3. mimari yok). Model dosyasi lisansi kontrol edilir, repoya commit edilmez (models/ gitignore).
+| # | Gorev | Sahip | Bagimlilik | Dosyalar | Bitti |
+|---|---|---|---|---|---|
+| S1 | Cevrimdisi benchmark: aday model(ler) (kucuk Demucs/Open-Unmix ONNX) onnxruntime-node ile, wav uzerinde CPU (+DirectML varsa) RTF ve pencere basina sure | Codex | - | bench/, package.json, .gitignore | tablo: model x pencere x RTF |
+| S2 | Utility process: PCM bloklarini MessagePort ile al, cikarim yap, stem bloklarini dondur | Codex | S1 | src/stem-process.js, src/main.js | log: stem bloklari akiyor, kayip 0 |
+| S3 | Akis entegrasyonu: ortusen pencere + overlap-add, gecikme tamponu, vokal/enstr. seviye kaydiricisi (basit), bypass | Claude (mantik) | S2 | src/stem-mixer.js, src/audio-graph.js | dinleme icin hazir |
+| S4 | Guvenlik incelemesi + olcum + docs/phase-1-results.md | Claude | S1-S3 | docs/ | rapor |
+Durak: S1 sonrasi RTF'ye gore devam/dur karari; S3 sonrasi kullanici dinleme + 10 dk stabilite.
