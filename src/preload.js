@@ -513,7 +513,7 @@ if (isPcmBridgePage()) {
 
   // Overlap-add for 2 s windows with 50% overlap (periodic Hann halves sum to 1), then gapless scheduling.
   const STEM_RATE = 44100;
-  let stemLeadS = 0.6; // user-adjustable jitter buffer (extra delay vs. dropout safety)
+  let stemLeadS = 1.0; // user-adjustable jitter buffer (extra delay vs. dropout safety)
   function playStemBlock(msg) {
     const context = activeContext;
     if (!context || !stemNodes || !msg.vocal?.byteLength) return;
