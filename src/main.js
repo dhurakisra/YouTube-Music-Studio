@@ -33,8 +33,8 @@ let stemProcess;
 let stemProcessRunning = false;
 let selectedStemModel = 'umx-hq';
 let captureActive = false;
-const STEM_MODELS = new Set(['umx-hq', 'htdemucs', 'mdx-kim']);
-const ENABLED_STEM_MODELS = new Set(['umx-hq', 'htdemucs']);
+const STEM_MODELS = new Set(['umx-hq', 'htdemucs', 'mdx-kim', 'passthrough']);
+const ENABLED_STEM_MODELS = new Set(['umx-hq', 'htdemucs', 'passthrough']);
 
 function appendLog(event, fields = {}) {
   fs.mkdirSync(LOG_DIR, { recursive: true });

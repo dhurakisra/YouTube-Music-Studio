@@ -8,6 +8,7 @@ const ort = require('onnxruntime-node');
 const SAMPLE_RATE = 44100;
 const MODEL_PROFILES = {
   'umx-hq': { file: path.join(__dirname, '..', 'models', 'umx-hq-vocals.onnx'), windowFrames: SAMPLE_RATE * 2, kind: 'umx' },
+  passthrough: { file: null, windowFrames: 343980, kind: 'pass' }, // diagnostic: no model, input goes out as 'vocal'
   htdemucs: { file: path.join(__dirname, '..', 'models', 'htdemucs_fp16.onnx'), windowFrames: 343980, kind: 'ht' },
 };
 const requestedModel = process.argv.find((arg) => arg.startsWith('--model='))?.slice('--model='.length);
@@ -180,6 +181,9 @@ async function runWindow(audio, sequence, readyEpochMs) {
       const estimate = result.estimate?.data;
       if (!estimate || estimate.length !== mag.length) throw new Error('Model returned an incompatible estimate tensor');
       stems = makeStems(audio, estimate);
+    } else if (PROFILE.kind === 'pass') {
+      const zeros = () => new Float32Array(WINDOW_FRAMES * 2);
+      stems = { drums: zeros(), bass: zeros(), other: zeros(), vocal: Float32Array.from(audio) };
     } else if (PROFILE.kind === 'ht') {
       const planar = new Float32Array(WINDOW_FRAMES * 2);
       for (let i = 0; i < WINDOW_FRAMES; i += 1) { planar[i] = audio[2 * i]; planar[WINDOW_FRAMES + i] = audio[2 * i + 1]; }
@@ -300,8 +304,8 @@ parentPort.on('message', async (event) => {
   }
   if (message?.type === 'stem:port' && event.ports?.length === 1) {
     try {
-      if (!fs.existsSync(PROFILE.file)) throw new Error(`Model not found for profile "${MODEL_ID}": ${PROFILE.file}. Download it using the steps in ${BENCH_README}.`);
-      session = await ort.InferenceSession.create(PROFILE.file, {
+      if (PROFILE.kind !== 'pass' && !fs.existsSync(PROFILE.file)) throw new Error(`Model not found for profile "${MODEL_ID}": ${PROFILE.file}. Download it using the steps in ${BENCH_README}.`);
+      if (PROFILE.kind !== 'pass') session = await ort.InferenceSession.create(PROFILE.file, {
         executionProviders: ['cpu'], graphOptimizationLevel: 'all',
         enableCpuMemArena: true, enableMemPattern: true,
       });

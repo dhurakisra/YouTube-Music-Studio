@@ -201,7 +201,7 @@ if (isPcmBridgePage()) {
     modelLabel.textContent = 'Model';
     modelSelect = document.createElement('select');
     modelSelect.setAttribute('aria-label', 'Stem separation model (applies on next capture start)');
-    for (const [value, text] of [['umx-hq', 'UMX-HQ (fast, ~3 s)'], ['htdemucs', 'HT-Demucs (best, ~10 s)']]) {
+    for (const [value, text] of [['umx-hq', 'UMX-HQ (fast, ~3 s)'], ['htdemucs', 'HT-Demucs (best, ~10 s)'], ['passthrough', 'TEST: no separation (~9 s)']]) {
       const option = document.createElement('option');
       option.value = value;
       option.textContent = text;
@@ -237,7 +237,7 @@ if (isPcmBridgePage()) {
     bassSlider = makeStemSlider('Bass', 'Bass stem level percent');
     otherSlider = makeStemSlider('Other', 'Other stem level percent');
     const updateSliderVisibility = () => {
-      const ht = modelSelect.value === 'htdemucs';
+      const ht = modelSelect.value === 'htdemucs' || modelSelect.value === 'passthrough';
       const setHidden = (slider, hidden) => { slider.hidden = hidden; slider.previousSibling.hidden = hidden; for (const el of slider.extraEls) el.hidden = hidden; };
       setHidden(instSlider, ht);
       for (const slider of [drumsSlider, bassSlider, otherSlider]) setHidden(slider, !ht);
@@ -517,7 +517,7 @@ if (isPcmBridgePage()) {
   function applyStemLevels() {
     if (!stemNodes || !activeContext) return;
     const now = activeContext.currentTime;
-    const ht = modelSelect?.value === 'htdemucs';
+    const ht = modelSelect?.value === 'htdemucs' || modelSelect?.value === 'passthrough';
     const entries = [[vocalSlider, 'vocalGain', true], [instSlider, 'instGain', !ht], [drumsSlider, 'drumsGain', ht], [bassSlider, 'bassGain', ht], [otherSlider, 'otherGain', ht]];
     const anySolo = entries.some(([sl, , visible]) => visible && sl?.stemFlags?.solo);
     for (const [sl, key] of entries) {
