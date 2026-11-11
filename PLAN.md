@@ -111,3 +111,6 @@ Tuzaklar: (a) ana surec capture_start_requested logunu gorunce captureActive=tru
 Yeni sohbet baslangic mesaji: "ajan-ekibi: C:\Projects\YTM-Audio-POC\PLAN.md icindeki DEVIR NOTU (sohbet 5 sonu)'ndan devam et."
 
 SOHBET 6: HT-Demucs 4 stem (drums/bass/other/vocal) + 4 kaydirici entegre edildi (79c60b1), kullanici dinledi: "muthis", UMX de calisiyor. KALAN: 1) 10 dk stabilite (stem_playout underruns, bellek/CPU metrics CSV; kullanici muzik calar, koordinator logs/*.jsonl okur) 2) docs/phase-1-results.md guncelle (HT-Demucs sonucu, model secici, 4 stem) ve Phase 1 kapat.
+
+SOHBET 6 SONU: CITLAR COZULDU. Sebep: ScriptProcessor (ana is parcacigi) PCM yakalamada blok kaybi; cozum: MediaStreamTrackProcessor ile yakalama (YTM CSP AudioWorklet'i engelliyor). Eklenenler: ayarlanabilir buffer (varsayilan 1.0 sn), solo/mute (karsilikli dislayan), 4 stem, headroom 0.7, passthrough tani modu (TEST), stem_jump/peak/handleMs tani loglari. Geri alinanlar: ORT thread siniri. Tuzak: log allowlist (main.js ALLOWED_EVENTS + preload allowedLogEvents + safeData) yeni olay/alan icin genisletilmeli, aksi halde SESSIZCE dusuyor.
+KALAN: 1) 10 dk stabilite (artik temiz yakalamayla) 2) docs/phase-1-results.md guncelle, Phase 1 kapat 3) tani kodunu (jump dedektoru, passthrough) istege bagli sadelestir.
