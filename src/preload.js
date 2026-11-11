@@ -174,12 +174,23 @@ if (isPcmBridgePage()) {
         b.type = 'button'; b.textContent = label; b.setAttribute('aria-label', aria); b.setAttribute('aria-pressed', 'false');
         b.style.cssText = 'margin:0 2px;padding:0 5px;font:inherit;cursor:pointer';
         b.addEventListener('click', () => {
+          if (b.disabled) return;
           flags[key] = !flags[key];
-          b.setAttribute('aria-pressed', String(flags[key]));
-          b.style.background = flags[key] ? (key === 'solo' ? '#e8b400' : '#d33') : '';
+          refresh();
           applyStemLevels();
         });
+        b.stemKey = key;
         return b;
+      };
+      const refresh = () => {
+        for (const btn of [soloBtn, muteBtn]) {
+          const on = flags[btn.stemKey];
+          btn.setAttribute('aria-pressed', String(on));
+          btn.style.background = on ? (btn.stemKey === 'solo' ? '#e8b400' : '#d33') : '';
+        }
+        muteBtn.disabled = flags.solo; // S and M are mutually exclusive
+        soloBtn.disabled = flags.mute;
+        for (const btn of [soloBtn, muteBtn]) btn.style.opacity = btn.disabled ? '0.4' : '1';
       };
       const soloBtn = makeToggle('S', 'solo', aria + ' solo'), muteBtn = makeToggle('M', 'mute', aria + ' mute');
       slider.extraEls = [soloBtn, muteBtn];
@@ -207,10 +218,16 @@ if (isPcmBridgePage()) {
     bufValue.textContent = stemLeadS.toFixed(1) + ' s';
     bufSlider.addEventListener('input', () => {
       const next = Number(bufSlider.value);
-      if (stemPlayer && next > stemLeadS) stemPlayer.nextTime += next - stemLeadS; // grow cushion now (one short gap)
       stemLeadS = next;
       bufValue.textContent = next.toFixed(1) + ' s';
-      log('stem_buffer_changed', { leadS: next });
+    });
+    // Apply once on release: top the queued lead up to the new target (never shifts the schedule down or accumulates).
+    bufSlider.addEventListener('change', () => {
+      if (stemPlayer && activeContext) {
+        const lead = stemPlayer.nextTime - activeContext.currentTime;
+        if (lead < stemLeadS) stemPlayer.nextTime = activeContext.currentTime + stemLeadS;
+      }
+      log('stem_buffer_changed', { leadS: stemLeadS });
     });
     modelSelect.disabled = captureActive;
     overlay.append(modelLabel, modelSelect, bufLabel, bufSlider, bufValue, label, modeSelect, gainLabel, gainSlider);
