@@ -67,7 +67,7 @@
     // Call getDisplayMedia directly from this click handler to retain the user gesture.
     let capturePromise;
     try {
-      capturePromise = navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
+      capturePromise = navigator.mediaDevices.getDisplayMedia({ audio: { channelCount: 2, echoCancellation: false, noiseSuppression: false, autoGainControl: false }, video: true });
     } catch (error) {
       startButton.disabled = false;
       status.textContent = `Capture failed: ${error?.message || error}`;

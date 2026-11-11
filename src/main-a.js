@@ -68,13 +68,13 @@ function maybeFinishSmoke() {
 function configureCaptureHandler(captureSession) {
   captureSession.setDisplayMediaRequestHandler((request, callback) => {
     const controlFrame = controlWindow?.webContents.mainFrame;
-    const originAllowed = request.securityOrigin === 'file://' || request.securityOrigin === 'null';
+    const originAllowed = ['file://', 'file:///'].includes(request.securityOrigin) || request.securityOrigin === 'null';
     const frameAllowed = Boolean(request.frame && controlFrame && request.frame === controlFrame &&
       request.frame === request.frame.top && isControlFileUrl(request.frame.url));
     const ytmFrame = ytmWindow?.webContents.mainFrame;
     const ytmAllowed = Boolean(ytmWindow && !ytmWindow.isDestroyed() && isYtmUrl(ytmWindow.webContents.getURL()));
     if (!frameAllowed || !originAllowed || !request.audioRequested || !request.videoRequested || !ytmAllowed || !ytmFrame) {
-      appendLog('display_request_denied', { state: 'untrusted_or_incomplete_request', variant });
+      appendLog('display_request_denied', { state: 'untrusted_or_incomplete_request', variant, frameAllowed, originAllowed, securityOrigin: request.securityOrigin, frameUrl: request.frame?.url, audioRequested: request.audioRequested, videoRequested: request.videoRequested, ytmAllowed, hasYtmFrame: Boolean(ytmFrame) });
       callback(null);
       return;
     }
@@ -116,7 +116,7 @@ function createYtmWindow() {
   ytmWindow.webContents.on('did-fail-load', (_event, code, description, _url, isMainFrame) => {
     if (isMainFrame) appendLog('capture_error', { state: String(code), error: description, variant });
   });
-  ytmWindow.on('closed', () => { ytmWindow = undefined; });
+  ytmWindow.on('closed', () => { ytmWindow = undefined; app.quit(); });
   ytmWindow.loadURL(YTM_URL);
 }
 
@@ -142,7 +142,7 @@ function createControlWindow() {
     appendLog('control_loaded', { state: 'loaded' });
     maybeFinishSmoke();
   });
-  controlWindow.on('closed', () => { controlWindow = undefined; });
+  controlWindow.on('closed', () => { controlWindow = undefined; app.quit(); });
   controlWindow.loadFile(CONTROL_FILE);
 }
 
