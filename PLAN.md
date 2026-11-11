@@ -63,3 +63,12 @@ Yeni sohbet baslangic mesaji: "ajan-ekibi: C:\Projects\YTM-Audio-POC\PLAN.md ici
 ## Guncelleme (sohbet 3): Test D PASS, Test E PASS (kullanici dinledi + metrics analizi, docs'a islendi). Kalan: Test F (ag kopmasi / sayfa yenileme / capture yeniden baslatma), sonra nihai karar. Istege bagli: Method A kapanma sorunu.
 
 ## KAPANIS (sohbet 3): Phase 0A bitti. Nihai karar CONDITIONAL PASS (docs/phase-0a-results.md). Acik isci yok. Sonraki faz kullanici karari.
+
+## PHASE 0B (sohbet 4) — PCM'i ana is parcacigindan cikarma (kullanici onayladi)
+Hedef: Method B PCM'ini MessagePort ile Worker/AudioWorklet'e (Method A kontrol penceresinde worklet calisir) tasimak; gecikme+kesinti olcmek; capture durdur/baslat eklemek. Kapsam DISI: stem ayrisirma. Tuzaklar 0A ile ayni (atlatma/UA/SAB/CSP header/3. mimari yok).
+| # | Gorev | Sahip | Bagimlilik | Dosyalar | Bitti |
+|---|---|---|---|---|---|
+| B1 | Capture durdur/baslat (IPC allowlist, temiz yeniden baslatma) | Codex | - | src/main.js, src/preload.js, src/capture-b.js | stop/start 10x sorunsuz, log |
+| B2 | PCM'i MessagePort ile ayri Worker/worklet'e tasima + gecikme/dropout olcumu (metrics CSV) | Codex | B1 | src/pcm-bridge.js, src/pcm-worker.js, src/metrics.js | log: PCM Worker'a ulasiyor, gecikme ms |
+| B3 | Guvenlik incelemesi + test + docs/phase-0b-results.md | Claude | B1,B2 | docs/ | rapor |
+Durak: B2 sonrasi kullanici dinleme + 10 dk stabilite. Karar: PASS/CONDITIONAL/FAIL.
