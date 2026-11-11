@@ -156,13 +156,17 @@ function makeStems(audio, estimate) {
 }
 
 function htdemucsStems(data) {
-  const vocal = new Float32Array(WINDOW_FRAMES * 2), instrumental = new Float32Array(WINDOW_FRAMES * 2);
-  for (let i = 0; i < WINDOW_FRAMES; i += 1) for (let channel = 0; channel < 2; channel += 1) {
-    const planeIndex = channel * WINDOW_FRAMES + i;
-    vocal[2 * i + channel] = data[3 * 2 * WINDOW_FRAMES + planeIndex];
-    instrumental[2 * i + channel] = data[planeIndex] + data[2 * WINDOW_FRAMES + planeIndex] + data[4 * WINDOW_FRAMES + planeIndex];
+  // Output plane order: drums, bass, other, vocals; each plane is [channel][frame].
+  const names = ['drums', 'bass', 'other', 'vocal'];
+  const out = {};
+  for (const name of names) out[name] = new Float32Array(WINDOW_FRAMES * 2);
+  for (let s = 0; s < 4; s += 1) {
+    const target = out[names[s]];
+    for (let i = 0; i < WINDOW_FRAMES; i += 1) for (let channel = 0; channel < 2; channel += 1) {
+      target[2 * i + channel] = data[s * 2 * WINDOW_FRAMES + channel * WINDOW_FRAMES + i];
+    }
   }
-  return { vocal, instrumental };
+  return out;
 }
 
 async function runWindow(audio, sequence, readyEpochMs) {
@@ -198,7 +202,7 @@ async function runWindow(audio, sequence, readyEpochMs) {
     activePort.postMessage({
       type: 'stem:block', sequence: ++nextOutputSequence, sourceSequence: sequence,
       sampleRate: SAMPLE_RATE, channels: 2, frames: WINDOW_FRAMES,
-      vocal: stems.vocal.buffer, instrumental: stems.instrumental.buffer,
+      ...Object.fromEntries(Object.entries(stems).map(([k, v]) => [k, v.buffer])),
       processingMs: Number(processingMs.toFixed(3)), queueLatencyMs: Number(Math.max(0, queuedAt).toFixed(3)),
     });
     reportMetrics();

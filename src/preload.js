@@ -96,6 +96,9 @@ if (isPcmBridgePage()) {
   let gainSlider;
   let vocalSlider;
   let instSlider;
+  let drumsSlider;
+  let bassSlider;
+  let otherSlider;
   let modelSelect;
   let stemNodes = null;
   let stemPlayer = null;
@@ -182,6 +185,16 @@ if (isPcmBridgePage()) {
     overlay.append(modelLabel, modelSelect, label, modeSelect, gainLabel, gainSlider);
     vocalSlider = makeStemSlider('Vocal', 'Vocal stem level percent');
     instSlider = makeStemSlider('Instr.', 'Instrumental stem level percent');
+    drumsSlider = makeStemSlider('Drums', 'Drums stem level percent');
+    bassSlider = makeStemSlider('Bass', 'Bass stem level percent');
+    otherSlider = makeStemSlider('Other', 'Other stem level percent');
+    const updateSliderVisibility = () => {
+      const ht = modelSelect.value === 'htdemucs';
+      for (const slider of [instSlider]) { slider.hidden = ht; if (slider.previousSibling) slider.previousSibling.hidden = ht; }
+      for (const slider of [drumsSlider, bassSlider, otherSlider]) { slider.hidden = !ht; if (slider.previousSibling) slider.previousSibling.hidden = !ht; }
+    };
+    modelSelect.addEventListener('change', updateSliderVisibility);
+    updateSliderVisibility();
     document.documentElement.appendChild(overlay);
   }
 
@@ -322,14 +335,15 @@ if (isPcmBridgePage()) {
     // Stem path: delayed vocal/instrumental chunks are scheduled into these gains (see playStemBlock).
     const vocalGain = context.createGain();
     const instGain = context.createGain();
+    const drumsGain = context.createGain(), bassGain = context.createGain(), otherGain = context.createGain();
     const stemBus = context.createGain();
     const stemLimiter = context.createDynamicsCompressor();
     stemLimiter.threshold.value = -3; stemLimiter.ratio.value = 20; stemLimiter.attack.value = 0.003; stemLimiter.release.value = 0.1;
-    for (const node of [vocalGain, instGain, stemBus, stemLimiter]) setChannelFormat(node);
-    vocalGain.connect(stemLimiter); instGain.connect(stemLimiter);
+    for (const node of [vocalGain, instGain, drumsGain, bassGain, otherGain, stemBus, stemLimiter]) setChannelFormat(node);
+    for (const node of [vocalGain, instGain, drumsGain, bassGain, otherGain]) node.connect(stemLimiter);
     stemLimiter.connect(stemBus); stemBus.connect(context.destination);
     stemBus.gain.value = 0;
-    stemNodes = { vocalGain, instGain, stemBus };
+    stemNodes = { vocalGain, instGain, drumsGain, bassGain, otherGain, stemBus };
 
     const analyser = context.createAnalyser();
     analyser.fftSize = 2048;
@@ -455,6 +469,9 @@ if (isPcmBridgePage()) {
     const now = activeContext.currentTime;
     stemNodes.vocalGain.gain.setTargetAtTime(Number(vocalSlider?.value ?? 100) / 100, now, 0.03);
     stemNodes.instGain.gain.setTargetAtTime(Number(instSlider?.value ?? 100) / 100, now, 0.03);
+    stemNodes.drumsGain.gain.setTargetAtTime(Number(drumsSlider?.value ?? 100) / 100, now, 0.03);
+    stemNodes.bassGain.gain.setTargetAtTime(Number(bassSlider?.value ?? 100) / 100, now, 0.03);
+    stemNodes.otherGain.gain.setTargetAtTime(Number(otherSlider?.value ?? 100) / 100, now, 0.03);
   }
 
   // Overlap-add for 2 s windows with 50% overlap (periodic Hann halves sum to 1), then gapless scheduling.
@@ -462,34 +479,35 @@ if (isPcmBridgePage()) {
   const STEM_JITTER_LEAD_S = 0.3;
   function playStemBlock(msg) {
     const context = activeContext;
-    if (!context || !stemNodes || !msg.vocal?.byteLength || !msg.instrumental?.byteLength) return;
+    if (!context || !stemNodes || !msg.vocal?.byteLength) return;
     const frames = msg.frames, hop = frames / 2;
-    const vocal = new Float32Array(msg.vocal), inst = new Float32Array(msg.instrumental);
-    if (vocal.length !== frames * 2 || inst.length !== frames * 2) return;
+    const layers = [['vocal', 'vocalGain'], ['instrumental', 'instGain'], ['drums', 'drumsGain'], ['bass', 'bassGain'], ['other', 'otherGain']]
+      .filter(([name]) => msg[name]?.byteLength);
+    const inputs = {};
+    for (const [name] of layers) {
+      inputs[name] = new Float32Array(msg[name]);
+      if (inputs[name].length !== frames * 2) return;
+    }
     if (!stemPlayer) {
-      stemPlayer = { tailV: null, tailI: null, nextTime: 0, chunks: 0, underruns: 0 };
+      stemPlayer = { tails: {}, nextTime: 0, chunks: 0, underruns: 0 };
       applyStemLevels();
     }
     const p = stemPlayer;
-    const outV = new Float32Array(hop * 2), outI = new Float32Array(hop * 2);
-    for (let n = 0; n < hop; n += 1) {
-      const rise = p.tailV ? 0.5 - 0.5 * Math.cos(Math.PI * n / hop) : 1; // first window: no previous tail, use it unweighted
-      for (let c = 0; c < 2; c += 1) {
-        const i = 2 * n + c;
-        outV[i] = vocal[i] * rise + (p.tailV ? p.tailV[i] : 0);
-        outI[i] = inst[i] * rise + (p.tailI ? p.tailI[i] : 0);
+    const outs = {};
+    for (const [name] of layers) {
+      const input = inputs[name], tail = p.tails[name];
+      const out = new Float32Array(hop * 2), newTail = new Float32Array(hop * 2);
+      for (let n = 0; n < hop; n += 1) {
+        const rise = tail ? 0.5 - 0.5 * Math.cos(Math.PI * n / hop) : 1; // first window: no previous tail, use it unweighted
+        const fall = 0.5 + 0.5 * Math.cos(Math.PI * n / hop);
+        for (let c = 0; c < 2; c += 1) {
+          const i = 2 * n + c;
+          out[i] = input[i] * rise + (tail ? tail[i] : 0);
+          newTail[i] = input[2 * (hop + n) + c] * fall;
+        }
       }
+      outs[name] = out; p.tails[name] = newTail;
     }
-    const tailV = new Float32Array(hop * 2), tailI = new Float32Array(hop * 2);
-    for (let n = 0; n < hop; n += 1) {
-      const fall = 0.5 + 0.5 * Math.cos(Math.PI * n / hop);
-      for (let c = 0; c < 2; c += 1) {
-        const i = 2 * n + c;
-        tailV[i] = vocal[2 * (hop + n) + c] * fall;
-        tailI[i] = inst[2 * (hop + n) + c] * fall;
-      }
-    }
-    p.tailV = tailV; p.tailI = tailI;
     const now = context.currentTime;
     if (p.nextTime < now + 0.02) {
       if (p.chunks > 0) p.underruns += 1;
@@ -497,7 +515,8 @@ if (isPcmBridgePage()) {
     }
     const startAt = p.nextTime;
     const rate = msg.sampleRate || STEM_RATE;
-    for (const [data, target] of [[outV, stemNodes.vocalGain], [outI, stemNodes.instGain]]) {
+    for (const [name, gainKey] of layers) {
+      const data = outs[name], target = stemNodes[gainKey];
       const buffer = context.createBuffer(2, hop, rate);
       const left = buffer.getChannelData(0), right = buffer.getChannelData(1);
       for (let n = 0; n < hop; n += 1) { left[n] = data[2 * n]; right[n] = data[2 * n + 1]; }
