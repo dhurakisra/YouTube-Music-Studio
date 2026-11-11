@@ -96,6 +96,7 @@ if (isPcmBridgePage()) {
   let gainSlider;
   let vocalSlider;
   let instSlider;
+  let modelSelect;
   let stemNodes = null;
   let stemPlayer = null;
 
@@ -166,7 +167,19 @@ if (isPcmBridgePage()) {
       overlay.append(caption, slider);
       return slider;
     };
-    overlay.append(label, modeSelect, gainLabel, gainSlider);
+    const modelLabel = document.createElement('label');
+    modelLabel.textContent = 'Model';
+    modelSelect = document.createElement('select');
+    modelSelect.setAttribute('aria-label', 'Stem separation model (applies on next capture start)');
+    for (const [value, text] of [['umx-hq', 'UMX-HQ (fast, ~3 s)'], ['htdemucs', 'HT-Demucs (best, ~10 s)']]) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = text;
+      modelSelect.appendChild(option);
+    }
+    modelSelect.value = 'umx-hq';
+    modelSelect.disabled = captureActive;
+    overlay.append(modelLabel, modelSelect, label, modeSelect, gainLabel, gainSlider);
     vocalSlider = makeStemSlider('Vocal', 'Vocal stem level percent');
     instSlider = makeStemSlider('Instr.', 'Instrumental stem level percent');
     document.documentElement.appendChild(overlay);
@@ -201,6 +214,8 @@ if (isPcmBridgePage()) {
           setMode(graph.mode, false, graph);
           setUserGain(Number(gainSlider?.value || 0), graph);
         }
+        ipcRenderer.send('poc:stem-model', modelSelect?.value || 'umx-hq');
+        if (modelSelect) modelSelect.disabled = true;
         currentPcmTransport = await openPcmTransport();
         startMeasurement(graph, context, media, currentPcmTransport);
         if (modeSelect) modeSelect.disabled = false;
@@ -246,6 +261,7 @@ if (isPcmBridgePage()) {
     }
     if (modeSelect) modeSelect.disabled = true;
     if (gainSlider) gainSlider.disabled = true;
+    if (modelSelect) modelSelect.disabled = false;
     captureActive = false;
     lastMetricsAt = 0;
     lastZeroStart = null;
@@ -497,7 +513,7 @@ if (isPcmBridgePage()) {
       log('stem_playout', {
         chunks: p.chunks, underruns: p.underruns, leadMs: Number(leadMs.toFixed(1)),
         processingMs: msg.processingMs,
-        delayEstimateMs: Math.round(2000 + 93 + (msg.processingMs || 0) + leadMs + outputMs),
+        delayEstimateMs: Math.round(frames / rate * 1000 + 93 + (msg.processingMs || 0) + leadMs + outputMs),
       });
     }
   }
