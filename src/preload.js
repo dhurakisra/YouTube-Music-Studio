@@ -193,6 +193,8 @@ if (isPcmBridgePage()) {
   async function beginCapture() {
     if (captureStarting) return Promise.resolve(false);
     captureStarting = true;
+    // Must precede the capture_start_requested log: the main process locks model changes once capture is requested.
+    ipcRenderer.send('poc:stem-model', modelSelect?.value || 'umx-hq');
     log('capture_start_requested', { state: 'requested' });
     try {
       const media = findMedia();
@@ -214,7 +216,6 @@ if (isPcmBridgePage()) {
           setMode(graph.mode, false, graph);
           setUserGain(Number(gainSlider?.value || 0), graph);
         }
-        ipcRenderer.send('poc:stem-model', modelSelect?.value || 'umx-hq');
         if (modelSelect) modelSelect.disabled = true;
         currentPcmTransport = await openPcmTransport();
         startMeasurement(graph, context, media, currentPcmTransport);
