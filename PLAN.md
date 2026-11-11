@@ -61,3 +61,5 @@ Tuzaklar: UA degistirme yok, atlatma yok, SharedArrayBuffer yok, 3. mimari yok, 
 Yeni sohbet baslangic mesaji: "ajan-ekibi: C:\Projects\YTM-Audio-POC\PLAN.md icindeki DEVIR NOTU'ndan devam et."
 
 ## Guncelleme (sohbet 3): Test D PASS, Test E PASS (kullanici dinledi + metrics analizi, docs'a islendi). Kalan: Test F (ag kopmasi / sayfa yenileme / capture yeniden baslatma), sonra nihai karar. Istege bagli: Method A kapanma sorunu.
+
+## KAPANIS (sohbet 3): Phase 0A bitti. Nihai karar CONDITIONAL PASS (docs/phase-0a-results.md). Acik isci yok. Sonraki faz kullanici karari.

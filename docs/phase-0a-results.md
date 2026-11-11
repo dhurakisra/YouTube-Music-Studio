@@ -1,6 +1,6 @@
-# Phase 0A sonuc raporu (ARA RAPOR, 2026-11-11)
+# Phase 0A sonuc raporu (NIHAI, 2026-11-11)
 
-Karar durumu: **CONDITIONAL PASS (ara)** — Test D/E/F tamamlanmadi.
+Karar: **CONDITIONAL PASS** — Method B (preload + createMediaElementSource) dahili PCM yakalama ve isleme icin calisiyor. Test D/E/F tamamlandi (F: yenileme+ag kopmasi gecti, yeniden baslatma ozelligi yok). Kosullar: ScriptProcessor yan olcum (CSP AudioWorklet engelliyor), stem motoru icin ana-is-parcacigi PCM riski, capture durdur/baslat yok.
 
 ## Sonuclar
 | Konu | Sonuc | Kanit |
@@ -20,14 +20,13 @@ Karar durumu: **CONDITIONAL PASS (ara)** — Test D/E/F tamamlanmadi.
 - Method A ilk denemede origin kontrolu 'file:///' kabul etmedigi icin reddediyordu (duzeltildi).
 
 ## Yapilmayanlar
-Test D (pause/seek/parca/gorunum degisimi), E (30 dk stabilite + metrics csv), F (kurtarma). Nihai karar bunlardan sonra.
+Capture durdur/yeniden baslat ozelligi (kapsam disi). Method A icin ses isleme ve pencere kapanma sorunu.
 
 ## Test D/E sonuclari (Method B, log 14:58-15:53, ~54 dk)
 - Test D (pause, seek, parca, gorunum degisimi; bypass/LPF): kullanici dinledi, sorun/cit/kesinti YOK.
 - Test E: yakalama 54 dk kesintisiz (44100 Hz, 2 kanal), hata olayi 0. Bellek ~861-879 MB sabit (sizinti yok), CPU %0.07-0.17.
   dropoutBlocks=2 (ikisi de 15:00:27, ilk dakikalar, sonra artmadi); timeGaps=4 (15:00 x3, 15:26, 15:42), duyulabilir etkisi yok.
   15:43:32'den sonuna rms=0: kullanici muzigi durdurmustu (beklenen sessizlik).
-- Test F (kurtarma) HENUZ yapilmadi.
 
 ## Test F sonuclari (Method B, kullanici)
 - Sayfa yenileme: GECTI. Ag kopmasi: GECTI.
