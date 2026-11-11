@@ -91,3 +91,5 @@ Tuzaklar 0A/0B ile ayni (atlatma/UA/SAB/CSP header/3. mimari yok). Model dosyasi
 | S4 | Guvenlik incelemesi + olcum + docs/phase-1-results.md | Claude | S1-S3 | docs/ | rapor |
 Durak: S1 sonrasi RTF'ye gore devam/dur karari; S3 sonrasi kullanici dinleme + 10 dk stabilite.
 Donanim (kullanici): RTX 4090 + 64 GB RAM -> S1'de CPU + CUDA/DirectML (ort-node'un destekledigi GPU yolu) olculur. S1 basladi (Codex).
+
+S1 BITTI (ac4f29e): UMX-HQ vocals (MIT) ONNX, sentetik wav. Claude yeniden kosturdu, sonuc tekrarlandi. CPU: 2/3/4 sn pencere icin ort 6.6/9.8/12.1 ms (RTF ~0.003). DML: 2 sn ~7 ms, 3-4 sn ~290-380 ms (RTF ~0.1; CPU'dan yavas). Notlar: sure yalniz ONNX cikarimi (STFT/iSTFT dahil degil), kalite OLCULMEDI (sentetik girdi), UMX yalniz vokal maskesi. Karar bekliyor: S2'ye gecis (CPU yolu).
