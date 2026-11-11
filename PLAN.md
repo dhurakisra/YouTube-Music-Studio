@@ -99,3 +99,5 @@ S2 BITTI (5f399a7): stem utility process (ort-node CPU, UMX-HQ vocals), Claude d
 S3 KOD HAZIR (commit asagida): stem-process hop=1 sn (%50 ortusme); preload: Hann overlap-add + AudioBufferSource ile bosluksuz zamanlama (jitter payi 0.3 sn), yeni mod 'Stems (vocal/instr.)', Vocal/Instr. 0-100 kaydiricilari, stem_playout logu (chunks, underruns, leadMs, delayEstimateMs; tahmin = 2000+93+islem+lead+cikis). Dogrulama: sozdizimi + npm run smoke acilis OK; SES KALITESI/DINLEME HENUZ YAPILMADI -> kullanici duragi. Beklenen gecikme ~2.4-2.6 sn.
 
 S3 DOGRULANDI (kullanici dinledi): stems modu calisiyor, baslangicta kisa tikler, kalite zayif (UMX-HQ). docs/phase-1-results.md ara rapor yazildi. Sonraki karar: daha guclu model (htdemucs/MDX ONNX) denemesi vs mevcut hali kabul.
+
+PHASE 1b (kullanici onayladi): guclu model denemesi (htdemucs / MDX-Net ONNX), GPU (DirectML) serbest. S1b = Codex benchmark + dinleme ciktilari; sonra entegrasyon (S2b, S3b) Claude/Codex.
