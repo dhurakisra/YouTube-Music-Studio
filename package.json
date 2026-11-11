@@ -6,7 +6,8 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "smoke": "electron . --smoke"
+    "smoke": "electron . --smoke",
+    "start:a": "electron src/main-a.js"
   },
   "engines": {
     "node": ">=24"
