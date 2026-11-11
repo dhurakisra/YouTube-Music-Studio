@@ -32,5 +32,5 @@ Orijinal tam spec: kullanıcının "PHASE 0A" metni (kapsam: min. pencere, kalı
 Durak noktaları (kullanıcı): T1 sonrası Google girişi denemesi; T3 sonrası dinleme; 30 dk stabilite.
 
 ## Durum / devir notu
-- (2026-11-11) T1+T2 Codex tarafından yapıldı, incelendi, master'a birleştirildi (iskelet + Method B ölçer). npm install tamam. SIRADA: kullanıcı durağı 1 (npm start, girişsiz parça çal, "Start capture", logs/ kontrol; CSP worklet sonucu). Sonra T3, T4.
+- (2026-11-11) T1+T2 master'da. Durak1: worklet blob: yuklemesi YTM sayfasinda BASARISIZ (log: "Failed to load worklet module script blob:"). Kullanici onayi: AudioWorklet yerine AnalyserNode+ScriptProcessorNode yedegi (sapma, raporda yazilacak). T2b (data: denemesi + CSP konsol mesaji + yedek) ve T4 (Method A, ayri giris src/main-a.js) Codex'ta paralel. Sonra T3.
 - Yeni chat başlangıç mesajı: "ajan-ekibi: C:\Projects\YTM-Audio-POC\PLAN.md içindeki devir notundan devam et."
