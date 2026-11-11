@@ -8,7 +8,7 @@ const allowedLogEvents = new Set([
   'capture_worklet_error', 'capture_fallback', 'media_element_missing',
   'drm_or_silence', 'capture_error', 'processing_state', 'latency_info',
   'pcm_worker_attempt', 'pcm_worker_blocked', 'pcm_transport_started', 'pcm_transport_stopped', 'pcm_metrics', 'pcm_port_received', 'pcm_worker_port_ready',
-  'stem_block_received', 'stem_transport_started', 'stem_transport_stopped',
+  'stem_block_received', 'stem_transport_started', 'stem_transport_stopped', 'stem_playout',
 ]);
 const allowedCommandTypes = new Set(['capture:show-button', 'capture:toggle', 'capture:auto-cycle']);
 
@@ -94,6 +94,10 @@ if (isPcmBridgePage()) {
   let overlay;
   let modeSelect;
   let gainSlider;
+  let vocalSlider;
+  let instSlider;
+  let stemNodes = null;
+  let stemPlayer = null;
 
   function log(event, data = {}) {
     if (!trustedMainFrame() || !allowedLogEvents.has(event)) return;
@@ -132,7 +136,7 @@ if (isPcmBridgePage()) {
     label.textContent = 'Mode';
     modeSelect = document.createElement('select');
     modeSelect.setAttribute('aria-label', 'Audio processing mode');
-    for (const [value, text] of [['bypass', 'Bypass'], ['processed', 'Processed (LPF)']]) {
+    for (const [value, text] of [['bypass', 'Bypass'], ['processed', 'Processed (LPF)'], ['stems', 'Stems (vocal/instr.)']]) {
       const option = document.createElement('option');
       option.value = value;
       option.textContent = text;
@@ -151,7 +155,20 @@ if (isPcmBridgePage()) {
     gainSlider.setAttribute('aria-label', 'Processed gain in dB');
     gainSlider.style.width = '96px';
     gainSlider.addEventListener('input', () => setUserGain(Number(gainSlider.value)));
+    const makeStemSlider = (text, aria) => {
+      const caption = document.createElement('label');
+      caption.textContent = text;
+      const slider = document.createElement('input');
+      slider.type = 'range'; slider.min = '0'; slider.max = '100'; slider.step = '1'; slider.value = '100';
+      slider.setAttribute('aria-label', aria);
+      slider.style.width = '80px';
+      slider.addEventListener('input', applyStemLevels);
+      overlay.append(caption, slider);
+      return slider;
+    };
     overlay.append(label, modeSelect, gainLabel, gainSlider);
+    vocalSlider = makeStemSlider('Vocal', 'Vocal stem level percent');
+    instSlider = makeStemSlider('Instr.', 'Instrumental stem level percent');
     document.documentElement.appendChild(overlay);
   }
 
@@ -225,6 +242,7 @@ if (isPcmBridgePage()) {
       const now = activeContext?.currentTime || 0;
       graph.dryGain.gain.setTargetAtTime(1, now, 0.02);
       graph.wetGain.gain.setTargetAtTime(0, now, 0.02);
+      graph.stemBus.gain.setTargetAtTime(0, now, 0.02);
     }
     if (modeSelect) modeSelect.disabled = true;
     if (gainSlider) gainSlider.disabled = true;
@@ -284,6 +302,18 @@ if (isPcmBridgePage()) {
     dryGain.gain.value = 1;
     wetGain.gain.value = 0;
 
+    // Stem path: delayed vocal/instrumental chunks are scheduled into these gains (see playStemBlock).
+    const vocalGain = context.createGain();
+    const instGain = context.createGain();
+    const stemBus = context.createGain();
+    const stemLimiter = context.createDynamicsCompressor();
+    stemLimiter.threshold.value = -3; stemLimiter.ratio.value = 20; stemLimiter.attack.value = 0.003; stemLimiter.release.value = 0.1;
+    for (const node of [vocalGain, instGain, stemBus, stemLimiter]) setChannelFormat(node);
+    vocalGain.connect(stemLimiter); instGain.connect(stemLimiter);
+    stemLimiter.connect(stemBus); stemBus.connect(context.destination);
+    stemBus.gain.value = 0;
+    stemNodes = { vocalGain, instGain, stemBus };
+
     const analyser = context.createAnalyser();
     analyser.fftSize = 2048;
     setChannelFormat(analyser);
@@ -334,7 +364,7 @@ if (isPcmBridgePage()) {
       if (playing && nonzero === 0) counters.dropoutBlocks += 1;
       receiveMetrics({ rms, nonzero: measuredNonzero / meterBuffer.length, channels: input.numberOfChannels, ...counters }, context, media);
     };
-    return { source, analyser, processor, meterSink, onAudioProcess, counters, previousCallbackAt: () => { previousCallbackAt = 0; }, dryGain, wetGain, userGain, mode, measuring: false };
+    return { source, analyser, processor, meterSink, onAudioProcess, counters, previousCallbackAt: () => { previousCallbackAt = 0; }, dryGain, wetGain, userGain, stemBus, mode, measuring: false };
   }
 
   function startMeasurement(graph, context, media, transport) {
@@ -380,7 +410,7 @@ if (isPcmBridgePage()) {
     try {
       ipcRenderer.postMessage('poc:pcm-port', { type: 'pcm-port' }, [channel.port1]);
       channel.port2.onmessage = (event) => {
-        if (event.data?.type === 'stem:block') log('stem_block_received', { sequence: event.data.sequence });
+        if (event.data?.type === 'stem:block') playStemBlock(event.data);
       };
       channel.port2.start();
       return { port: channel.port2, transport: 'utility-process' };
@@ -398,22 +428,95 @@ if (isPcmBridgePage()) {
     if (transport.worker) setTimeout(() => transport.worker.terminate(), 50);
     log('pcm_transport_stopped', { state: 'stopped', transport: transport.transport });
     ipcRenderer.send('poc:stem-stop');
+    stemPlayer = null;
     log('stem_transport_stopped', { state: 'stopped', transport: transport.transport });
     currentPcmTransport = null;
   }
 
+  function applyStemLevels() {
+    if (!stemNodes || !activeContext) return;
+    const now = activeContext.currentTime;
+    stemNodes.vocalGain.gain.setTargetAtTime(Number(vocalSlider?.value ?? 100) / 100, now, 0.03);
+    stemNodes.instGain.gain.setTargetAtTime(Number(instSlider?.value ?? 100) / 100, now, 0.03);
+  }
+
+  // Overlap-add for 2 s windows with 50% overlap (periodic Hann halves sum to 1), then gapless scheduling.
+  const STEM_RATE = 44100;
+  const STEM_JITTER_LEAD_S = 0.3;
+  function playStemBlock(msg) {
+    const context = activeContext;
+    if (!context || !stemNodes || !(msg.vocal instanceof ArrayBuffer) || !(msg.instrumental instanceof ArrayBuffer)) return;
+    const frames = msg.frames, hop = frames / 2;
+    const vocal = new Float32Array(msg.vocal), inst = new Float32Array(msg.instrumental);
+    if (vocal.length !== frames * 2 || inst.length !== frames * 2) return;
+    if (!stemPlayer) {
+      stemPlayer = { tailV: null, tailI: null, nextTime: 0, chunks: 0, underruns: 0 };
+      applyStemLevels();
+    }
+    const p = stemPlayer;
+    const outV = new Float32Array(hop * 2), outI = new Float32Array(hop * 2);
+    for (let n = 0; n < hop; n += 1) {
+      const rise = p.tailV ? 0.5 - 0.5 * Math.cos(Math.PI * n / hop) : 1; // first window: no previous tail, use it unweighted
+      for (let c = 0; c < 2; c += 1) {
+        const i = 2 * n + c;
+        outV[i] = vocal[i] * rise + (p.tailV ? p.tailV[i] : 0);
+        outI[i] = inst[i] * rise + (p.tailI ? p.tailI[i] : 0);
+      }
+    }
+    const tailV = new Float32Array(hop * 2), tailI = new Float32Array(hop * 2);
+    for (let n = 0; n < hop; n += 1) {
+      const fall = 0.5 + 0.5 * Math.cos(Math.PI * n / hop);
+      for (let c = 0; c < 2; c += 1) {
+        const i = 2 * n + c;
+        tailV[i] = vocal[2 * (hop + n) + c] * fall;
+        tailI[i] = inst[2 * (hop + n) + c] * fall;
+      }
+    }
+    p.tailV = tailV; p.tailI = tailI;
+    const now = context.currentTime;
+    if (p.nextTime < now + 0.02) {
+      if (p.chunks > 0) p.underruns += 1;
+      p.nextTime = now + STEM_JITTER_LEAD_S;
+    }
+    const startAt = p.nextTime;
+    const rate = msg.sampleRate || STEM_RATE;
+    for (const [data, target] of [[outV, stemNodes.vocalGain], [outI, stemNodes.instGain]]) {
+      const buffer = context.createBuffer(2, hop, rate);
+      const left = buffer.getChannelData(0), right = buffer.getChannelData(1);
+      for (let n = 0; n < hop; n += 1) { left[n] = data[2 * n]; right[n] = data[2 * n + 1]; }
+      const node = context.createBufferSource();
+      node.buffer = buffer;
+      node.connect(target);
+      node.start(startAt);
+    }
+    p.nextTime = startAt + hop / rate;
+    p.chunks += 1;
+    if (p.chunks % 5 === 1) {
+      const leadMs = (startAt - now) * 1000;
+      const outputMs = (typeof context.outputLatency === 'number' ? context.outputLatency : 0) * 1000;
+      log('stem_playout', {
+        chunks: p.chunks, underruns: p.underruns, leadMs: Number(leadMs.toFixed(1)),
+        processingMs: msg.processingMs,
+        delayEstimateMs: Math.round(2000 + 93 + (msg.processingMs || 0) + leadMs + outputMs),
+      });
+    }
+  }
+
   function setMode(mode, shouldLog = true, onlyGraph = null) {
-    const selected = mode === 'processed' ? 'processed' : 'bypass';
+    const selected = mode === 'processed' || mode === 'stems' ? mode : 'bypass';
     const graphsToUpdate = onlyGraph ? [onlyGraph] : [...document.querySelectorAll('audio, video')].map((media) => graphs.get(media)).filter(Boolean);
     const context = activeContext;
     const now = context?.currentTime || 0;
     const theta = selected === 'processed' ? Math.PI / 2 : 0;
-    const dryTarget = Math.cos(theta);
-    const wetTarget = Math.sin(theta);
+    // 'stems' silences both live paths; the delayed stem chunks are then the only audible signal.
+    const dryTarget = selected === 'stems' ? 0 : Math.cos(theta);
+    const wetTarget = selected === 'stems' ? 0 : Math.sin(theta);
+    const stemTarget = selected === 'stems' ? 1 : 0;
     for (const graph of graphsToUpdate) {
       graph.mode = selected;
       graph.dryGain.gain.setTargetAtTime(dryTarget, now, 0.02);
       graph.wetGain.gain.setTargetAtTime(wetTarget, now, 0.02);
+      graph.stemBus.gain.setTargetAtTime(stemTarget, now, 0.05);
     }
     if (modeSelect) modeSelect.value = selected;
     if (shouldLog) log('processing_state', { state: selected });

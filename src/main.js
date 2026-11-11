@@ -19,7 +19,7 @@ const ALLOWED_EVENTS = new Set([
   'pcm_transport_stopped', 'pcm_metrics', 'pcm_port_relayed', 'pcm_port_received', 'pcm_worker_port_ready',
   'stem_process_started', 'stem_process_ready', 'stem_process_error', 'stem_metrics', 'stem_process_stopped',
   'stem_block_received', 'stem_transport_started', 'stem_transport_stopped',
-  'stem_window', 'stem_port_ready', 'stem_input_started',
+  'stem_window', 'stem_port_ready', 'stem_input_started', 'stem_playout',
 ]);
 
 let mainWindow;

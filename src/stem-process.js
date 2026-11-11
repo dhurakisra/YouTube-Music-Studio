@@ -7,6 +7,7 @@ const ort = require('onnxruntime-node');
 
 const SAMPLE_RATE = 44100;
 const WINDOW_FRAMES = SAMPLE_RATE * 2;
+const HOP_FRAMES = SAMPLE_RATE; // 50% overlap between windows; overlap-add happens in the consumer
 const FFT_SIZE = 4096;
 const HOP = 1024;
 const BINS = FFT_SIZE / 2 + 1;
@@ -219,7 +220,8 @@ function appendPcm(message) {
     inputOffset += 1;
     if (inputOffset === WINDOW_FRAMES) {
       pendingWindows.push({ audio: input.slice(), sequence: windowSequence, readyEpochMs: Date.now() });
-      inputOffset = 0;
+      input.copyWithin(0, HOP_FRAMES * 2, WINDOW_FRAMES * 2);
+      inputOffset = WINDOW_FRAMES - HOP_FRAMES;
       windowStartedAt = 0;
       if (pendingWindows.length > 4) {
         pendingWindows.shift();
