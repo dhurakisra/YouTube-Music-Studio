@@ -8,7 +8,7 @@ const allowedLogEvents = new Set([
   'capture_worklet_error', 'capture_fallback', 'media_element_missing',
   'drm_or_silence', 'capture_error', 'processing_state', 'latency_info',
   'pcm_worker_attempt', 'pcm_worker_blocked', 'pcm_transport_started', 'pcm_transport_stopped', 'pcm_metrics', 'pcm_port_received', 'pcm_worker_port_ready',
-  'stem_block_received', 'stem_transport_started', 'stem_transport_stopped', 'stem_playout',
+  'stem_jump', 'stem_buffer_changed', 'pcm_capture_mode', 'pcm_capture_error', 'stem_block_received', 'stem_transport_started', 'stem_transport_stopped', 'stem_playout',
 ]);
 const allowedCommandTypes = new Set(['capture:show-button', 'capture:toggle', 'capture:auto-cycle']);
 
@@ -408,6 +408,7 @@ if (isPcmBridgePage()) {
     let previousCallbackAt = 0;
     const counters = { dropoutBlocks: 0, timeGaps: 0 };
     let mode = 'bypass';
+    let graph_mstp_active = false;
     const onAudioProcess = (event) => {
       const now = performance.now();
       const playing = !media.paused && !media.ended;
@@ -421,7 +422,7 @@ if (isPcmBridgePage()) {
         const data = input.getChannelData(channel);
         for (let i = 0; i < data.length; i += 1) if (data[i] !== 0) nonzero += 1;
       }
-      if (currentPcmTransport?.port) {
+      if (currentPcmTransport?.port && !graph_mstp_active) {
         const frames = input.length;
         const channels = input.numberOfChannels;
         const pcm = new Float32Array(frames * channels);
@@ -445,7 +446,7 @@ if (isPcmBridgePage()) {
       if (playing && nonzero === 0) counters.dropoutBlocks += 1;
       receiveMetrics({ rms, nonzero: measuredNonzero / meterBuffer.length, channels: input.numberOfChannels, ...counters }, context, media);
     };
-    return { source, analyser, processor, meterSink, onAudioProcess, counters, previousCallbackAt: () => { previousCallbackAt = 0; }, dryGain, wetGain, userGain, stemBus, mode, measuring: false };
+    return { source, analyser, processor, meterSink, onAudioProcess, setMstpActive: (v) => { graph_mstp_active = v; }, counters, previousCallbackAt: () => { previousCallbackAt = 0; }, dryGain, wetGain, userGain, stemBus, mode, measuring: false };
   }
 
   function startMeasurement(graph, context, media, transport) {
@@ -453,6 +454,7 @@ if (isPcmBridgePage()) {
     nextSequence = 0;
     currentPcmTransport = transport;
     graph.source.connect(graph.analyser);
+    startStreamCapture(graph, context);
     graph.analyser.connect(graph.processor);
     graph.processor.connect(graph.meterSink);
     graph.meterSink.connect(context.destination);
@@ -460,8 +462,70 @@ if (isPcmBridgePage()) {
     graph.measuring = true;
   }
 
+  // PCM capture off the main thread's audio callback: ScriptProcessor drops input blocks when the main thread is busy
+  // (audible as random clicks). MediaStreamTrackProcessor queues frames instead, so a late main thread only delays them.
+  function startStreamCapture(graph, context) {
+    if (typeof MediaStreamTrackProcessor !== 'function') { log('pcm_capture_mode', { transport: 'script-processor' }); return; }
+    try {
+      const dest = context.createMediaStreamDestination();
+      dest.channelCount = 2; dest.channelCountMode = 'explicit';
+      graph.source.connect(dest);
+      const track = dest.stream.getAudioTracks()[0];
+      const reader = new MediaStreamTrackProcessor({ track }).readable.getReader();
+      graph.mstp = { dest, track, reader, stopped: false };
+      graph.setMstpActive(true);
+      log('pcm_capture_mode', { transport: 'media-stream-track-processor' });
+      const BLOCK = 4096;
+      let left = new Float32Array(BLOCK), right = new Float32Array(BLOCK), fill = 0;
+      (async () => {
+        while (!graph.mstp.stopped) {
+          const { value: audio, done } = await reader.read();
+          if (done) break;
+          try {
+            const n = audio.numberOfFrames;
+            const l = new Float32Array(n), r = new Float32Array(n);
+            audio.copyTo(l, { planeIndex: 0, format: 'f32-planar' });
+            if (audio.numberOfChannels > 1) audio.copyTo(r, { planeIndex: 1, format: 'f32-planar' }); else r.set(l);
+            let off = 0;
+            while (off < n) {
+              const take = Math.min(BLOCK - fill, n - off);
+              left.set(l.subarray(off, off + take), fill); right.set(r.subarray(off, off + take), fill);
+              fill += take; off += take;
+              if (fill === BLOCK) {
+                const pcm = new Float32Array(BLOCK * 2);
+                for (let i = 0; i < BLOCK; i += 1) { pcm[2 * i] = left[i]; pcm[2 * i + 1] = right[i]; }
+                if (currentPcmTransport?.port) {
+                  currentPcmTransport.port.postMessage({
+                    type: 'pcm:block', sequence: ++nextSequence, sampleRate: context.sampleRate,
+                    channels: 2, frames: BLOCK, timestampEpochMs: performance.timeOrigin + performance.now(), data: pcm,
+                  });
+                }
+                fill = 0;
+              }
+            }
+          } finally { audio.close(); }
+        }
+      })().catch((error) => log('pcm_capture_error', { error: String(error?.message || error).slice(0, 200) }));
+    } catch (error) {
+      log('pcm_capture_error', { error: String(error?.message || error).slice(0, 200) });
+      graph.setMstpActive(false);
+    }
+  }
+
+  function stopStreamCapture(graph) {
+    const m = graph.mstp;
+    if (!m) return;
+    m.stopped = true;
+    try { m.reader.cancel(); } catch {}
+    try { m.track.stop(); } catch {}
+    try { graph.source.disconnect(m.dest); } catch {}
+    graph.mstp = null;
+    graph.setMstpActive(false);
+  }
+
   function stopMeasurement(graph) {
     if (!graph.measuring) return;
+    stopStreamCapture(graph);
     graph.processor.onaudioprocess = null;
     try { graph.source.disconnect(graph.analyser); } catch {}
     try { graph.analyser.disconnect(); } catch {}
