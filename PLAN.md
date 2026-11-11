@@ -74,3 +74,5 @@ Hedef: Method B PCM'ini MessagePort ile Worker/AudioWorklet'e (Method A kontrol 
 Durak: B2 sonrasi kullanici dinleme + 10 dk stabilite. Karar: PASS/CONDITIONAL/FAIL.
 
 B1 BITTI (f02e490): capture durdur/baslat, 10 dongu capture_error=0, diff Claude tarafindan incelendi. Sonraki: B2 (Codex).
+
+B2 BITTI (6459d98): YTM preload Worker TrustedScriptURL ile ENGELLI; yerel gizli renderer (pcm-bridge.html) + Worker yolu calisiyor. Codex olcumu 60 sn: 660 blok, 0 kayip, gecikme ort 0.12 / p95-max 0.4 ms (NOT: gecikme postMessage->Worker; ScriptProcessor 4096 tampon ~93 ms dahil degil), besleme sapmasi 4.6 ms. Claude diff incelemesi: kritik sorun yok; notlar: (a) PCM interleave+postMessage hala ana thread'de, (b) her baslatmada bosuna 800 ms Worker denemesi. SIRADAKI: kullanici dinleme + 10 dk stabilite (npm start), sonra B3 rapor.
