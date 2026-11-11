@@ -563,12 +563,26 @@ if (isPcmBridgePage()) {
       }
       outs[name] = out; p.tails[name] = newTail;
     }
-    let peak = 0;
-    for (let i = 0; i < hop * 2; i += 1) {
-      let sum = 0;
-      for (const [name] of layers) sum += outs[name][i];
-      const a = Math.abs(sum);
-      if (a > peak) peak = a;
+    let peak = 0, maxJump = 0, maxJumpAt = 0, diffSq = 0;
+    const prevLast = p.lastSum || [0, 0];
+    const lastSum = [0, 0];
+    const prevSum = [prevLast[0], prevLast[1]];
+    for (let n = 0; n < hop; n += 1) {
+      for (let c = 0; c < 2; c += 1) {
+        const i = 2 * n + c;
+        let sum = 0;
+        for (const [name] of layers) sum += outs[name][i];
+        const a = Math.abs(sum);
+        if (a > peak) peak = a;
+        const d = Math.abs(sum - prevSum[c]);
+        if (p.chunks > 0 || n > 0) { diffSq += d * d; if (d > maxJump) { maxJump = d; maxJumpAt = n; } }
+        prevSum[c] = sum; lastSum[c] = sum;
+      }
+    }
+    p.lastSum = lastSum;
+    const rmsDiff = Math.sqrt(diffSq / (hop * 2)) || 1e-9;
+    if (p.chunks > 0 && maxJump > 0.004 && maxJump / rmsDiff > 12) {
+      log('stem_jump', { chunks: p.chunks, jump: Number(maxJump.toFixed(4)), jumpRatio: Number((maxJump / rmsDiff).toFixed(1)), pos: maxJumpAt });
     }
     p.peakMax = Math.max(p.peakMax || 0, peak);
     const now = context.currentTime;
