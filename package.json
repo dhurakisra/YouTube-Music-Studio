@@ -1,0 +1,17 @@
+{
+  "name": "ytm-audio-poc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electron Method B audio capture proof of concept",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "electron . --smoke"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "electron": "45.3.0"
+  }
+}
