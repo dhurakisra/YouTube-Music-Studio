@@ -241,7 +241,7 @@ function attachPort(port) {
   lastInputSequence = 0;
   port.on('message', (event) => {
     const message = event.data;
-    if (debugSeen < 5) { debugSeen += 1; parentPort.postMessage({ type: 'stem:debug', info: { n: debugSeen, msgType: String(message?.type), dataCtor: String(message?.data?.constructor?.name), channels: message?.channels, sampleRate: message?.sampleRate } }); }
+    if (debugSeen < 5) { debugSeen += 1; parentPort.postMessage({ type: 'stem:debug', info: { n: debugSeen, eventKeys: Object.keys(event || {}).join(','), eventType: String(event?.type), dataType: typeof event?.data, dataCtor: String(event?.data?.constructor?.name), dataKeys: Object.keys(event?.data || {}).slice(0, 12).join(','), bytes: event?.data?.byteLength } }); }
     if (message?.type === 'pcm:block') appendPcm(message);
     if (message?.type === 'pcm:stop') {
       shuttingDown = true;
