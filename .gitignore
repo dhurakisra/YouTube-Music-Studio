@@ -3,3 +3,5 @@ logs/
 *.log
 .profile/
 models/
+bench/input/
+bench/out/
