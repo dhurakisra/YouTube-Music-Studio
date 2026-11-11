@@ -4,9 +4,11 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 const allowedLogEvents = new Set([
   'capture_button_ready', 'capture_start_requested', 'capture_started',
+  'capture_stop_requested', 'capture_stopped', 'capture_start_cycle',
   'capture_worklet_error', 'capture_fallback', 'media_element_missing',
   'drm_or_silence', 'capture_error', 'processing_state', 'latency_info',
 ]);
+const allowedCommandTypes = new Set(['capture:show-button', 'capture:toggle', 'capture:auto-cycle']);
 
 function trustedMainFrame() {
   try {
@@ -18,7 +20,7 @@ function trustedMainFrame() {
 function onTrustedCommand(callback) {
   if (!trustedMainFrame() || typeof callback !== 'function') return () => {};
   const listener = (_event, command) => {
-    if (command && typeof command === 'object') callback(command);
+    if (command && typeof command === 'object' && allowedCommandTypes.has(command.type)) callback(command);
   };
   ipcRenderer.on('poc:command', listener);
   return () => ipcRenderer.removeListener('poc:command', listener);
@@ -37,6 +39,8 @@ contextBridge.exposeInMainWorld('poc', Object.freeze({
   const graphs = new WeakMap();
   let activeContext = null;
   let captureStarting = false;
+  let captureActive = false;
+  let autoCycleRunning = false;
   let scanQueued = false;
   let lastMetricsAt = 0;
   let lastZeroStart = null;
@@ -58,14 +62,14 @@ contextBridge.exposeInMainWorld('poc', Object.freeze({
     if (!button?.isConnected) {
       button = document.createElement('button');
       button.type = 'button';
-      button.textContent = 'Start processing';
-      button.setAttribute('aria-label', 'Start audio processing');
+      button.textContent = captureActive ? 'Stop capture' : 'Start capture';
+      button.setAttribute('aria-label', 'Start or stop audio capture');
       Object.assign(button.style, {
         position: 'fixed', top: '12px', right: '16px', zIndex: '2147483647',
         padding: '9px 12px', border: '0', borderRadius: '6px', background: '#1264a3',
         color: 'white', font: '600 13px sans-serif', boxShadow: '0 2px 8px #0008', cursor: 'pointer',
       });
-      button.addEventListener('click', beginCapture);
+      button.addEventListener('click', toggleCapture);
       document.documentElement.appendChild(button);
       log('capture_button_ready', { state: 'ready' });
     }
@@ -111,18 +115,19 @@ contextBridge.exposeInMainWorld('poc', Object.freeze({
   }
 
   function beginCapture() {
-    if (captureStarting) return;
+    if (captureStarting) return Promise.resolve(false);
     captureStarting = true;
     log('capture_start_requested', { state: 'requested' });
     try {
       const media = findMedia();
       if (!media) {
         log('media_element_missing', { state: 'waiting' });
-        return;
+        captureStarting = false;
+        return Promise.resolve(false);
       }
       if (!activeContext || activeContext.state === 'closed') activeContext = new AudioContext({ latencyHint: 'interactive' });
       const context = activeContext;
-      context.resume().then(() => {
+      return context.resume().then(() => {
         if (!wiredElements.has(media)) {
           const source = context.createMediaElementSource(media);
           wiredElements.add(media);
@@ -133,20 +138,63 @@ contextBridge.exposeInMainWorld('poc', Object.freeze({
           setMode(graph.mode, false, graph);
           setUserGain(Number(gainSlider?.value || 0), graph);
         }
+        startMeasurement(graph, context, media);
+        captureActive = true;
         log('capture_started', { sampleRate: context.sampleRate, state: 'capturing' });
         log('latency_info', {
           baseLatency: typeof context.baseLatency === 'number' ? context.baseLatency : null,
           outputLatency: typeof context.outputLatency === 'number' ? context.outputLatency : null,
         });
-        if (button) button.textContent = 'Processing active';
+        if (button) button.textContent = 'Stop capture';
         scanMedia();
+        return true;
       }).catch((error) => {
         log('capture_error', { state: 'failed', error: String(error?.message || error).slice(0, 180) });
+        return false;
       }).finally(() => { captureStarting = false; });
     } catch (error) {
       log('capture_error', { state: 'failed', error: String(error?.message || error).slice(0, 180) });
       captureStarting = false;
+      return Promise.resolve(false);
     }
+  }
+
+  function toggleCapture() { return captureActive ? stopCapture() : beginCapture(); }
+
+  function stopCapture() {
+    if (!captureActive) return false;
+    log('capture_stop_requested', { state: 'stopping' });
+    for (const media of document.querySelectorAll('audio, video')) {
+      const graph = graphs.get(media);
+      if (graph) stopMeasurement(graph);
+    }
+    captureActive = false;
+    lastMetricsAt = 0;
+    lastZeroStart = null;
+    if (button) button.textContent = 'Start capture';
+    log('capture_stopped', { state: 'stopped' });
+    return true;
+  }
+
+  async function runAutoCycles(cycles) {
+    if (autoCycleRunning) return;
+    autoCycleRunning = true;
+    try {
+      for (let i = 1; i <= cycles; i += 1) {
+        if (!captureActive) {
+          const started = await beginCapture();
+          if (!started) return;
+        }
+        stopCapture();
+        log('capture_start_cycle', { state: 'stopped', cycle: i, total: cycles });
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        const started = await beginCapture();
+        if (!started) return;
+        log('capture_start_cycle', { state: 'started', cycle: i, total: cycles });
+      }
+      stopCapture();
+      log('capture_start_cycle', { state: 'complete', total: cycles });
+    } finally { autoCycleRunning = false; }
   }
 
   // The audible paths stay entirely in Web Audio; the main thread only receives measurement blocks.
@@ -184,21 +232,15 @@ contextBridge.exposeInMainWorld('poc', Object.freeze({
     const meterSink = context.createGain();
     meterSink.gain.value = 0;
     setChannelFormat(meterSink);
-    source.connect(analyser);
-    analyser.connect(processor);
-    processor.connect(meterSink);
-    meterSink.connect(context.destination);
-
     const meterBuffer = new Float32Array(analyser.fftSize);
     const blockDurationMs = 4096 / context.sampleRate * 1000;
     let previousCallbackAt = 0;
-    let dropoutBlocks = 0;
-    let timeGaps = 0;
+    const counters = { dropoutBlocks: 0, timeGaps: 0 };
     let mode = 'bypass';
-    processor.onaudioprocess = (event) => {
+    const onAudioProcess = (event) => {
       const now = performance.now();
       const playing = !media.paused && !media.ended;
-      if (playing && previousCallbackAt && now - previousCallbackAt > blockDurationMs * 1.5) timeGaps += 1;
+      if (playing && previousCallbackAt && now - previousCallbackAt > blockDurationMs * 1.5) counters.timeGaps += 1;
       previousCallbackAt = playing ? now : 0;
       const input = event.inputBuffer;
       const output = event.outputBuffer;
@@ -216,10 +258,31 @@ contextBridge.exposeInMainWorld('poc', Object.freeze({
         if (sample !== 0) measuredNonzero += 1;
       }
       const rms = Math.sqrt(sumSquares / meterBuffer.length);
-      if (playing && nonzero === 0) dropoutBlocks += 1;
-      receiveMetrics({ rms, nonzero: measuredNonzero / meterBuffer.length, channels: input.numberOfChannels, dropoutBlocks, timeGaps }, context, media);
+      if (playing && nonzero === 0) counters.dropoutBlocks += 1;
+      receiveMetrics({ rms, nonzero: measuredNonzero / meterBuffer.length, channels: input.numberOfChannels, ...counters }, context, media);
     };
-    return { dryGain, wetGain, userGain, mode };
+    return { source, analyser, processor, meterSink, onAudioProcess, counters, previousCallbackAt: () => { previousCallbackAt = 0; }, dryGain, wetGain, userGain, mode, measuring: false };
+  }
+
+  function startMeasurement(graph, context) {
+    if (graph.measuring) return;
+    graph.source.connect(graph.analyser);
+    graph.analyser.connect(graph.processor);
+    graph.processor.connect(graph.meterSink);
+    graph.meterSink.connect(context.destination);
+    graph.processor.onaudioprocess = graph.onAudioProcess;
+    graph.measuring = true;
+  }
+
+  function stopMeasurement(graph) {
+    if (!graph.measuring) return;
+    graph.processor.onaudioprocess = null;
+    try { graph.source.disconnect(graph.analyser); } catch {}
+    try { graph.analyser.disconnect(); } catch {}
+    try { graph.processor.disconnect(); } catch {}
+    try { graph.meterSink.disconnect(); } catch {}
+    graph.previousCallbackAt();
+    graph.measuring = false;
   }
 
   function setMode(mode, shouldLog = true, onlyGraph = null) {
@@ -293,5 +356,7 @@ contextBridge.exposeInMainWorld('poc', Object.freeze({
       installControls();
       button?.scrollIntoView({ block: 'nearest' });
     }
+    if (command.type === 'capture:toggle') toggleCapture();
+    if (command.type === 'capture:auto-cycle' && Number.isInteger(command.cycles)) runAutoCycles(Math.max(1, Math.min(command.cycles, 100)));
   });
 })();

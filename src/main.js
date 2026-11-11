@@ -11,7 +11,8 @@ const LOG_FILE = path.join(LOG_DIR, `capture-${new Date().toISOString().replace(
 const METRICS_FILE = path.join(LOG_DIR, `metrics-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`);
 const ALLOWED_EVENTS = new Set([
   'app_started', 'page_loaded', 'page_load_error', 'capture_button_ready',
-  'capture_start_requested', 'capture_started', 'capture_worklet_error',
+  'capture_start_requested', 'capture_started', 'capture_stop_requested', 'capture_stopped',
+  'capture_start_cycle', 'capture_worklet_error',
   'capture_fallback', 'capture_error', 'media_element_missing', 'capture_metrics',
   'drm_or_silence', 'csp_policy', 'csp_console_message', 'processing_state', 'latency_info',
 ]);
@@ -30,7 +31,7 @@ function appendLog(event, fields = {}) {
 function safeData(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
   const output = {};
-  for (const key of ['sampleRate', 'channels', 'rms', 'nonzero', 'state', 'error', 'dropoutBlocks', 'timeGaps', 'baseLatency', 'outputLatency']) {
+  for (const key of ['sampleRate', 'channels', 'rms', 'nonzero', 'state', 'error', 'dropoutBlocks', 'timeGaps', 'baseLatency', 'outputLatency', 'cycle', 'total']) {
     if (Object.hasOwn(data, key) && (typeof data[key] === 'number' || typeof data[key] === 'string')) {
       output[key] = data[key];
     }
@@ -152,10 +153,21 @@ app.whenReady().then(() => {
 
   const template = [{
     label: 'Capture',
-    submenu: [{ label: 'Show capture button', accelerator: 'CommandOrControl+Shift+C', click: () => sendCommand({ type: 'capture:show-button' }) }],
+    submenu: [
+      { label: 'Show capture button', accelerator: 'CommandOrControl+Shift+C', click: () => sendCommand({ type: 'capture:show-button' }) },
+      { label: 'Stop / start capture', accelerator: 'CommandOrControl+Shift+X', click: () => sendCommand({ type: 'capture:toggle' }) },
+    ],
   }];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
   globalShortcut.register('CommandOrControl+Shift+C', () => sendCommand({ type: 'capture:show-button' }));
+  globalShortcut.register('CommandOrControl+Shift+X', () => sendCommand({ type: 'capture:toggle' }));
+  const requestedCycles = Number.parseInt(process.env.POC_CAPTURE_CYCLES || '0', 10);
+  if (Number.isInteger(requestedCycles) && requestedCycles > 0) {
+    const cycles = Math.min(requestedCycles, 100);
+    const autoCycleOnLoad = () => setTimeout(() => sendCommand({ type: 'capture:auto-cycle', cycles }), 1200);
+    if (smokePageLoaded) autoCycleOnLoad();
+    else mainWindow?.webContents.once('did-finish-load', autoCycleOnLoad);
+  }
 });
 
 app.on('will-quit', () => {
