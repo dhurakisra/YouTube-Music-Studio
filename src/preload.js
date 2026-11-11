@@ -4,7 +4,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 const allowedLogEvents = new Set([
   'capture_button_ready', 'capture_start_requested', 'capture_started',
-  'capture_worklet_error', 'media_element_missing', 'drm_or_silence', 'capture_error',
+  'capture_worklet_error', 'capture_fallback', 'media_element_missing', 'drm_or_silence', 'capture_error',
 ]);
 
 function trustedMainFrame() {
@@ -40,10 +40,13 @@ contextBridge.exposeInMainWorld('poc', Object.freeze({
   const wiredElements = new WeakSet();
   let workletSource = '';
   let activeContext = null;
-  let workletFailed = false;
+  let workletMode = null;
+  let workletFailure = null;
+  let captureStarting = false;
   let scanQueued = false;
   let lastZeroStart = null;
   let lastMetricsAt = 0;
+  let wiredMode = new WeakMap();
   let button;
 
   function log(event, data) {
@@ -74,6 +77,8 @@ contextBridge.exposeInMainWorld('poc', Object.freeze({
   }
 
   async function beginCapture() {
+    if (captureStarting) return;
+    captureStarting = true;
     log('capture_start_requested', { state: 'requested' });
     try {
       const media = findMedia();
@@ -81,41 +86,103 @@ contextBridge.exposeInMainWorld('poc', Object.freeze({
         log('media_element_missing', { state: 'waiting' });
         return;
       }
-      if (!workletSource) {
-        log('capture_error', { state: 'waiting', error: 'AudioWorklet source is not ready yet' });
-        return;
-      }
-      if (workletFailed) return;
+      if (!workletSource) throw new Error('Capture source not ready');
       let context = activeContext;
       if (!context || context.state === 'closed') {
         context = new AudioContext({ latencyHint: 'interactive' });
         activeContext = context;
-        const sourceUrl = URL.createObjectURL(new Blob([workletSource], { type: 'text/javascript' }));
-        try {
-          await context.audioWorklet.addModule(sourceUrl);
-        } catch (error) {
-          workletFailed = true;
-          log('capture_worklet_error', { state: 'worklet_load_failed', error: String(error?.message || error) });
-          return;
-        } finally {
-          URL.revokeObjectURL(sourceUrl);
-        }
+        workletMode = null;
+        workletFailure = null;
       }
       await context.resume();
       if (!wiredElements.has(media)) {
         const source = context.createMediaElementSource(media);
         wiredElements.add(media);
-        const meter = new AudioWorkletNode(context, 'ytm-capture-meter', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
-        meter.port.onmessage = ({ data }) => receiveMetrics(data, context);
-        source.connect(meter);
-        meter.connect(context.destination);
+        const mode = await connectCaptureGraph(source, context);
+        wiredMode.set(media, mode);
       }
       scanMedia();
       log('capture_started', { sampleRate: context.sampleRate, state: 'capturing' });
-      if (button) button.textContent = 'Capture active';
+      if (button) button.textContent = wiredMode.get(media) === 'fallback' ? 'Capture active (fallback)' : 'Capture active';
     } catch (error) {
-      log('capture_error', { state: 'failed', error: String(error?.message || error) });
+      log('capture_error', { state: 'failed', error: String(error?.message || error).slice(0, 180) });
+      if (button) button.textContent = `Capture error: ${String(error?.message || error).slice(0, 48)}`;
+    } finally {
+      captureStarting = false;
     }
+  }
+
+  async function connectCaptureGraph(source, context) {
+    if (workletMode === null) {
+      try {
+        const blobUrl = URL.createObjectURL(new Blob([workletSource], { type: 'text/javascript' }));
+        try { await context.audioWorklet.addModule(blobUrl); }
+        finally { URL.revokeObjectURL(blobUrl); }
+        workletMode = 'worklet';
+      } catch (error) {
+        log('capture_worklet_error', { state: 'blob_failed', error: String(error?.message || error).slice(0, 180) });
+        try {
+          const dataUrl = `data:text/javascript,${encodeURIComponent(workletSource)}`;
+          await context.audioWorklet.addModule(dataUrl);
+          workletMode = 'worklet';
+        } catch (dataError) {
+          workletFailure = dataError || error;
+          workletMode = 'fallback';
+          log('capture_worklet_error', { state: 'data_failed', error: String(dataError?.message || dataError).slice(0, 180) });
+        }
+      }
+    }
+    if (workletMode === 'worklet') {
+      const meter = new AudioWorkletNode(context, 'ytm-capture-meter', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
+      meter.port.onmessage = ({ data }) => receiveMetrics(data, context);
+      source.connect(meter);
+      meter.connect(context.destination);
+      return 'worklet';
+    }
+    return connectFallbackGraph(source, context, workletFailure);
+  }
+
+  function connectFallbackGraph(source, context, cause) {
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 2048;
+    const processor = context.createScriptProcessor(2048, 2, 2);
+    const meterBuffer = new Float32Array(analyser.fftSize);
+    const blockDurationMs = 2048 / context.sampleRate * 1000;
+    let previousCallbackAt = 0;
+    let dropoutBlocks = 0;
+    let timeGaps = 0;
+    processor.onaudioprocess = (event) => {
+      const now = performance.now();
+      if (previousCallbackAt && now - previousCallbackAt > blockDurationMs * 1.5) timeGaps += 1;
+      previousCallbackAt = now;
+      const input = event.inputBuffer;
+      const output = event.outputBuffer;
+      let hasInput = false;
+      let nonzero = 0;
+      for (let channel = 0; channel < output.numberOfChannels; channel += 1) {
+        const out = output.getChannelData(channel);
+        if (channel < input.numberOfChannels) {
+          const data = input.getChannelData(channel);
+          out.set(data);
+          if (data.length) hasInput = true;
+          for (let i = 0; i < data.length; i += 1) if (data[i] !== 0) nonzero += 1;
+        } else out.fill(0);
+      }
+      if (!hasInput || nonzero === 0) dropoutBlocks += 1;
+      analyser.getFloatTimeDomainData(meterBuffer);
+      let sumSquares = 0;
+      let measuredNonzero = 0;
+      for (const sample of meterBuffer) {
+        sumSquares += sample * sample;
+        if (sample !== 0) measuredNonzero += 1;
+      }
+      receiveMetrics({ rms: Math.sqrt(sumSquares / meterBuffer.length), nonzero: measuredNonzero / meterBuffer.length, channels: input.numberOfChannels, dropoutBlocks, timeGaps }, context);
+    };
+    source.connect(analyser);
+    analyser.connect(processor);
+    processor.connect(context.destination);
+    log('capture_fallback', { state: 'script_processor', error: String(cause?.message || cause).slice(0, 180) });
+    return 'fallback';
   }
 
   function receiveMetrics(metrics, context) {
@@ -123,13 +190,16 @@ contextBridge.exposeInMainWorld('poc', Object.freeze({
     const now = Date.now();
     if (now - lastMetricsAt >= 1000) {
       lastMetricsAt = now;
-      ipcRenderer.send('poc:metrics', {
+      const payload = {
         sampleRate: context.sampleRate,
         channels: metrics.channels,
         rms: metrics.rms,
         nonzero: metrics.nonzero,
         state: 'capturing',
-      });
+      };
+      if (typeof metrics.dropoutBlocks === 'number') payload.dropoutBlocks = metrics.dropoutBlocks;
+      if (typeof metrics.timeGaps === 'number') payload.timeGaps = metrics.timeGaps;
+      ipcRenderer.send('poc:metrics', payload);
     }
     const media = findMedia();
     if (media && !media.paused && !media.ended && metrics.rms === 0) {
