@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const YTM_URL = 'https://music.youtube.com/';
-const PARTITION = 'persist:ytm-poc';
+const PARTITION = process.env.POC_PARTITION || 'persist:ytm-poc';
 const LOG_DIR = path.join(__dirname, '..', 'logs');
 const LOG_FILE = path.join(LOG_DIR, `capture-${new Date().toISOString().replace(/[:.]/g, '-')}.jsonl`);
 const ALLOWED_EVENTS = new Set([
