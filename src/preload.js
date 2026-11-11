@@ -350,8 +350,8 @@ if (isPcmBridgePage()) {
         }
         currentPcmTransport.port.postMessage({
           type: 'pcm:block', sequence: ++nextSequence, sampleRate: context.sampleRate,
-          channels, frames, timestampEpochMs: performance.timeOrigin + performance.now(), data: pcm.buffer,
-        }, [pcm.buffer]);
+          channels, frames, timestampEpochMs: performance.timeOrigin + performance.now(), data: pcm,
+        });
       }
       analyser.getFloatTimeDomainData(meterBuffer);
       let sumSquares = 0;
@@ -445,7 +445,7 @@ if (isPcmBridgePage()) {
   const STEM_JITTER_LEAD_S = 0.3;
   function playStemBlock(msg) {
     const context = activeContext;
-    if (!context || !stemNodes || !(msg.vocal instanceof ArrayBuffer) || !(msg.instrumental instanceof ArrayBuffer)) return;
+    if (!context || !stemNodes || !msg.vocal?.byteLength || !msg.instrumental?.byteLength) return;
     const frames = msg.frames, hop = frames / 2;
     const vocal = new Float32Array(msg.vocal), inst = new Float32Array(msg.instrumental);
     if (vocal.length !== frames * 2 || inst.length !== frames * 2) return;
