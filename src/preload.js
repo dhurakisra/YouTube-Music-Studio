@@ -285,6 +285,9 @@ if (isPcmBridgePage()) {
 
   function studioTick() {
     studio.raf = studio.open ? requestAnimationFrame(studioTick) : 0;
+    const t0 = performance.now();
+    if (t0 - (studio.lastFrame || 0) < 30) return; // ~30 fps is plenty for meters and keeps the main thread free for audio scheduling
+    studio.lastFrame = t0;
     const an = stemNodes?.analysers;
     if (!studio.buf) studio.buf = new Float32Array(512);
     for (const s of studio.strips) {
@@ -311,6 +314,8 @@ if (isPcmBridgePage()) {
         u.textContent = 'UNDERRUNS ' + stemPlayer.underruns;
       } else { b.textContent = captureActive ? 'WAITING FOR STEMS...' : 'CAPTURE OFF'; u.textContent = 'UNDERRUNS -'; }
     }
+    const took = performance.now() - t0; // diagnostic: a slow UI frame competes with chunk scheduling
+    if (took > 20 && t0 - (studio.lastSlowLog || 0) > 1000) { studio.lastSlowLog = t0; stemDiag('ui_slow', { lagMs: Math.round(took) }); }
   }
 
   function studioSetOpen(open) {
@@ -1135,7 +1140,7 @@ if (isPcmBridgePage()) {
     set(fx.revSend.gain, on ? s.rev * 0.8 : 0);
     set(fx.dlySend.gain, on ? s.dly * 0.6 : 0); set(fx.delay.delayTime, 0.12 + s.time * 0.6);
     const seconds = Math.round((0.4 + s.decay * 3.6) * 10) / 10;
-    if (fx.irKey !== seconds) {
+    if (on && fx.irKey !== seconds) {
       fx.irKey = seconds;
       clearTimeout(fx.irTimer);
       const swap = () => { fx.conv.buffer = makeReverbIR(fx.context, seconds); };
