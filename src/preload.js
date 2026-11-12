@@ -382,6 +382,31 @@ if (isPcmBridgePage()) {
     } catch {}
     return fresh;
   })();
+  const EQ_PRESETS_KEY = 'ytm-poc-eq-presets-v1';
+  // Built-in presets: gains for the 6 bands (low shelf 80, 250, 1k, 3k, 8k, high shelf 12k); freq/Q stay at defaults.
+  const EQ_BUILTIN_PRESETS = {
+    'Flat': [0, 0, 0, 0, 0, 0],
+    'Bass boost': [6, 3, 0, 0, 0, 0],
+    'Treble boost': [0, 0, 0, 1, 3, 5],
+    'Vocal boost': [-2, -2, 2, 4, 1, 0],
+    'Rock (V shape)': [5, -2, -1, 2, 4, 4],
+    'Loudness': [6, 0, -2, -1, 3, 5],
+  };
+  function loadUserPresets() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(EQ_PRESETS_KEY) || '{}');
+      const out = {};
+      for (const [name, bands] of Object.entries(raw)) {
+        if (Array.isArray(bands) && bands.length === EQ_DEFAULT_BANDS.length) out[String(name).slice(0, 40)] = bands.map((b, i) => ({
+          freq: Math.min(20000, Math.max(20, Number(b.freq) || EQ_DEFAULT_BANDS[i].freq)),
+          gain: Math.min(18, Math.max(-18, Number(b.gain) || 0)),
+          q: Math.min(10, Math.max(0.1, Number(b.q) || EQ_DEFAULT_BANDS[i].q)),
+        }));
+      }
+      return out;
+    } catch { return {}; }
+  }
+  function saveUserPresets(presets) { try { localStorage.setItem(EQ_PRESETS_KEY, JSON.stringify(presets)); } catch {} }
   let masterEq = null;
 
   function saveEqState() { try { localStorage.setItem(EQ_STORE_KEY, JSON.stringify(eqState)); } catch {} }
@@ -476,7 +501,20 @@ if (isPcmBridgePage()) {
     qSlider.setAttribute('aria-label', 'Selected band Q');
     qLabel.appendChild(qSlider);
     info.append(infoText, qLabel);
-    panel.append(head, canvas, info);
+    const presetRow = document.createElement('div');
+    presetRow.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:6px';
+    const presetSelect = document.createElement('select');
+    presetSelect.setAttribute('aria-label', 'Equalizer preset');
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text'; nameInput.maxLength = 40; nameInput.placeholder = 'Preset name'; nameInput.style.width = '110px';
+    nameInput.setAttribute('aria-label', 'Name for saving the current equalizer as a preset');
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button'; saveBtn.textContent = 'Save'; saveBtn.style.cssText = 'font:inherit;cursor:pointer';
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button'; delBtn.textContent = 'Delete'; delBtn.style.cssText = 'font:inherit;cursor:pointer';
+    for (const type of ['keydown', 'keyup', 'keypress']) nameInput.addEventListener(type, (e) => e.stopPropagation()); // typing a name must not trigger YouTube Music hotkeys
+    presetRow.append('Preset ', presetSelect, nameInput, saveBtn, delBtn);
+    panel.append(head, presetRow, canvas, info);
 
     const ctx = canvas.getContext('2d');
     const plotW = W - PAD_L - 6, plotH = H - PAD_B - 6;
@@ -550,7 +588,42 @@ if (isPcmBridgePage()) {
     };
 
     const pos = (e) => { const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) * (W / r.width), (e.clientY - r.top) * (H / r.height)]; };
+    let userPresets = loadUserPresets();
+    const refreshPresetList = (selectValue) => {
+      presetSelect.textContent = '';
+      const add = (value, text) => { const o = document.createElement('option'); o.value = value; o.textContent = text; presetSelect.appendChild(o); };
+      add('', 'Custom');
+      for (const name of Object.keys(EQ_BUILTIN_PRESETS)) add('b:' + name, name);
+      for (const name of Object.keys(userPresets)) add('u:' + name, '★ ' + name);
+      presetSelect.value = selectValue ?? '';
+      if (presetSelect.value !== (selectValue ?? '')) presetSelect.value = '';
+      delBtn.disabled = !presetSelect.value.startsWith('u:');
+      delBtn.style.opacity = delBtn.disabled ? '0.4' : '1';
+    };
     const commit = () => { applyEq(); saveEqState(); updateInfo(); };
+    const manualCommit = () => { commit(); refreshPresetList(''); }; // any hand edit leaves the preset: back to "Custom"
+    refreshPresetList('');
+    presetSelect.addEventListener('change', () => {
+      const v = presetSelect.value;
+      if (v.startsWith('b:')) {
+        const gains = EQ_BUILTIN_PRESETS[v.slice(2)];
+        eqState.bands.forEach((b, i) => Object.assign(b, EQ_DEFAULT_BANDS[i], { gain: gains[i] }));
+      } else if (v.startsWith('u:') && userPresets[v.slice(2)]) {
+        userPresets[v.slice(2)].forEach((p, i) => Object.assign(eqState.bands[i], p));
+      } else { refreshPresetList(''); return; }
+      commit(); refreshPresetList(v);
+    });
+    saveBtn.addEventListener('click', () => {
+      const name = nameInput.value.trim().slice(0, 40);
+      if (!name || name in EQ_BUILTIN_PRESETS) { nameInput.focus(); return; } // built-in names are reserved
+      userPresets[name] = eqState.bands.map((b) => ({ freq: b.freq, gain: b.gain, q: b.q }));
+      saveUserPresets(userPresets); nameInput.value = ''; refreshPresetList('u:' + name);
+    });
+    delBtn.addEventListener('click', () => {
+      if (!presetSelect.value.startsWith('u:')) return;
+      delete userPresets[presetSelect.value.slice(2)];
+      saveUserPresets(userPresets); refreshPresetList('');
+    });
     canvas.addEventListener('pointerdown', (e) => {
       const [x, y] = pos(e), i = bandAt(x, y);
       if (i < 0) return;
@@ -561,13 +634,13 @@ if (isPcmBridgePage()) {
       const [x, y] = pos(e), b = eqState.bands[dragging];
       b.freq = Math.round(Math.min(FMAX, Math.max(FMIN, fOf(Math.min(W - 6, Math.max(PAD_L, x))))));
       b.gain = Math.round(Math.min(DB, Math.max(-DB, dbOf(y))) * 2) / 2;
-      commit();
+      manualCommit();
     });
     const endDrag = () => { dragging = -1; };
     canvas.addEventListener('pointerup', endDrag); canvas.addEventListener('pointercancel', endDrag);
     canvas.addEventListener('dblclick', (e) => {
       const [x, y] = pos(e), i = bandAt(x, y);
-      if (i >= 0) { eqState.bands[i].gain = 0; selected = i; commit(); }
+      if (i >= 0) { eqState.bands[i].gain = 0; selected = i; manualCommit(); }
     });
     canvas.addEventListener('wheel', (e) => {
       const [x, y] = pos(e), i = bandAt(x, y);
@@ -575,13 +648,13 @@ if (isPcmBridgePage()) {
       e.preventDefault(); selected = i;
       const b = eqState.bands[i];
       b.q = Math.min(10, Math.max(0.1, b.q * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
-      commit();
+      manualCommit();
     }, { passive: false });
-    qSlider.addEventListener('input', () => { eqState.bands[selected].q = Number(qSlider.value); commit(); });
+    qSlider.addEventListener('input', () => { eqState.bands[selected].q = Number(qSlider.value); manualCommit(); });
     enable.addEventListener('change', () => { eqState.enabled = enable.checked; applyEq(); saveEqState(); });
     reset.addEventListener('click', () => {
       eqState.bands.forEach((b, i) => Object.assign(b, EQ_DEFAULT_BANDS[i]));
-      commit();
+      commit(); refreshPresetList('b:Flat');
     });
     toggle.addEventListener('click', () => {
       const open = panel.style.display === 'none';
