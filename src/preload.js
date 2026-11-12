@@ -367,11 +367,12 @@ if (isPcmBridgePage()) {
     { type: 'highshelf', freq: 12000, gain: 0, q: 0.707 },
   ];
   const eqState = (() => {
-    const fresh = { enabled: true, bands: EQ_DEFAULT_BANDS.map((b) => ({ ...b })) };
+    const fresh = { enabled: true, limiter: false, bands: EQ_DEFAULT_BANDS.map((b) => ({ ...b })) };
     try {
       const saved = JSON.parse(localStorage.getItem(EQ_STORE_KEY) || 'null');
       if (saved && Array.isArray(saved.bands) && saved.bands.length === fresh.bands.length) {
         fresh.enabled = saved.enabled !== false;
+        fresh.limiter = saved.limiter === true; // opt-in only, never automatic
         saved.bands.forEach((b, i) => {
           const f = Number(b.freq), g = Number(b.gain), q = Number(b.q);
           if (Number.isFinite(f)) fresh.bands[i].freq = Math.min(20000, Math.max(20, f));
@@ -422,6 +423,17 @@ if (isPcmBridgePage()) {
     });
   }
 
+  function routeLimiter() {
+    if (!masterEq || masterEq.limiterOn === eqState.limiter) return;
+    const { eqOut, limiter, context } = masterEq;
+    try { eqOut.disconnect(context.destination); } catch {}
+    try { eqOut.disconnect(limiter); } catch {}
+    try { limiter.disconnect(); } catch {}
+    if (eqState.limiter) { eqOut.connect(limiter); limiter.connect(context.destination); }
+    else eqOut.connect(context.destination);
+    masterEq.limiterOn = eqState.limiter;
+  }
+
   function getEqInput(context) {
     if (masterEq && masterEq.context === context) return masterEq.input;
     const input = context.createGain();
@@ -435,11 +447,17 @@ if (isPcmBridgePage()) {
       prev = f;
       return f;
     });
-    prev.connect(context.destination);
+    // Optional output limiter (user-controlled). Off = filters go straight to destination (clean bypass).
+    const limiter = context.createDynamicsCompressor();
+    limiter.threshold.value = -2; limiter.knee.value = 0; limiter.ratio.value = 20;
+    limiter.attack.value = 0.003; limiter.release.value = 0.1;
+    setChannelFormat(limiter);
+    const eqOut = prev;
     const analyser = context.createAnalyser();
     analyser.fftSize = 4096; analyser.smoothingTimeConstant = 0.8;
     prev.connect(analyser); // tap only: drives the EQ panel spectrum
-    masterEq = { context, input, filters, analyser };
+    masterEq = { context, input, filters, analyser, limiter, eqOut, limiterOn: null };
+    routeLimiter();
     for (const [i, b] of eqState.bands.entries()) {
       filters[i].frequency.value = b.freq; filters[i].Q.value = b.q; filters[i].gain.value = eqState.enabled ? b.gain : 0;
     }
@@ -486,7 +504,12 @@ if (isPcmBridgePage()) {
     const hint = document.createElement('span');
     hint.style.cssText = 'opacity:.65';
     hint.textContent = 'Drag a point: left/right = frequency, up/down = gain. Scroll on a point = Q. Double-click = 0 dB.';
-    head.append(enableLabel, reset, hint);
+    const limiterBox = document.createElement('input');
+    limiterBox.type = 'checkbox'; limiterBox.checked = eqState.limiter; limiterBox.setAttribute('aria-label', 'Output limiter enabled');
+    const limiterLabel = document.createElement('label'); limiterLabel.append(limiterBox, ' Limiter on');
+    limiterLabel.title = 'Peak limiter after the EQ (about -2 dB ceiling). Off = no processing.';
+    limiterBox.addEventListener('change', () => { eqState.limiter = limiterBox.checked; routeLimiter(); saveEqState(); });
+    head.append(enableLabel, limiterLabel, reset, hint);
     const canvas = document.createElement('canvas');
     const dpr = window.devicePixelRatio || 1;
     canvas.width = W * dpr; canvas.height = H * dpr;
