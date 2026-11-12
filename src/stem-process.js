@@ -2,6 +2,10 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
+
+// The separation worker must not starve the renderer's audio thread: run it below normal priority (the window budget has ~4x headroom).
+try { os.setPriority(0, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {}
 const parentPort = process.parentPort || require('electron').parentPort;
 const ort = require('onnxruntime-node');
 
