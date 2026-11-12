@@ -170,6 +170,41 @@ function htdemucsStems(data) {
   return out;
 }
 
+// Artifact reduction (HT-Demucs). Env toggles for A/B listening: YTM_POC_RESTORE=0..1, YTM_POC_SHIFT=0|1.
+const RESTORE = Math.min(1, Math.max(0, Number(process.env.YTM_POC_RESTORE) || 0));
+const SHIFT_FRAMES = process.env.YTM_POC_SHIFT === '1' ? 11025 : 0; // 0.25 s at 44.1 kHz
+
+// One HT-Demucs pass; shift > 0 delays the input by `shift` frames and un-delays the output.
+async function htdemucsRun(audio, shift) {
+  const planar = new Float32Array(WINDOW_FRAMES * 2);
+  for (let i = shift; i < WINDOW_FRAMES; i += 1) {
+    planar[i] = audio[2 * (i - shift)]; planar[WINDOW_FRAMES + i] = audio[2 * (i - shift) + 1];
+  }
+  const result = await session.run({ mix: new ort.Tensor('float32', planar, [1, 2, WINDOW_FRAMES]) });
+  const output = result.stems?.data;
+  if (!output || output.length !== 4 * 2 * WINDOW_FRAMES) throw new Error('HT-Demucs returned an incompatible stems tensor');
+  const stems = htdemucsStems(output);
+  if (shift > 0) for (const name of Object.keys(stems)) {
+    const s = stems[name];
+    s.copyWithin(0, shift * 2, WINDOW_FRAMES * 2);
+  }
+  return stems;
+}
+
+// Residual (mix minus sum of stems) is shared between stems by their window energy, scaled by `amount`.
+function restoreResidual(audio, stems, amount) {
+  const names = Object.keys(stems);
+  const energy = names.map((n) => { let e = 1e-12; const s = stems[n]; for (let i = 0; i < s.length; i += 1) e += s[i] * s[i]; return e; });
+  const total = energy.reduce((a, b) => a + b, 0);
+  const share = energy.map((e) => (e / total) * amount);
+  for (let i = 0; i < audio.length; i += 1) {
+    let sum = 0;
+    for (const n of names) sum += stems[n][i];
+    const residual = audio[i] - sum;
+    names.forEach((n, k) => { stems[n][i] += residual * share[k]; });
+  }
+}
+
 async function runWindow(audio, sequence, readyEpochMs) {
   const queuedAt = Date.now() - readyEpochMs;
   const start = process.hrtime.bigint();
@@ -185,12 +220,17 @@ async function runWindow(audio, sequence, readyEpochMs) {
       const zeros = () => new Float32Array(WINDOW_FRAMES * 2);
       stems = { drums: zeros(), bass: zeros(), other: zeros(), vocal: Float32Array.from(audio) };
     } else if (PROFILE.kind === 'ht') {
-      const planar = new Float32Array(WINDOW_FRAMES * 2);
-      for (let i = 0; i < WINDOW_FRAMES; i += 1) { planar[i] = audio[2 * i]; planar[WINDOW_FRAMES + i] = audio[2 * i + 1]; }
-      const result = await session.run({ mix: new ort.Tensor('float32', planar, [1, 2, WINDOW_FRAMES]) });
-      const output = result.stems?.data;
-      if (!output || output.length !== 4 * 2 * WINDOW_FRAMES) throw new Error('HT-Demucs returned an incompatible stems tensor');
-      stems = htdemucsStems(output);
+      stems = await htdemucsRun(audio, 0);
+      if (SHIFT_FRAMES > 0) {
+        // Shift averaging: second pass on the input delayed by SHIFT_FRAMES, un-shifted and averaged (tail keeps pass 1 only).
+        const second = await htdemucsRun(audio, SHIFT_FRAMES);
+        for (const name of Object.keys(stems)) {
+          const a = stems[name], b = second[name];
+          const end = (WINDOW_FRAMES - SHIFT_FRAMES) * 2;
+          for (let i = 0; i < end; i += 1) a[i] = 0.5 * (a[i] + b[i]);
+        }
+      }
+      if (RESTORE > 0) restoreResidual(audio, stems, RESTORE);
     }
     const processingMs = Number(process.hrtime.bigint() - start) / 1e6;
     processingTimes.push(processingMs); queueTimes.push(Math.max(0, queuedAt));
