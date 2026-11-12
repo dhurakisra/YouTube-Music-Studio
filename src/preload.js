@@ -221,6 +221,15 @@ if (isPcmBridgePage()) {
   function makeStemState() { return { value: '100', pos: STEM_FADER_DEFAULT, stemFlags: { solo: false, mute: false } }; }
   const studio = { host: null, root: null, open: false, strips: [], statusEls: null, raf: 0, installing: false, buf: null, lastStatus: 0 };
 
+  // YTM enforces Trusted Types: no innerHTML. Build DOM with this helper.
+  function h(tag, cls, text, attrs) {
+    const el = document.createElement(tag);
+    if (cls) el.className = cls;
+    if (text != null) el.textContent = text;
+    if (attrs) for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    return el;
+  }
+
   function studioStemLayout() {
     const ht = modelSelect?.value === 'htdemucs' || modelSelect?.value === 'passthrough';
     return ht
@@ -236,11 +245,17 @@ if (isPcmBridgePage()) {
     for (const [name, state, nodeKey, capClass] of studioStemLayout()) {
       const el = document.createElement('div');
       el.className = 'strip';
-      const marks = STEM_SCALE.map((m) => `<span>${m}</span>`).join('');
-      el.innerHTML = `<div class="btns"><button type="button" class="btn solo" aria-label="${name} solo">SOLO</button><button type="button" class="btn mute" aria-label="${name} mute">MUTE</button></div>
-        <div class="fader-wrap"><div class="scale">${marks}</div><div class="track" role="slider" aria-label="${name} level" aria-valuemin="0" aria-valuemax="100"><div class="cap ${capClass}"></div></div>
-        <div class="led-meter">${Array.from({ length: 16 }, (_, i) => `<i class="${i > 12 ? 'r' : i > 9 ? 'y' : 'g'}"></i>`).join('')}</div></div>
-        <div class="name">${name}</div>`;
+      const btns = h('div', 'btns');
+      btns.append(h('button', 'btn solo', 'SOLO', { type: 'button', 'aria-label': name + ' solo' }), h('button', 'btn mute', 'MUTE', { type: 'button', 'aria-label': name + ' mute' }));
+      const faderWrap = h('div', 'fader-wrap');
+      const scale = h('div', 'scale');
+      for (const m of STEM_SCALE) scale.appendChild(h('span', null, m));
+      const trackEl = h('div', 'track', null, { role: 'slider', 'aria-label': name + ' level', 'aria-valuemin': '0', 'aria-valuemax': '100' });
+      trackEl.appendChild(h('div', 'cap ' + capClass));
+      const meter = h('div', 'led-meter');
+      for (let i = 0; i < 16; i += 1) meter.appendChild(h('i', i > 12 ? 'r' : i > 9 ? 'y' : 'g'));
+      faderWrap.append(scale, trackEl, meter);
+      el.append(btns, faderWrap, h('div', 'name', name));
       wrap.appendChild(el);
       const soloBtn = el.querySelector('.solo'), muteBtn = el.querySelector('.mute');
       const refreshFlags = () => {
@@ -359,7 +374,7 @@ if (isPcmBridgePage()) {
   `;
 
   async function installStudioDrawer() {
-    if (studio.host?.isConnected || studio.installing || !document.documentElement) return;
+    if (studio.host?.isConnected || studio.installing || studio.failed >= 3 || !document.documentElement) return;
     studio.installing = true;
     try {
       let tex = {};
@@ -368,13 +383,20 @@ if (isPcmBridgePage()) {
       const host = document.createElement('div');
       host.id = 'ytm-poc-studio';
       const root = host.attachShadow({ mode: 'open' });
-      root.innerHTML = `<style>${STUDIO_CSS(T)}</style><div class="ui">
-        <div class="drawer"><div class="wood"></div><div class="console">
-          <section class="section"><i class="screw tl"></i><i class="screw tr"></i><i class="screw bl"></i><i class="screw br"></i>
-            <h3 class="title">Stems</h3><div class="channels"></div></section>
-          <div class="status"><span></span><span></span><span></span></div>
-        </div><div class="wood"></div></div>
-        <button type="button" class="tab" aria-label="Toggle studio drawer">STUDIO ▲</button></div>`;
+      const style = document.createElement('style');
+      style.textContent = STUDIO_CSS(T);
+      const ui = h('div', 'ui');
+      const drawer = h('div', 'drawer');
+      const consoleEl = h('div', 'console');
+      const section = h('section', 'section');
+      for (const pos of ['tl', 'tr', 'bl', 'br']) section.appendChild(h('i', 'screw ' + pos));
+      section.append(h('h3', 'title', 'Stems'), h('div', 'channels'));
+      const status = h('div', 'status');
+      status.append(h('span'), h('span'), h('span'));
+      consoleEl.append(section, status);
+      drawer.append(h('div', 'wood'), consoleEl, h('div', 'wood'));
+      ui.append(drawer, h('button', 'tab', 'STUDIO \u25B2', { type: 'button', 'aria-label': 'Toggle studio drawer' }));
+      root.append(style, ui);
       studio.host = host; studio.root = root;
       studio.statusEls = [...root.querySelectorAll('.status span')];
       root.querySelector('.tab').addEventListener('click', () => studioSetOpen(!studio.open));
@@ -383,6 +405,9 @@ if (isPcmBridgePage()) {
       let wasOpen = false;
       try { wasOpen = localStorage.getItem('ytm-poc-drawer-open') === '1'; } catch {}
       studioSetOpen(wasOpen);
+    } catch (error) {
+      log('capture_error', { state: 'studio_drawer_failed', error: String(error?.message || error).slice(0, 180) });
+      studio.failed = (studio.failed || 0) + 1;
     } finally { studio.installing = false; }
   }
 
