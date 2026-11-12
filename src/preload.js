@@ -1150,11 +1150,11 @@ if (isPcmBridgePage()) {
     fx.wasOn = on;
     const set = (p, v) => (immediate ? (p.value = v) : p.setTargetAtTime(v, t, 0.03));
     const a = on ? s.comp : 0, d = on ? s.deess : 0;
-    set(fx.comp.threshold, -8 - a * 22); set(fx.comp.ratio, 1 + a * 5); set(fx.comp.knee, 10);
-    set(fx.comp.attack, 0.008); set(fx.comp.release, 0.15);
+    set(fx.comp.threshold, -8 - a * 22); set(fx.comp.ratio, 1 + a * 5);
+    if (immediate) { fx.comp.knee.value = 10; fx.comp.attack.value = 0.008; fx.comp.release.value = 0.15; } // static settings: not re-scheduled on every knob move
     set(fx.makeup.gain, 10 ** (a * 5 / 20));
-    set(fx.ess.threshold, -20 - d * 20); set(fx.ess.ratio, 1 + d * 9); set(fx.ess.knee, 0);
-    set(fx.ess.attack, 0.001); set(fx.ess.release, 0.04);
+    set(fx.ess.threshold, -20 - d * 20); set(fx.ess.ratio, 1 + d * 9);
+    if (immediate) { fx.ess.knee.value = 0; fx.ess.attack.value = 0.001; fx.ess.release.value = 0.04; }
     set(fx.pres.gain, on ? s.pres * 6 : 0); set(fx.airShelf.gain, on ? s.pres * 3 : 0);
     set(fx.revSend.gain, on ? s.rev * 0.8 : 0);
     set(fx.dlySend.gain, on ? s.dly * 0.6 : 0); set(fx.delay.delayTime, 0.12 + s.time * 0.6);
