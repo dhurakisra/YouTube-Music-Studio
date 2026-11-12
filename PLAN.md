@@ -123,3 +123,5 @@ Not: stem_jump dedektoru ~4 sn'de bir tetikleniyor (muzik vuruslari), atlama gos
 Diger KALAN: docs/phase-1-results.md'ye 10 dk stabilite sonucu isle; tani kodu sadelestirme (istege bagli).
 
 SOHBET 7 / EQ: Master parametrik EQ eklendi (preload.js: getEqInput/applyEq/installEqPanel). 6 bant (low shelf 80, peaking 250/1k/3k/8k, high shelf 12k), frekans/gain/Q, EQ on/off, Reset, localStorage kaliciligi. dry/wet/stemBus -> eqInput -> filtreler -> destination (ayirmadan SONRA, tum modlarda). UI: overlay'deki "EQ" dugmesi paneli acar. TEST EDILMEDI (kullanici dinleyecek): bypass/stems modlarinda bant degisimi anlik duyulmali, Reset ve yeniden baslatmada ayarlar korunmali. Atlama duzeltmesi testi (b81bdaf) en sona birakildi.
+
+SOHBET 7 / EQ SONUC: Grafik parametrik EQ (canli spektrum, surukle-birak noktalar, Q tekerlek) + 6 hazir preset (Flat, Bass boost, Treble boost, Vocal boost, Rock, Loudness) + kullanici preset kaydet/sil (localStorage). Kullanici test etti: "harika calisiyor" (bdbb74b, 5e7f620, 988a8fe). Sonra: guzel bir UI tasarimi (kullanici istedi). Atlama duzeltmesi (b81bdaf) testi en sona birakildi.
