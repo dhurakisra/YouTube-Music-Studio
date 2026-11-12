@@ -551,7 +551,9 @@ if (isPcmBridgePage()) {
     lim.addEventListener('click', () => { eqState.limiter = !eqState.limiter; routeLimiter(); saveEqState(); syncLim(); });
     syncLim();
     const sw = h('div', 'switches'); sw.appendChild(lim);
-    const master = h('div', 'master'); master.append(knobs, sw);
+    const recUi = studioBuildRec();
+    sw.appendChild(recUi.btn);
+    const master = h('div', 'master'); master.append(knobs, sw, recUi.info);
     sec.append(vus, master);
 
     const buf = new Float32Array(2048), angles = [-39, -39];
@@ -662,6 +664,247 @@ if (isPcmBridgePage()) {
     }
     syncPresets();
     sec.append(row, sw);
+  }
+
+  // ---- Recorder (master output -> MP3 in the recordings library) and the library player ----
+  const rec = { active: false, saving: false, recorder: null, dest: null, chunks: [], startedAt: 0, ctx: null, progress: 0 };
+  let recLib = [];
+  ipcRenderer.on('poc:rec-progress', (_event, pct) => { if (Number.isFinite(pct)) rec.progress = pct; });
+
+  async function recRefresh() {
+    try { recLib = await ipcRenderer.invoke('poc:rec-list'); } catch { recLib = []; }
+    if (!Array.isArray(recLib)) recLib = [];
+    studio.libRender?.();
+  }
+
+  function defaultRecName() {
+    const d = new Date(), p = (n) => String(n).padStart(2, '0');
+    return `Recording ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}.${p(d.getMinutes())}`;
+  }
+
+  async function startRec() {
+    if (rec.active || rec.saving) return false;
+    if (!activeContext || activeContext.state === 'closed') activeContext = new AudioContext({ latencyHint: 'interactive' });
+    const context = activeContext;
+    await context.resume();
+    getEqInput(context);
+    const dest = context.createMediaStreamDestination();
+    masterEq.outNode.connect(dest); // taps the final output: music stems, mic, effects, master gain and limiter
+    const mime = ['audio/webm;codecs=opus', 'audio/webm'].find((t) => MediaRecorder.isTypeSupported(t));
+    const recorder = new MediaRecorder(dest.stream, mime ? { mimeType: mime, audioBitsPerSecond: 256000 } : undefined);
+    rec.chunks = [];
+    recorder.ondataavailable = (e) => { if (e.data?.size) rec.chunks.push(e.data); };
+    recorder.start(1000);
+    Object.assign(rec, { active: true, recorder, dest, startedAt: Date.now(), ctx: context, progress: 0 });
+    stemDiag('rec_start', { state: 'recording' });
+    return true;
+  }
+
+  // Stops, decodes the recording, hands 16-bit PCM to the main process which encodes the MP3 and files it in the library.
+  async function stopRec() {
+    if (!rec.active) return { ok: false, error: 'not recording' };
+    const { recorder, dest, ctx } = rec;
+    rec.active = false; rec.saving = true; rec.progress = 0;
+    try {
+      await new Promise((resolve) => { recorder.onstop = resolve; recorder.stop(); });
+      try { masterEq.outNode.disconnect(dest); } catch {}
+      const blob = new Blob(rec.chunks, { type: recorder.mimeType || 'audio/webm' });
+      rec.chunks = [];
+      const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
+      const n = decoded.length, l = decoded.getChannelData(0), r = decoded.numberOfChannels > 1 ? decoded.getChannelData(1) : l;
+      const li = new Int16Array(n), ri = new Int16Array(n);
+      for (let i = 0; i < n; i += 1) {
+        li[i] = Math.round(Math.max(-1, Math.min(1, l[i])) * 32767);
+        ri[i] = Math.round(Math.max(-1, Math.min(1, r[i])) * 32767);
+      }
+      const result = await ipcRenderer.invoke('poc:rec-save', { sampleRate: decoded.sampleRate, left: li.buffer, right: ri.buffer, name: defaultRecName() });
+      stemDiag(result?.ok ? 'rec_saved' : 'rec_error', result?.ok ? { state: 'saved' } : { error: String(result?.error || 'unknown').slice(0, 80) });
+      await recRefresh();
+      return result || { ok: false, error: 'no result' };
+    } catch (error) {
+      try { masterEq.outNode.disconnect(dest); } catch {}
+      stemDiag('rec_error', { error: String(error?.name || error).slice(0, 80) });
+      return { ok: false, error: String(error?.name || error) };
+    } finally { rec.saving = false; }
+  }
+
+  // Library player: decoded MP3 -> master stage input (so EQ, Enhancer, master gain and limiter apply). No <audio> element, no CSP media rules involved.
+  const libPlayer = { id: null, buffer: null, source: null, ctx: null, offset: 0, startedAt: 0, playing: false };
+  const libPos = () => (libPlayer.playing ? libPlayer.offset + (libPlayer.ctx.currentTime - libPlayer.startedAt) : libPlayer.offset);
+  function libKillSource() {
+    const src = libPlayer.source;
+    libPlayer.source = null;
+    if (!src) return;
+    src.onended = null;
+    try { src.stop(); } catch {}
+    try { src.disconnect(); } catch {}
+  }
+  function libPause() {
+    if (!libPlayer.playing) return;
+    libPlayer.offset = Math.min(libPos(), libPlayer.buffer?.duration || 0);
+    libKillSource();
+    libPlayer.playing = false;
+  }
+  function libStartAt(offset) {
+    const { ctx, buffer } = libPlayer;
+    libKillSource();
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(masterEq.input);
+    src.onended = () => {
+      if (libPlayer.source !== src) return;
+      libPlayer.source = null; libPlayer.playing = false; libPlayer.offset = 0;
+      studio.libRender?.();
+    };
+    src.start(0, Math.max(0, Math.min(offset, buffer.duration - 0.01)));
+    libPlayer.source = src; libPlayer.offset = offset; libPlayer.startedAt = ctx.currentTime; libPlayer.playing = true;
+  }
+  async function libToggle(id) {
+    if (libPlayer.id === id && libPlayer.buffer) {
+      if (libPlayer.playing) libPause();
+      else { await libPlayer.ctx.resume(); libStartAt(libPlayer.offset >= libPlayer.buffer.duration - 0.05 ? 0 : libPlayer.offset); }
+      studio.libRender?.();
+      return;
+    }
+    libPause();
+    if (!activeContext || activeContext.state === 'closed') activeContext = new AudioContext({ latencyHint: 'interactive' });
+    const ctx = activeContext;
+    await ctx.resume();
+    getEqInput(ctx);
+    const bytes = await ipcRenderer.invoke('poc:rec-read', id);
+    if (!bytes) return;
+    const buffer = await ctx.decodeAudioData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+    Object.assign(libPlayer, { id, buffer, ctx, offset: 0 });
+    const media = findMedia();
+    if (media && !media.paused) media.pause(); // one thing at a time: pause the YouTube Music track
+    libStartAt(0);
+    studio.libRender?.();
+  }
+  function libSeek(frac) {
+    if (!libPlayer.buffer) return;
+    const t = Math.max(0, Math.min(1, frac)) * libPlayer.buffer.duration;
+    if (libPlayer.playing) libStartAt(t); else libPlayer.offset = t;
+    studio.libRender?.();
+  }
+  function libForget(id) {
+    if (libPlayer.id !== id) return;
+    libPause(); libKillSource();
+    Object.assign(libPlayer, { id: null, buffer: null, offset: 0, playing: false });
+  }
+
+  const fmtTime = (sec) => { const s = Math.max(0, Math.round(sec || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+
+  // REC button + status line (lives in the Output section)
+  function studioBuildRec() {
+    const btn = h('button', 'btn solo recbtn', null, { type: 'button', 'aria-label': 'Record the output as MP3' });
+    const led = h('span', 'led rec');
+    btn.append(led, document.createTextNode('REC'));
+    btn.title = 'Records everything you hear (music, mic, effects) to an MP3 in your recordings library.';
+    const info = h('div', 'eqinfo recinfo', 'RECORDINGS: IDLE');
+    const sync = () => { btn.classList.toggle('on', rec.active); led.classList.toggle('on', rec.active); btn.setAttribute('aria-pressed', String(rec.active)); btn.disabled = rec.saving; };
+    setInterval(() => {
+      if (rec.active) info.textContent = 'REC ' + fmtTime((Date.now() - rec.startedAt) / 1000);
+      else if (rec.saving) info.textContent = rec.progress > 0 ? 'ENCODING MP3 ' + rec.progress + '%' : 'PREPARING...';
+    }, 500);
+    btn.addEventListener('click', async () => {
+      if (rec.saving) return;
+      if (!rec.active) {
+        try { await startRec(); } catch (error) { info.textContent = 'REC ERROR: ' + String(error?.name || error).slice(0, 30); }
+        sync(); return;
+      }
+      info.textContent = 'PREPARING...';
+      const pending = stopRec();
+      sync();
+      const result = await pending;
+      info.textContent = result.ok ? 'SAVED: ' + result.entry.name : 'SAVE FAILED';
+      sync();
+      if (result.ok) studio.libOpen?.(true);
+    });
+    sync();
+    return { btn, info };
+  }
+
+  // Recordings panel: slides in from the left edge; play / rename / export / reveal / delete.
+  function studioBuildLibrary(ui) {
+    const panel = h('aside', 'lib');
+    const head = h('div', 'libhead');
+    const title = h('span', 'libtitle', 'MY RECORDINGS');
+    const closeBtn = h('button', 'libclose', '✕', { type: 'button', 'aria-label': 'Close recordings' });
+    head.append(title, closeBtn);
+    const list = h('div', 'liblist');
+    panel.append(h('i', 'screw tl'), h('i', 'screw tr'), head, list);
+    const tab = h('button', 'libtab', 'RECORDINGS', { type: 'button', 'aria-label': 'Toggle recordings panel' });
+    ui.append(panel, tab);
+    let open = false;
+    const setOpen = (v) => { open = v; panel.classList.toggle('open', v); tab.classList.toggle('open', v); if (v) recRefresh(); };
+    studio.libOpen = setOpen;
+    tab.addEventListener('click', () => setOpen(!open));
+    closeBtn.addEventListener('click', () => setOpen(false));
+    let confirmId = null, renamingId = null;
+
+    const fmtDate = (iso) => { try { return new Date(iso).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } };
+    const bars = new Map();
+    const render = () => {
+      list.textContent = ''; bars.clear();
+      title.textContent = 'MY RECORDINGS (' + recLib.length + ')';
+      if (!recLib.length) list.appendChild(h('div', 'libempty', 'No recordings yet. Press REC in the Output section.'));
+      for (const e of recLib) {
+        const row = h('div', 'librow');
+        const isCur = libPlayer.id === e.id;
+        const play = h('button', 'btn libplay' + (isCur && libPlayer.playing ? ' on' : ''), isCur && libPlayer.playing ? '❚❚' : '▶', { type: 'button', 'aria-label': 'Play or pause ' + e.name });
+        play.addEventListener('click', () => { libToggle(e.id).catch((error) => stemDiag('rec_error', { error: String(error?.name || error).slice(0, 60) })); });
+        const main = h('div', 'libmain');
+        let nameEl;
+        if (renamingId === e.id) {
+          nameEl = h('input', 'txt libname', null, { type: 'text', maxlength: '80', 'aria-label': 'Recording name' });
+          nameEl.value = e.name;
+          for (const k of ['keydown', 'keyup', 'keypress']) nameEl.addEventListener(k, (ev) => ev.stopPropagation()); // typing must not trigger YouTube Music hotkeys
+          const commit = async (save) => {
+            const v = nameEl.value.trim();
+            renamingId = null;
+            if (save && v && v !== e.name) { try { await ipcRenderer.invoke('poc:rec-rename', e.id, v); } catch {} await recRefresh(); } else render();
+          };
+          nameEl.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') commit(true); else if (ev.key === 'Escape') commit(false); });
+          nameEl.addEventListener('blur', () => { if (renamingId === e.id) commit(true); });
+          setTimeout(() => { nameEl.focus(); nameEl.select(); }, 0);
+        } else {
+          nameEl = h('div', 'libname-text', e.name, { title: 'Double-click to rename' });
+          nameEl.addEventListener('dblclick', () => { renamingId = e.id; render(); });
+        }
+        const meta = h('div', 'libmeta', fmtDate(e.createdAt) + ' · ' + fmtTime(e.durationS));
+        const bar = h('div', 'libbar'); const fill = h('div', 'libfill'); bar.appendChild(fill);
+        bar.addEventListener('click', (ev) => { if (libPlayer.id !== e.id) return; const r = bar.getBoundingClientRect(); libSeek((ev.clientX - r.left) / r.width); });
+        bars.set(e.id, { fill, meta, e });
+        main.append(nameEl, meta, bar);
+        const acts = h('div', 'libacts');
+        const mk = (text, label, fn, cls) => { const b = h('button', 'btn libact' + (cls ? ' ' + cls : ''), text, { type: 'button', 'aria-label': label + ' ' + e.name, title: label }); b.addEventListener('click', fn); return b; };
+        const rename = mk('✎', 'Rename', () => { renamingId = e.id; render(); });
+        const exp = mk('↓', 'Export MP3...', () => { ipcRenderer.invoke('poc:rec-export', e.id).catch(() => {}); });
+        const reveal = mk('⌖', 'Show in folder', () => { ipcRenderer.invoke('poc:rec-reveal', e.id).catch(() => {}); });
+        const del = mk(confirmId === e.id ? 'SURE?' : '✕', confirmId === e.id ? 'Click again to delete' : 'Delete', async () => {
+          if (confirmId !== e.id) { confirmId = e.id; render(); setTimeout(() => { if (confirmId === e.id) { confirmId = null; render(); } }, 3000); return; }
+          confirmId = null; libForget(e.id);
+          try { await ipcRenderer.invoke('poc:rec-delete', e.id); } catch {}
+          await recRefresh();
+        }, 'mute');
+        acts.append(rename, exp, reveal, del);
+        row.append(play, main, acts);
+        list.appendChild(row);
+      }
+      tick();
+    };
+    const tick = () => { // progress bars follow the player
+      for (const [id, { fill, meta, e }] of bars) {
+        if (libPlayer.id === id && libPlayer.buffer) {
+          const pos = Math.min(libPos(), libPlayer.buffer.duration);
+          fill.style.width = (pos / libPlayer.buffer.duration * 100) + '%';
+          meta.textContent = fmtTime(pos) + ' / ' + fmtTime(libPlayer.buffer.duration);
+        } else { fill.style.width = '0%'; }
+      }
+    };
+    setInterval(() => { if (open && libPlayer.playing) tick(); }, 250);
+    studio.libRender = render;
+    recRefresh();
   }
 
   // Karaoke: one click = capture on, Stems mode, vocal stem muted, mic on, Vocal Lab on. Clicking again restores the previous mode, vocal mute/solo and Vocal Lab state.
@@ -782,6 +1025,36 @@ if (isPcmBridgePage()) {
     .section.fx { width: 232px; flex: 0 0 auto; }
     .section.fx.enh { width: 238px; }
     .section.fx.mic { width: 308px; }
+    .led.rec.on { background: #ff3b2f; box-shadow: 0 0 8px #ff3b2f; }
+    .btn.recbtn { width: 64px; }
+    .recinfo { margin: 6px 4px 0; font-size: 10px; font-weight: 700; letter-spacing: .1em; color: var(--ink-dim); text-shadow: 0 1px 2px #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .libtab { position: fixed; left: 0; top: 38%; z-index: 2147483644; padding: 12px 6px; writing-mode: vertical-rl; cursor: pointer;
+      border: 1px solid var(--edge-hi); border-left: 0; border-radius: 0 10px 10px 0; background: linear-gradient(90deg, #2c2622, #1b1816);
+      color: var(--brass); font: 700 12px "Bahnschrift", system-ui, sans-serif; letter-spacing: .2em; transition: left .3s cubic-bezier(.2,.8,.2,1); }
+    .libtab:hover { color: var(--amber); }
+    .libtab.open { left: 320px; }
+    .lib { position: fixed; left: 0; top: 64px; bottom: 90px; width: 320px; z-index: 2147483643; display: flex; flex-direction: column; padding: 10px 8px 8px;
+      transform: translateX(-102%); visibility: hidden; transition: transform .3s cubic-bezier(.2,.8,.2,1), visibility 0s .3s;
+      border: 1px solid #0009; border-left: 0; border-radius: 0 8px 8px 0; box-shadow: 0 0 30px #000c, inset 0 0 18px #000a;
+      background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; }
+    .lib.open { transform: none; visibility: visible; transition: transform .3s cubic-bezier(.2,.8,.2,1); }
+    .libhead { display: flex; justify-content: space-between; align-items: center; margin: 0 8px 8px 14px; }
+    .libtitle { font-size: 12px; font-weight: 700; text-shadow: 0 1px 2px #000; letter-spacing: .22em; color: #f0c88e; }
+    .libclose { background: none; border: 0; color: var(--ink-dim); cursor: pointer; font-size: 14px; }
+    .libclose:hover { color: var(--amber); }
+    .liblist { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 0 4px; }
+    .libempty { padding: 14px 8px; font-size: 11px; letter-spacing: .06em; color: var(--ink-dim); }
+    .librow { display: flex; gap: 8px; align-items: center; padding: 8px; border: 1px solid #0008; border-radius: 6px; background: #0000002e; box-shadow: inset 0 0 10px #0008; }
+    .btn.libplay { width: 36px; height: 36px; flex: none; font-size: 12px; }
+    .libmain { flex: 1; min-width: 0; }
+    .libname-text { font-weight: 700; font-size: 12px; color: #f1e6d3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: text; }
+    .txt.libname { width: 100%; flex: none; }
+    .libmeta { font-size: 10px; letter-spacing: .08em; color: var(--ink-dim); margin-top: 2px; }
+    .libbar { height: 6px; margin-top: 5px; border-radius: 3px; background: #050404; box-shadow: inset 0 0 3px #000; cursor: pointer; }
+    .libfill { height: 100%; width: 0; border-radius: 3px; background: linear-gradient(90deg, #ffb347, #ff8a1f); }
+    .libacts { display: flex; flex-direction: column; gap: 3px; flex: none; }
+    .btn.libact { width: 30px; height: 20px; font-size: 11px; }
+    .btn.libact.mute { min-width: 30px; width: auto; }
     .micwrap { display: flex; gap: 8px; align-items: flex-start; }
     .micctl { flex: 1; min-width: 0; }
     .mickcol { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: none; }
@@ -902,6 +1175,7 @@ if (isPcmBridgePage()) {
       consoleEl.append(sessSection, micSection, section, eqSection, labSection, enhSection, outSection, status);
       drawer.append(h('div', 'wood'), consoleEl, h('div', 'wood'));
       ui.append(drawer, h('button', 'tab', 'STUDIO \u25B2', { type: 'button', 'aria-label': 'Toggle studio drawer' }));
+      studioBuildLibrary(ui);
       root.append(style, ui);
       studio.host = host; studio.root = root;
       studio.statusEls = [...root.querySelectorAll('.status span')];

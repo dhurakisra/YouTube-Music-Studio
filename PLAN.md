@@ -160,3 +160,15 @@ Yeni sohbet baslangic mesaji: "ajan-ekibi: C:\Projects\YTM-Audio-POC\PLAN.md ici
 ## DEVIR NOTU (sohbet 11, GUNCEL)
 BITTI (kod yazildi, node --check OK; GORSEL/SES DOGRULAMASI KULLANICIDAN BEKLIYOR): eski sag-ust overlay + Start capture dugmesi kaldirildi; Model/Mode/Gain/Buffer/START-STOP cekmecedeki yeni "Session" bolumune tasindi (studioBuildSession). Degisken adlari ayni (modelSelect, modeSelect, gainSlider, button).
 SIRADAKI: kullanici testi (preload degisti, YENIDEN BASLAT; START/STOP, model/mod secimi, buffer), Enhancer karari, en sona 10 dk atlama testi (b81bdaf).
+
+## DEVIR NOTU (sohbet 11 sonu, GUNCEL — bunu esas al)
+BITTI (commit'li; GORSEL/SES DOGRULAMASI KULLANICIDAN BEKLIYOR olanlar belirtildi):
+- Performans: ONNX 8 thread + spin yok, isleyici Below Normal, kapali Enhancer/Vocal Lab dugumleri grafikten cikarildi, cekmece 30 fps, knob pointermove rAF'li, CSS drop-shadow filtresi knob'lardan kaldirildi, FX ayar kaydi gecikmeli. Kullanici: "idare eder", sonra tekrar degerlendirilecek. Tani: stem_diag olayi (logs/*.jsonl; mainthread_stall, low_lead, underrun, seq_step, audio_underrun, output_latency, ui_slow; hepsi yerel saat damgali).
+- SHIFT/RESTORE (artefakt azaltma) denendi, faydasi duyulmadi, KALDIRILDI.
+- Cekmece bolumleri: Session | Mic | Mixer (eski Stems; KARAOKE kanali = mikrofon, fader'i Mic LEVEL dugmesiyle ayni kontrol) | Equalizer | Vocal Lab (reverb/delay presetleri) | Enhancer | Output (VU, Master, Thresh, Limiter, REC). Ctrl+tik her dugme/fader/kaydirici/EQ bandini varsayilana dondurur.
+- Mikrofon + KARAOKE dugmesi (design/tex/mic.png, kodla amber isik): tek tikla capture + Stems + vokal mute + mic + Vocal Lab acilir, tekrar tikla eski hale doner. Kisit: Stems modunda sarki ~9 sn gecikmeli, YTM ekranindaki sozler muzikten onde gider.
+- Pencere sarki calarken kapanmiyordu: will-prevent-unload ile cozuldu.
+- Kayit kutuphanesi (YAZILDI, KULLANICI TEST ETMEDI): REC dugmesi (Output) master cikisini MediaRecorder ile kaydeder, durdurunca decode -> Int16 -> main.js 'poc:rec-save' -> src/mp3-encode.js (utilityProcess, @breezystack/lamejs, ESM: dinamik import) -> <userData>/recordings/<uuid>.mp3 + index.json. Yan panel (sol kenar, "RECORDINGS" sekmesi): cal/duraklat (Web Audio, master asamasina girer), ad degistir (cift tik/kalem), disari aktar (kaydet penceresi), klasorde goster, sil (iki tik). Renderer yalniz id kullanir, yol vermez.
+SIRADAKI: kullanici testi (REC -> durdur -> panelde gorunsun, cal, ad degistir, sil, export). Sonra: kutuphaneyi YTM ana ekranina yukari dogru genisletme (kullanici istedi), Enhancer karari, 10 dk atlama testi.
+TUZAKLAR (yeni): heredoc yamalari bozuyor -> yamayi Write ile dosyaya yaz, node ile uygula; dosyalar CRLF, edit betiklerinde 
+ normalle. lamejs paketi require ile bos doner (ESM), dinamik import kullan. Elektron'da test: 'npx electron script.js' ile utilityProcess dogrulanabilir.

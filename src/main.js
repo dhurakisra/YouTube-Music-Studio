@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, Menu, globalShortcut, session, utilityProcess } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, globalShortcut, session, utilityProcess, dialog, shell } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -104,6 +104,123 @@ ipcMain.on('poc:stem-model', (event, model) => {
   }
   selectedStemModel = model;
   appendLog('stem_model_selected', { model, state: 'selected' });
+});
+
+// ---- Recordings library: MP3 files in <userData>/recordings plus index.json (names, dates). The renderer only ever names a recording by id, never by path. ----
+const crypto = require('node:crypto');
+function recDir() { return path.join(app.getPath('userData'), 'recordings'); }
+function recIndexFile() { return path.join(recDir(), 'index.json'); }
+function readRecIndex() {
+  try {
+    const list = JSON.parse(fs.readFileSync(recIndexFile(), 'utf8'));
+    return Array.isArray(list) ? list.filter((e) => e && typeof e.id === 'string' && /^[\w-]+\.mp3$/.test(String(e.file))) : [];
+  } catch { return []; }
+}
+function writeRecIndex(list) {
+  fs.mkdirSync(recDir(), { recursive: true });
+  const tmp = recIndexFile() + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(list, null, 1), 'utf8');
+  fs.renameSync(tmp, recIndexFile());
+}
+function cleanRecName(name) { return String(name ?? '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 80); }
+function publicRec(entry) { return { id: entry.id, name: entry.name, createdAt: entry.createdAt, durationS: entry.durationS, bytes: entry.bytes }; }
+function findRec(id) { return typeof id === 'string' ? readRecIndex().find((e) => e.id === id) : undefined; }
+function asArrayBuffer(value) {
+  if (value instanceof ArrayBuffer) return value;
+  if (ArrayBuffer.isView(value)) return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength);
+  return null;
+}
+
+ipcMain.handle('poc:rec-list', (event) => {
+  if (!isTrustedYtmSender(event)) return [];
+  return readRecIndex().filter((e) => fs.existsSync(path.join(recDir(), e.file))).map(publicRec);
+});
+
+ipcMain.handle('poc:rec-save', async (event, payload) => {
+  if (!isTrustedYtmSender(event)) return { ok: false, error: 'untrusted sender' };
+  const { sampleRate, name } = payload || {};
+  const left = asArrayBuffer(payload?.left), right = asArrayBuffer(payload?.right);
+  if (!Number.isFinite(sampleRate) || sampleRate < 8000 || sampleRate > 96000 || !left || !right || left.byteLength !== right.byteLength || left.byteLength < 2 || left.byteLength > 800_000_000) {
+    return { ok: false, error: 'invalid audio payload' };
+  }
+  const child = utilityProcess.fork(path.join(__dirname, 'mp3-encode.js'), [], { serviceName: 'YTM audio MP3 encoder' });
+  const result = await new Promise((resolve) => {
+    child.on('message', (message) => {
+      if (message?.type === 'progress') { try { event.sender.send('poc:rec-progress', message.pct); } catch {} }
+      else if (message?.type === 'done') resolve({ ok: true, mp3: Buffer.from(message.mp3) });
+      else if (message?.type === 'error') resolve({ ok: false, error: String(message.error) });
+    });
+    child.on('exit', (code) => resolve({ ok: false, error: `encoder exited with code ${code}` }));
+    child.postMessage({ type: 'encode', sampleRate, left, right, kbps: 192 });
+  });
+  try { child.kill(); } catch {}
+  if (!result.ok) { appendLog('capture_error', { state: 'rec_encode_failed', error: result.error.slice(0, 150) }); return { ok: false, error: 'encoding failed' }; }
+  try {
+    const id = crypto.randomUUID();
+    const file = `${id}.mp3`;
+    fs.mkdirSync(recDir(), { recursive: true });
+    fs.writeFileSync(path.join(recDir(), file), result.mp3);
+    const entry = {
+      id, file, name: cleanRecName(name) || 'Recording', createdAt: new Date().toISOString(),
+      durationS: Number(((left.byteLength / 2) / sampleRate).toFixed(2)), bytes: result.mp3.length,
+    };
+    writeRecIndex([entry, ...readRecIndex()]);
+    appendLog('rec_saved', { state: 'saved', durationS: entry.durationS, bytes: entry.bytes });
+    return { ok: true, entry: publicRec(entry) };
+  } catch (error) {
+    appendLog('capture_error', { state: 'rec_write_failed', error: String(error?.message || error).slice(0, 150) });
+    return { ok: false, error: 'could not write the recording' };
+  }
+});
+
+ipcMain.handle('poc:rec-read', (event, id) => {
+  if (!isTrustedYtmSender(event)) return null;
+  const entry = findRec(id);
+  if (!entry) return null;
+  try { return new Uint8Array(fs.readFileSync(path.join(recDir(), entry.file))); } catch { return null; }
+});
+
+ipcMain.handle('poc:rec-rename', (event, id, name) => {
+  if (!isTrustedYtmSender(event)) return null;
+  const clean = cleanRecName(name);
+  const list = readRecIndex();
+  const entry = list.find((e) => e.id === id);
+  if (!entry || !clean) return null;
+  entry.name = clean;
+  writeRecIndex(list);
+  return publicRec(entry);
+});
+
+ipcMain.handle('poc:rec-delete', (event, id) => {
+  if (!isTrustedYtmSender(event)) return false;
+  const list = readRecIndex();
+  const entry = list.find((e) => e.id === id);
+  if (!entry) return false;
+  try { fs.rmSync(path.join(recDir(), entry.file), { force: true }); } catch {}
+  writeRecIndex(list.filter((e) => e.id !== id));
+  return true;
+});
+
+ipcMain.handle('poc:rec-reveal', (event, id) => {
+  if (!isTrustedYtmSender(event)) return false;
+  const entry = findRec(id);
+  if (!entry) return false;
+  shell.showItemInFolder(path.join(recDir(), entry.file));
+  return true;
+});
+
+ipcMain.handle('poc:rec-export', async (event, id) => {
+  if (!isTrustedYtmSender(event)) return { ok: false };
+  const entry = findRec(id);
+  if (!entry) return { ok: false };
+  const safe = entry.name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').trim() || 'recording';
+  const picked = await dialog.showSaveDialog(mainWindow, {
+    title: 'Export recording as MP3',
+    defaultPath: path.join(app.getPath('music'), `${safe}.mp3`),
+    filters: [{ name: 'MP3 audio', extensions: ['mp3'] }],
+  });
+  if (picked.canceled || !picked.filePath) return { ok: false, canceled: true };
+  try { fs.copyFileSync(path.join(recDir(), entry.file), picked.filePath); return { ok: true }; } catch { return { ok: false }; }
 });
 
 ipcMain.on('poc:metrics', (event, metrics) => {
