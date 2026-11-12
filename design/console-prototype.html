@@ -7,7 +7,7 @@
 <style>
 :root {
   --bg: #0d0b0a; --panel: #1b1816; --panel-2: #24201d; --edge: #3a322c; --edge-hi: #5a4c40;
-  --ink: #e9dfd0; --ink-dim: #9a8c7c; --brass: #d9b07a; --red: #c8332b; --red-hi: #ff5a4a;
+  --ink: #e9dfd0; --ink-dim: #cdbfa9; --brass: #d9b07a; --red: #c8332b; --red-hi: #ff5a4a;
   --amber: #ffb347; --cream: #e8dcc0; --phos: #6dff6d; --wood: #5a3320;
   --font: "Bahnschrift", "Segoe UI Condensed", "Arial Narrow", system-ui, sans-serif;
 }
@@ -29,10 +29,10 @@ html, body { margin: 0; height: 100%; background: #000; color: var(--ink); font-
 .wood { background: url(tex/wood.jpg) center / 100% 100% no-repeat, #3a2012; box-shadow: inset 0 0 10px #000b, inset 0 0 0 1px #0006; }
 .drawer > .wood:last-child { transform: scaleX(-1); }
 .console { display: grid; grid-template-columns: auto minmax(0, 520px) minmax(0, 1fr) auto; gap: 8px; padding: 8px; min-width: 0; }
-.switches.fill .btn { flex: 1; width: auto !important; }
+.switches.fill .btn { flex: 1; width: auto !important; height: 26px; font-size: 10px; }
 .switches.fill { margin: 8px 0 0; }
 .modes { display: flex; gap: 6px; margin: 4px 0 14px; }
-.modes .btn { flex: 1; width: auto; height: 24px; }
+.modes .btn { flex: 1; width: auto; height: 26px; }
 .knobs { display: flex; justify-content: space-around; align-items: flex-end; margin-bottom: 14px; }
 .slot { margin-top: auto; height: 64px; border: 1px dashed var(--edge-hi); border-radius: 6px; display: grid; place-items: center;
   font-size: 10px; letter-spacing: .2em; color: var(--ink-dim); }
@@ -42,7 +42,7 @@ html, body { margin: 0; height: 100%; background: #000; color: var(--ink); font-
   background: linear-gradient(#ffffff0d, transparent 30%, #0006), url(tex/metal.jpg) 0 0 / 256px 256px; box-shadow: inset 0 1px 0 #ffffff14, inset 0 0 18px #000a, 0 2px 4px #000a; }
 .screw { position: absolute; width: 10px; height: 10px; background: url(tex/screw.png) center / 100% 100% no-repeat; filter: drop-shadow(0 1px 1px #000c); }
 .screw.tl { top: 3px; left: 3px } .screw.tr { top: 3px; right: 3px } .screw.bl { bottom: 3px; left: 3px } .screw.br { bottom: 3px; right: 3px }
-.title { font-size: 11px; letter-spacing: .22em; color: var(--brass); margin: 0 0 6px 12px; text-transform: uppercase; }
+.title { font-size: 12px; font-weight: 700; text-shadow: 0 1px 2px #000; letter-spacing: .22em; color: #f0c88e; margin: 0 0 6px 12px; text-transform: uppercase; }
 
 /* Channels */
 .channels { display: flex; gap: 6px; }
@@ -50,17 +50,18 @@ html, body { margin: 0; height: 100%; background: #000; color: var(--ink); font-
 .strip .name { width: 70px; text-align: center; padding: 6px 0 5px; background: url(tex/label.png) center / 100% 100% no-repeat;
   color: #2a241c; font-weight: 800; font-size: 12px; letter-spacing: .12em; filter: drop-shadow(0 1px 2px #000a); }
 .btns { display: flex; gap: 4px; }
-.btn { position: relative; width: 36px; height: 21px; border: 0; background: url(tex/btn-cream.png) center / 100% 100% no-repeat; cursor: pointer;
-  font: 800 9px var(--font); letter-spacing: .06em; color: #2a241c; padding: 0; filter: drop-shadow(0 2px 1px #000a); }
-.btn.mute { background-image: url(tex/btn-red.png); color: #ffe9e4; }
-.btn.on, .btn:active { background-image: url(tex/btn-cream-down.png); transform: translateY(1px); filter: drop-shadow(0 1px 0 #000a); }
-.btn.mute.on, .btn.mute:active { background-image: url(tex/btn-red-down.png); }
+.btn { --src: url(tex/btn-cream.png); position: relative; width: 38px; height: 22px; padding: 0; cursor: pointer;
+  border: 6px solid transparent; border-image: var(--src) 16 fill / 6px stretch; background: none; box-sizing: border-box;
+  font: 800 9px/10px var(--font); letter-spacing: .06em; color: #2a241c; filter: drop-shadow(0 2px 1px #000a); }
+.btn.mute { --src: url(tex/btn-red.png); color: #ffe9e4; text-shadow: 0 1px 1px #000a; }
+.btn.on, .btn:active { --src: url(tex/btn-cream-down.png); transform: translateY(1px); filter: drop-shadow(0 1px 0 #000a); }
+.btn.mute.on, .btn.mute:active { --src: url(tex/btn-red-down.png); }
 .btn.solo.on { filter: drop-shadow(0 0 7px #ffb347); }
 .btn.mute.on { filter: drop-shadow(0 0 7px #ff5a4a); }
 .fader-wrap { display: flex; gap: 6px; height: 160px; }
-.scale { display: flex; flex-direction: column; justify-content: space-between; font-size: 9px; color: var(--ink-dim); text-align: right; padding: 2px 0; }
+.scale { display: flex; flex-direction: column; justify-content: space-between; font-size: 10px; text-shadow: 0 1px 1px #000; color: var(--ink-dim); text-align: right; padding: 2px 0; }
 .track { position: relative; width: 10px; border-radius: 5px; background: #050404; box-shadow: inset 0 0 4px #000, 0 1px 0 #ffffff14; touch-action: none; cursor: ns-resize; }
-.cap { position: absolute; left: 50%; width: 34px; height: 34px; transform: translate(-50%, 50%); border-radius: 3px;
+.cap { position: absolute; left: 50%; width: 24px; height: 32px; transform: translate(-50%, 50%); border-radius: 3px;
   background: url(tex/cap-cream.png) center / 100% 100% no-repeat; box-shadow: 0 3px 5px #000c; }
 .cap.red { background-image: url(tex/cap-red.png); }
 .led-meter { display: flex; flex-direction: column-reverse; gap: 2px; width: 7px; padding: 1px; background: #050404; border-radius: 2px; }
@@ -70,7 +71,7 @@ html, body { margin: 0; height: 100%; background: #000; color: var(--ink); font-
 .led-meter i.r.on { background: #ff4a3a; box-shadow: 0 0 5px #ff4a3a; }
 
 /* Knobs */
-.knob-box { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 9px; color: var(--ink-dim); letter-spacing: .12em; }
+.knob-box { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10px; font-weight: 700; color: var(--ink-dim); letter-spacing: .12em; text-shadow: 0 1px 2px #000; }
 .knob { position: relative; width: 38px; height: 38px; cursor: ns-resize; touch-action: none;
   background: url(tex/knob-cream.png) center / 100% 100% no-repeat; filter: drop-shadow(0 3px 3px #000b); }
 .knob::after { content: ""; position: absolute; left: 50%; top: 8px; width: 4px; height: 10px; margin-left: -2px;
@@ -95,7 +96,7 @@ html, body { margin: 0; height: 100%; background: #000; color: var(--ink); font-
 .led { width: 8px; height: 8px; border-radius: 50%; background: #3a2a14; display: inline-block; margin-right: 4px; }
 .led.on { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
 .row { display: flex; gap: 12px; align-items: flex-end; justify-content: center; }
-.status { grid-column: 1 / -1; display: flex; justify-content: space-between; font-size: 10px; letter-spacing: .14em; color: var(--ink-dim); padding: 0 6px; }
+.status { grid-column: 1 / -1; display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; text-shadow: 0 1px 2px #000; letter-spacing: .14em; color: var(--ink-dim); padding: 0 6px; }
 </style>
 </head>
 <body>
