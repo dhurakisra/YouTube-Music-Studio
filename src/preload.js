@@ -335,14 +335,16 @@ if (isPcmBridgePage()) {
     return sec;
   }
 
-  function studioKnob(label, cls, getV, setV, dflt) {
+  function studioKnob(label, cls, getV, setV, dflt, onEnd) {
     const box = h('div', 'knob-box');
     const knob = h('div', 'knob ' + cls, null, { role: 'slider', 'aria-label': label, 'aria-valuemin': '0', 'aria-valuemax': '100' });
     const draw = () => { knob.style.setProperty('--a', (-135 + getV() * 270) + 'deg'); knob.setAttribute('aria-valuenow', String(Math.round(getV() * 100))); };
     let y0 = 0, v0 = 0;
-    knob.addEventListener('pointerdown', (e) => { if (e.ctrlKey) { setV(dflt); draw(); return; } knob.setPointerCapture(e.pointerId); y0 = e.clientY; v0 = getV(); });
+    knob.addEventListener('pointerdown', (e) => { if (e.ctrlKey) { setV(dflt); draw(); onEnd?.(); return; } knob.setPointerCapture(e.pointerId); y0 = e.clientY; v0 = getV(); });
     knob.addEventListener('pointermove', (e) => { if (!knob.hasPointerCapture(e.pointerId)) return; setV(Math.min(1, Math.max(0, v0 + (y0 - e.clientY) / 150))); draw(); });
-    knob.addEventListener('dblclick', () => { setV(dflt); draw(); });
+    knob.addEventListener('dblclick', () => { setV(dflt); draw(); onEnd?.(); });
+    knob.addEventListener('pointerup', () => onEnd?.());
+    knob.addEventListener('pointercancel', () => onEnd?.());
     draw();
     box.append(knob, document.createTextNode(label));
     return box;
@@ -574,7 +576,7 @@ if (isPcmBridgePage()) {
     const defs = [['COMP', 'comp', ''], ['DE-ESS', 'deess', ''], ['PRES', 'pres', ''], ['REVERB', 'rev', 'red'], ['DECAY', 'decay', 'red'], ['DELAY', 'dly', 'red'], ['TIME', 'time', 'red']];
     for (const [label, key, cls] of defs) {
       const dflt = key === 'decay' ? 0.4 : key === 'time' ? 0.4 : 0;
-      row.appendChild(studioKnob(label, cls, () => fxState[group][key], (v) => { fxState[group][key] = v; applyVocalFxAll(); saveFx(); }, dflt));
+      row.appendChild(studioKnob(label, cls, () => fxState[group][key], (v) => { fxState[group][key] = v; applyVocalFxAll(key === 'decay'); saveFx(); }, dflt, key === 'decay' ? () => applyVocalFxAll() : undefined));
     }
     const sw = h('div', 'switches'); sw.appendChild(studioToggle('VOCAL LAB', group, 'on', applyVocalFxAll));
     sec.append(row, sw);
@@ -1019,7 +1021,8 @@ if (isPcmBridgePage()) {
     } catch {}
     return fresh;
   })();
-  function saveFx() { try { localStorage.setItem(FX_KEY, JSON.stringify(fxState)); } catch {} }
+  let saveFxTimer = 0; // debounced: a synchronous localStorage write on every pointer move stalls the main thread
+  function saveFx() { clearTimeout(saveFxTimer); saveFxTimer = setTimeout(() => { try { localStorage.setItem(FX_KEY, JSON.stringify(fxState)); } catch {} }, 400); }
   let enhancer = null;
   const vocalFxInstances = [];
   const fxGain = (context) => { const g = context.createGain(); setChannelFormat(g); return g; };
@@ -1113,6 +1116,12 @@ if (isPcmBridgePage()) {
     vocalFxInstances.push(fx);
     applyVocalFx(fx, true);
     routeVocalFx(fx);
+    // Build the reverb impulse response once, shortly after setup, so switching Vocal Lab on mid-song costs nothing (the convolver is not connected while off).
+    setTimeout(() => {
+      if (fx.irKey != null) return;
+      const seconds = Math.round((0.4 + fxState.voc.decay * 3.6) * 10) / 10;
+      fx.irKey = seconds; fx.conv.buffer = makeReverbIR(context, seconds);
+    }, 3000);
     return fx;
   }
 
@@ -1127,7 +1136,7 @@ if (isPcmBridgePage()) {
     fx.routed = want;
   }
 
-  function applyVocalFx(fx, immediate) {
+  function applyVocalFx(fx, immediate, deferIR) {
     const s = fxState.voc, on = s.on, t = fx.context.currentTime;
     const set = (p, v) => (immediate ? (p.value = v) : p.setTargetAtTime(v, t, 0.03));
     const a = on ? s.comp : 0, d = on ? s.deess : 0;
@@ -1140,14 +1149,14 @@ if (isPcmBridgePage()) {
     set(fx.revSend.gain, on ? s.rev * 0.8 : 0);
     set(fx.dlySend.gain, on ? s.dly * 0.6 : 0); set(fx.delay.delayTime, 0.12 + s.time * 0.6);
     const seconds = Math.round((0.4 + s.decay * 3.6) * 10) / 10;
-    if (on && fx.irKey !== seconds) {
+    if (on && !deferIR && fx.irKey !== seconds) { // the impulse response is rebuilt only when not mid-drag (heavy on the main thread)
       fx.irKey = seconds;
       clearTimeout(fx.irTimer);
       const swap = () => { fx.conv.buffer = makeReverbIR(fx.context, seconds); };
-      if (immediate) swap(); else fx.irTimer = setTimeout(swap, 150); // debounce while a knob is being dragged
+      if (immediate) swap(); else fx.irTimer = setTimeout(swap, 50);
     }
   }
-  function applyVocalFxAll() { for (const fx of vocalFxInstances) { routeVocalFx(fx); applyVocalFx(fx); } }
+  function applyVocalFxAll(deferIR) { for (const fx of vocalFxInstances) { routeVocalFx(fx); applyVocalFx(fx, false, deferIR === true); } }
 
   // RBJ biquad magnitude (dB) so the curve can be drawn without an audio node.
   function eqBandDb(b, f, fs) {
