@@ -573,25 +573,32 @@ if (isPcmBridgePage()) {
   function studioBuildEnhancer(sec) {
     const group = 'enh', row = h('div', 'row fxknobs');
     const defs = [['DRIVE', 'drive', '', 0], ['WARMTH', 'warmth', '', 0], ['AIR', 'air', '', 0], ['WIDTH', 'width', 'red', 0.5]];
+    const presets = [['ANALOG', [0.25, 0.5, 0.2, 0.5]], ['VINYL', [0.15, 0.7, 0, 0.45]], ['TAPE', [0.35, 0.6, 0.1, 0.5]]]; // [drive, warmth, air, width]
+    const presetBtns = [];
+    const matches = (v) => [fxState.enh.drive, fxState.enh.warmth, fxState.enh.air, fxState.enh.width].every((x, i) => Math.abs(x - v[i]) < 0.005);
+    const syncPresets = () => presetBtns.forEach(([b, v]) => { const on = matches(v); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
     const build = () => {
       row.textContent = '';
       for (const [label, key, cls, dflt] of defs) {
-        row.appendChild(studioKnob(label, cls, () => fxState[group][key], (v) => { fxState[group][key] = v; applyEnhancer(); saveFx(); }, dflt));
+        row.appendChild(studioKnob(label, cls, () => fxState[group][key], (v) => { fxState[group][key] = v; applyEnhancer(); saveFx(); syncPresets(); }, dflt));
       }
     };
     build();
     const sw = h('div', 'switches fill');
-    sw.appendChild(studioToggle('ENHANCER', group, 'on', () => { routeEnhancer(); applyEnhancer(); }));
-    // Character presets: starting points for [drive, warmth, air, width].
-    for (const [name, v] of [['ANALOG', [0.25, 0.5, 0.2, 0.5]], ['VINYL', [0.15, 0.7, 0, 0.45]], ['TAPE', [0.35, 0.6, 0.1, 0.5]]]) {
+    const onBtn = studioToggle('ENHANCER', group, 'on', () => { routeEnhancer(); applyEnhancer(); });
+    sw.appendChild(onBtn);
+    for (const [name, v] of presets) {
       const b = h('button', 'btn', name, { type: 'button' });
       b.addEventListener('click', () => {
         [fxState.enh.drive, fxState.enh.warmth, fxState.enh.air, fxState.enh.width] = v;
         fxState.enh.on = true; saveFx(); build(); routeEnhancer(); applyEnhancer();
-        sw.firstChild.classList.add('on'); sw.firstChild.firstChild.classList.add('on');
+        onBtn.classList.add('on'); onBtn.firstChild.classList.add('on'); onBtn.setAttribute('aria-pressed', 'true');
+        syncPresets();
       });
+      presetBtns.push([b, v]);
       sw.appendChild(b);
     }
+    syncPresets();
     sec.append(row, sw);
   }
 
@@ -1074,7 +1081,7 @@ if (isPcmBridgePage()) {
   }
 
   // One vocal effects chain: [LR4 split: highs -> de-esser] -> compressor -> presence/air -> out, plus reverb and delay sends.
-  function buildVocalFx(context, destination) {
+  function buildVocalFx(context, destination, source) {
     const input = fxGain(context), sum = fxGain(context), out = fxGain(context);
     const lp = [fxBiquad(context, 'lowpass', 6500, 0.707), fxBiquad(context, 'lowpass', 6500, 0.707)];
     const hp = [fxBiquad(context, 'highpass', 6500, 0.707), fxBiquad(context, 'highpass', 6500, 0.707)];
@@ -1090,10 +1097,21 @@ if (isPcmBridgePage()) {
     fb.gain.value = 0.38;
     out.connect(dlySend); dlySend.connect(delay); delay.connect(fbLp); fbLp.connect(fb); fb.connect(delay); delay.connect(dlyOut);
     out.connect(destination); revOut.connect(destination); dlyOut.connect(destination);
-    const fx = { context, input, ess, comp, makeup, pres, airShelf, revSend, conv, delay, dlySend, irKey: null, irTimer: 0 };
+    const fx = { context, input, source, destination, routed: null, ess, comp, makeup, pres, airShelf, revSend, conv, delay, dlySend, irKey: null, irTimer: 0 };
     vocalFxInstances.push(fx);
     applyVocalFx(fx, true);
+    routeVocalFx(fx);
     return fx;
+  }
+
+  // Vocal Lab off = the source goes straight to the destination; the chain (convolver, compressors, delay loop) gets no signal at all.
+  function routeVocalFx(fx) {
+    const want = fxState.voc.on;
+    if (fx.routed === want) return;
+    try { fx.source.disconnect(fx.input); } catch {}
+    try { fx.source.disconnect(fx.destination); } catch {}
+    fx.source.connect(want ? fx.input : fx.destination);
+    fx.routed = want;
   }
 
   function applyVocalFx(fx, immediate) {
@@ -1116,7 +1134,7 @@ if (isPcmBridgePage()) {
       if (immediate) swap(); else fx.irTimer = setTimeout(swap, 150); // debounce while a knob is being dragged
     }
   }
-  function applyVocalFxAll() { for (const fx of vocalFxInstances) applyVocalFx(fx); }
+  function applyVocalFxAll() { for (const fx of vocalFxInstances) { routeVocalFx(fx); applyVocalFx(fx); } }
   function sendStemOpts() { ipcRenderer.send('poc:stem-opts', { shift: fxState.art.shift, restore: fxState.art.restore }); }
 
   // RBJ biquad magnitude (dB) so the curve can be drawn without an audio node.
@@ -1175,8 +1193,7 @@ if (isPcmBridgePage()) {
     stemLimiter.threshold.value = -6; stemLimiter.ratio.value = 20; stemLimiter.attack.value = 0; stemLimiter.release.value = 0.1; stemLimiter.knee.value = 6;
     for (const node of [vocalGain, instGain, drumsGain, bassGain, otherGain, stemBus, stemLimiter]) setChannelFormat(node);
     for (const node of [instGain, drumsGain, bassGain, otherGain]) node.connect(stemLimiter);
-    const vocalFx = buildVocalFx(context, stemLimiter); // Vocal Lab sits after the vocal fader, so mute/solo also silence its reverb tail
-    vocalGain.connect(vocalFx.input);
+    buildVocalFx(context, stemLimiter, vocalGain); // Vocal Lab sits after the vocal fader, so mute/solo also silence its reverb tail
     stemLimiter.connect(stemBus); stemBus.connect(eqInput);
     stemBus.gain.value = 0;
     stemNodes = { vocalGain, instGain, drumsGain, bassGain, otherGain, stemBus };

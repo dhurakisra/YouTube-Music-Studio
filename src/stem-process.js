@@ -193,15 +193,15 @@ async function htdemucsRun(audio, shift) {
 
 // Residual (mix minus sum of stems) is shared between stems by their window energy, scaled by `amount`.
 function restoreResidual(audio, stems, amount) {
-  const names = Object.keys(stems);
-  const energy = names.map((n) => { let e = 1e-12; const s = stems[n]; for (let i = 0; i < s.length; i += 1) e += s[i] * s[i]; return e; });
+  const arrays = Object.values(stems), count = arrays.length;
+  const energy = arrays.map((s) => { let e = 1e-12; for (let i = 0; i < s.length; i += 1) e += s[i] * s[i]; return e; });
   const total = energy.reduce((a, b) => a + b, 0);
   const share = energy.map((e) => (e / total) * amount);
   for (let i = 0; i < audio.length; i += 1) {
     let sum = 0;
-    for (const n of names) sum += stems[n][i];
+    for (let k = 0; k < count; k += 1) sum += arrays[k][i];
     const residual = audio[i] - sum;
-    names.forEach((n, k) => { stems[n][i] += residual * share[k]; });
+    for (let k = 0; k < count; k += 1) arrays[k][i] += residual * share[k];
   }
 }
 
