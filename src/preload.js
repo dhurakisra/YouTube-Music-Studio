@@ -341,10 +341,16 @@ if (isPcmBridgePage()) {
     const draw = () => { knob.style.setProperty('--a', (-135 + getV() * 270) + 'deg'); knob.setAttribute('aria-valuenow', String(Math.round(getV() * 100))); };
     let y0 = 0, v0 = 0;
     knob.addEventListener('pointerdown', (e) => { if (e.ctrlKey) { setV(dflt); draw(); onEnd?.(); return; } knob.setPointerCapture(e.pointerId); y0 = e.clientY; v0 = getV(); });
-    knob.addEventListener('pointermove', (e) => { if (!knob.hasPointerCapture(e.pointerId)) return; setV(Math.min(1, Math.max(0, v0 + (y0 - e.clientY) / 150))); draw(); });
+    let pending = null, frame = 0; // pointer events can arrive far faster than frames: apply at most once per animation frame
+    knob.addEventListener('pointermove', (e) => {
+      if (!knob.hasPointerCapture(e.pointerId)) return;
+      pending = Math.min(1, Math.max(0, v0 + (y0 - e.clientY) / 150));
+      if (!frame) frame = requestAnimationFrame(() => { frame = 0; if (pending != null) { setV(pending); draw(); pending = null; } });
+    });
     knob.addEventListener('dblclick', () => { setV(dflt); draw(); onEnd?.(); });
-    knob.addEventListener('pointerup', () => onEnd?.());
-    knob.addEventListener('pointercancel', () => onEnd?.());
+    const finish = () => { if (pending != null) { setV(pending); draw(); pending = null; } onEnd?.(); }; // flush the last position before committing
+    knob.addEventListener('pointerup', finish);
+    knob.addEventListener('pointercancel', finish);
     draw();
     box.append(knob, document.createTextNode(label));
     return box;
@@ -665,7 +671,7 @@ if (isPcmBridgePage()) {
     .row { display: flex; gap: 12px; align-items: flex-end; justify-content: center; }
     .knob-box { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10px; font-weight: 700; color: var(--ink-dim); letter-spacing: .12em; text-shadow: 0 1px 2px #000; }
     .knob { position: relative; width: 38px; height: 38px; cursor: ns-resize; touch-action: none;
-      background: ${T('knob-cream.png')} center / 100% 100% no-repeat; filter: drop-shadow(0 3px 3px #000b); }
+      background: ${T('knob-cream.png')} center / 100% 100% no-repeat; border-radius: 50%; box-shadow: 0 3px 4px #000b; }
     .knob::after { content: ""; position: absolute; left: 50%; top: 8px; width: 2.5px; height: 10px; margin-left: -1.25px;
       background: ${T('pointer.png')} center / 100% 100% no-repeat; transform-origin: 50% 11px; transform: rotate(var(--a, 0deg)); }
     .knob:not(.red):not(.blue):not(.big)::after { filter: brightness(.12) contrast(1.2); }
@@ -1057,6 +1063,8 @@ if (isPcmBridgePage()) {
   function applyEnhancer() {
     if (!enhancer) return;
     const e = enhancer, s = fxState.enh, on = s.on, t = e.context.currentTime;
+    if (!on && e.wasOn === false) return; // off and already neutral: nothing to update
+    e.wasOn = on;
     const set = (p, v) => p.setTargetAtTime(v, t, 0.02);
     set(e.warmLow.gain, on ? s.warmth * 4 : 0);
     set(e.warmHigh.gain, on ? -s.warmth * 2.5 : 0);
@@ -1138,6 +1146,8 @@ if (isPcmBridgePage()) {
 
   function applyVocalFx(fx, immediate, deferIR) {
     const s = fxState.voc, on = s.on, t = fx.context.currentTime;
+    if (!on && fx.wasOn === false && !immediate) return; // off and already neutral: nothing to update
+    fx.wasOn = on;
     const set = (p, v) => (immediate ? (p.value = v) : p.setTargetAtTime(v, t, 0.03));
     const a = on ? s.comp : 0, d = on ? s.deess : 0;
     set(fx.comp.threshold, -8 - a * 22); set(fx.comp.ratio, 1 + a * 5); set(fx.comp.knee, 10);
