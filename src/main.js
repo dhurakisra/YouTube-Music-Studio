@@ -78,6 +78,23 @@ ipcMain.on('poc:log', (event, level, name, data) => {
   appendLog(name, { level, ...safeData(data) });
 });
 
+let textureCache = null;
+ipcMain.handle('poc:textures', (event) => {
+  if (!isTrustedYtmSender(event)) return {};
+  if (!textureCache) {
+    textureCache = {};
+    const dir = path.join(__dirname, '..', 'design', 'tex');
+    const mime = { '.png': 'image/png', '.jpg': 'image/jpeg' };
+    try {
+      for (const name of fs.readdirSync(dir)) {
+        const type = mime[path.extname(name).toLowerCase()];
+        if (type) textureCache[name] = 'data:' + type + ';base64,' + fs.readFileSync(path.join(dir, name)).toString('base64');
+      }
+    } catch (error) { appendLog('capture_error', { state: 'textures_failed', error: String(error.message).slice(0, 120) }); }
+  }
+  return textureCache;
+});
+
 ipcMain.on('poc:stem-model', (event, model) => {
   if (!isTrustedYtmSender(event) || typeof model !== 'string' || !STEM_MODELS.has(model)) return;
   if (captureActive || stemProcessRunning) return;

@@ -127,7 +127,7 @@ if (isPcmBridgePage()) {
       document.documentElement.appendChild(button);
       log('capture_button_ready', { state: 'ready' });
     }
-    if (overlay?.isConnected) return;
+    if (overlay?.isConnected) { installStudioDrawer(); return; }
 
     overlay = document.createElement('div');
     Object.assign(overlay.style, {
@@ -159,44 +159,7 @@ if (isPcmBridgePage()) {
     gainSlider.setAttribute('aria-label', 'Processed gain in dB');
     gainSlider.style.width = '96px';
     gainSlider.addEventListener('input', () => setUserGain(Number(gainSlider.value)));
-    const makeStemSlider = (text, aria) => {
-      const caption = document.createElement('label');
-      caption.textContent = text;
-      const slider = document.createElement('input');
-      slider.type = 'range'; slider.min = '0'; slider.max = '100'; slider.step = '1'; slider.value = '100';
-      slider.setAttribute('aria-label', aria);
-      slider.style.width = '80px';
-      slider.addEventListener('input', applyStemLevels);
-      const flags = { solo: false, mute: false };
-      slider.stemFlags = flags;
-      const makeToggle = (label, key, aria) => {
-        const b = document.createElement('button');
-        b.type = 'button'; b.textContent = label; b.setAttribute('aria-label', aria); b.setAttribute('aria-pressed', 'false');
-        b.style.cssText = 'margin:0 2px;padding:0 5px;font:inherit;cursor:pointer';
-        b.addEventListener('click', () => {
-          if (b.disabled) return;
-          flags[key] = !flags[key];
-          refresh();
-          applyStemLevels();
-        });
-        b.stemKey = key;
-        return b;
-      };
-      const refresh = () => {
-        for (const btn of [soloBtn, muteBtn]) {
-          const on = flags[btn.stemKey];
-          btn.setAttribute('aria-pressed', String(on));
-          btn.style.background = on ? (btn.stemKey === 'solo' ? '#e8b400' : '#d33') : '';
-        }
-        muteBtn.disabled = flags.solo; // S and M are mutually exclusive
-        soloBtn.disabled = flags.mute;
-        for (const btn of [soloBtn, muteBtn]) btn.style.opacity = btn.disabled ? '0.4' : '1';
-      };
-      const soloBtn = makeToggle('S', 'solo', aria + ' solo'), muteBtn = makeToggle('M', 'mute', aria + ' mute');
-      slider.extraEls = [soloBtn, muteBtn];
-      overlay.append(caption, slider, soloBtn, muteBtn);
-      return slider;
-    };
+    const makeStemSlider = () => makeStemState(); // UI lives in the Studio drawer
     const modelLabel = document.createElement('label');
     modelLabel.textContent = 'Model';
     modelSelect = document.createElement('select');
@@ -236,17 +199,191 @@ if (isPcmBridgePage()) {
     drumsSlider = makeStemSlider('Drums', 'Drums stem level percent');
     bassSlider = makeStemSlider('Bass', 'Bass stem level percent');
     otherSlider = makeStemSlider('Other', 'Other stem level percent');
-    const updateSliderVisibility = () => {
-      const ht = modelSelect.value === 'htdemucs' || modelSelect.value === 'passthrough';
-      const setHidden = (slider, hidden) => { slider.hidden = hidden; slider.previousSibling.hidden = hidden; for (const el of slider.extraEls) el.hidden = hidden; };
-      setHidden(instSlider, ht);
-      for (const slider of [drumsSlider, bassSlider, otherSlider]) setHidden(slider, !ht);
-      applyStemLevels();
-    };
+    const updateSliderVisibility = () => { studioRebuildStrips(); applyStemLevels(); };
     modelSelect.addEventListener('change', updateSliderVisibility);
     updateSliderVisibility();
     overlay.appendChild(installEqPanel(overlay));
     document.documentElement.appendChild(overlay);
+    installStudioDrawer();
+  }
+
+  // ---- Studio drawer: slide-up console in a Shadow DOM (isolated from YTM CSS). Stems section is live; the other sections come later. ----
+  const STEM_FADER_DEFAULT = 0.8; // 0 dB
+  const STEM_SCALE = ['+10', '0', '-10', '-20', '-40', '-∞'];
+  function faderPosToLevel(pos) { // piecewise dB: 1=+10, .8=0, .6=-10, .4=-20, .2=-40, 0=-inf
+    if (pos <= 0.005) return 0;
+    const pts = [[0, -80], [0.2, -40], [0.4, -20], [0.6, -10], [0.8, 0], [1, 10]];
+    for (let i = 1; i < pts.length; i += 1) {
+      if (pos <= pts[i][0]) { const [p0, d0] = pts[i - 1], [p1, d1] = pts[i]; return 10 ** ((d0 + (d1 - d0) * (pos - p0) / (p1 - p0)) / 20); }
+    }
+    return 10 ** 0.5;
+  }
+  function makeStemState() { return { value: '100', pos: STEM_FADER_DEFAULT, stemFlags: { solo: false, mute: false } }; }
+  const studio = { host: null, root: null, open: false, strips: [], statusEls: null, raf: 0, installing: false, buf: null, lastStatus: 0 };
+
+  function studioStemLayout() {
+    const ht = modelSelect?.value === 'htdemucs' || modelSelect?.value === 'passthrough';
+    return ht
+      ? [['VOCALS', vocalSlider, 'vocalGain', ''], ['DRUMS', drumsSlider, 'drumsGain', 'red'], ['BASS', bassSlider, 'bassGain', ''], ['OTHER', otherSlider, 'otherGain', 'red']]
+      : [['VOCALS', vocalSlider, 'vocalGain', ''], ['INSTR.', instSlider, 'instGain', 'red']];
+  }
+
+  function studioRebuildStrips() {
+    if (!studio.root) return;
+    const wrap = studio.root.querySelector('.channels');
+    wrap.textContent = '';
+    studio.strips = [];
+    for (const [name, state, nodeKey, capClass] of studioStemLayout()) {
+      const el = document.createElement('div');
+      el.className = 'strip';
+      const marks = STEM_SCALE.map((m) => `<span>${m}</span>`).join('');
+      el.innerHTML = `<div class="btns"><button type="button" class="btn solo" aria-label="${name} solo">SOLO</button><button type="button" class="btn mute" aria-label="${name} mute">MUTE</button></div>
+        <div class="fader-wrap"><div class="scale">${marks}</div><div class="track" role="slider" aria-label="${name} level" aria-valuemin="0" aria-valuemax="100"><div class="cap ${capClass}"></div></div>
+        <div class="led-meter">${Array.from({ length: 16 }, (_, i) => `<i class="${i > 12 ? 'r' : i > 9 ? 'y' : 'g'}"></i>`).join('')}</div></div>
+        <div class="name">${name}</div>`;
+      wrap.appendChild(el);
+      const soloBtn = el.querySelector('.solo'), muteBtn = el.querySelector('.mute');
+      const refreshFlags = () => {
+        const f = state.stemFlags;
+        soloBtn.classList.toggle('on', f.solo); muteBtn.classList.toggle('on', f.mute);
+        soloBtn.setAttribute('aria-pressed', String(f.solo)); muteBtn.setAttribute('aria-pressed', String(f.mute));
+        soloBtn.disabled = f.mute; muteBtn.disabled = f.solo; // S and M are mutually exclusive
+      };
+      soloBtn.addEventListener('click', () => { state.stemFlags.solo = !state.stemFlags.solo; refreshFlags(); applyStemLevels(); });
+      muteBtn.addEventListener('click', () => { state.stemFlags.mute = !state.stemFlags.mute; refreshFlags(); applyStemLevels(); });
+      refreshFlags();
+      const track = el.querySelector('.track'), cap = el.querySelector('.cap');
+      const setPos = (pos) => {
+        state.pos = Math.min(1, Math.max(0, pos));
+        state.value = String(faderPosToLevel(state.pos) * 100);
+        cap.style.bottom = (state.pos * 100) + '%';
+        track.setAttribute('aria-valuenow', String(Math.round(state.pos * 100)));
+        applyStemLevels();
+      };
+      const fromEvent = (e) => { const r = track.getBoundingClientRect(); setPos(1 - (e.clientY - r.top) / r.height); };
+      track.addEventListener('pointerdown', (e) => { track.setPointerCapture(e.pointerId); fromEvent(e); });
+      track.addEventListener('pointermove', (e) => { if (track.hasPointerCapture(e.pointerId)) fromEvent(e); });
+      track.addEventListener('dblclick', () => setPos(STEM_FADER_DEFAULT)); // reset to 0 dB
+      cap.style.bottom = (state.pos * 100) + '%';
+      studio.strips.push({ leds: [...el.querySelectorAll('.led-meter i')], nodeKey, held: -100 });
+    }
+  }
+
+  function studioTick() {
+    studio.raf = studio.open ? requestAnimationFrame(studioTick) : 0;
+    const an = stemNodes?.analysers;
+    if (!studio.buf) studio.buf = new Float32Array(512);
+    for (const s of studio.strips) {
+      let peak = 0;
+      const node = an?.[s.nodeKey];
+      if (node) {
+        node.getFloatTimeDomainData(studio.buf);
+        for (let i = 0; i < studio.buf.length; i += 1) { const a = Math.abs(studio.buf[i]); if (a > peak) peak = a; }
+      }
+      const db = peak > 0 ? 20 * Math.log10(peak) : -100;
+      s.held = Math.max(db, s.held - 1.2); // fast attack, gentle fall
+      for (let j = 0; j < s.leds.length; j += 1) s.leds[j].classList.toggle('on', s.held > -42 + j * 2.8);
+    }
+    const now = performance.now();
+    if (now - studio.lastStatus > 250) {
+      studio.lastStatus = now;
+      const names = { 'umx-hq': 'UMX-HQ', htdemucs: 'HT-DEMUCS', passthrough: 'TEST PASSTHROUGH' };
+      const [m, b, u] = studio.statusEls;
+      m.textContent = 'MODEL: ' + (names[modelSelect?.value] || '-');
+      if (captureActive && stemPlayer && activeContext) {
+        b.textContent = 'BUFFER ' + Math.max(0, stemPlayer.nextTime - activeContext.currentTime).toFixed(1) + ' s · TARGET ' + stemLeadS.toFixed(1) + ' s';
+        u.textContent = 'UNDERRUNS ' + stemPlayer.underruns;
+      } else { b.textContent = captureActive ? 'WAITING FOR STEMS...' : 'CAPTURE OFF'; u.textContent = 'UNDERRUNS -'; }
+    }
+  }
+
+  function studioSetOpen(open) {
+    studio.open = open;
+    studio.root.querySelector('.drawer').classList.toggle('open', open);
+    const tab = studio.root.querySelector('.tab');
+    tab.classList.toggle('open', open);
+    tab.textContent = open ? 'STUDIO ▼' : 'STUDIO ▲';
+    try { localStorage.setItem('ytm-poc-drawer-open', open ? '1' : '0'); } catch {}
+    if (open && !studio.raf) studio.raf = requestAnimationFrame(studioTick);
+  }
+
+  const STUDIO_CSS = (T) => `
+    :host { all: initial; }
+    * { box-sizing: border-box; }
+    .ui { --edge: #3a322c; --edge-hi: #5a4c40; --ink-dim: #cdbfa9; --brass: #d9b07a; --amber: #ffb347;
+      font-family: "Bahnschrift", "Segoe UI Condensed", "Arial Narrow", system-ui, sans-serif; color: #e9dfd0; }
+    .tab { position: fixed; left: 50%; bottom: 0; transform: translateX(-50%); z-index: 2147483646; padding: 6px 22px 8px;
+      border: 1px solid var(--edge-hi); border-bottom: 0; border-radius: 10px 10px 0 0; cursor: pointer;
+      background: linear-gradient(#2c2622, #1b1816); color: var(--brass); font: 700 12px "Bahnschrift", system-ui, sans-serif; letter-spacing: .2em;
+      transition: bottom .35s cubic-bezier(.2,.8,.2,1); }
+    .tab:hover { color: var(--amber); }
+    .tab.open { bottom: 330px; }
+    .drawer { position: fixed; left: 0; right: 0; bottom: 0; z-index: 2147483645; height: 330px; transform: translateY(100%); visibility: hidden;
+      transition: transform .35s cubic-bezier(.2,.8,.2,1), visibility 0s .35s; display: grid; grid-template-columns: 24px 1fr 24px;
+      background: ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; border-top: 2px solid var(--edge-hi); box-shadow: 0 -12px 40px #000c; }
+    .drawer.open { transform: none; visibility: visible; transition: transform .35s cubic-bezier(.2,.8,.2,1); }
+    .wood { background: ${T('wood.jpg')} center / 100% 100% no-repeat, #3a2012; box-shadow: inset 0 0 10px #000b, inset 0 0 0 1px #0006; }
+    .drawer > .wood:last-child { transform: scaleX(-1); }
+    .console { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px; padding: 8px; min-width: 0; }
+    .section { position: relative; padding: 8px; border: 1px solid #0009; border-radius: 6px;
+      background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px; box-shadow: inset 0 1px 0 #ffffff14, inset 0 0 18px #000a, 0 2px 4px #000a; }
+    .screw { position: absolute; width: 10px; height: 10px; background: ${T('screw.png')} center / 100% 100% no-repeat; filter: drop-shadow(0 1px 1px #000c); }
+    .screw.tl { top: 3px; left: 3px } .screw.tr { top: 3px; right: 3px } .screw.bl { bottom: 3px; left: 3px } .screw.br { bottom: 3px; right: 3px }
+    .title { font-size: 12px; font-weight: 700; text-shadow: 0 1px 2px #000; letter-spacing: .22em; color: #f0c88e; margin: 0 0 6px 12px; text-transform: uppercase; }
+    .channels { display: flex; gap: 6px; }
+    .strip { width: 84px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 4px; }
+    .strip .name { width: 70px; text-align: center; padding: 6px 0 5px; background: ${T('label.png')} center / 100% 100% no-repeat;
+      color: #2a241c; font-weight: 800; font-size: 12px; letter-spacing: .12em; filter: drop-shadow(0 1px 2px #000a); }
+    .btns { display: flex; gap: 4px; }
+    .btn { --src: ${T('btn-cream.png')}; position: relative; width: 38px; height: 22px; padding: 0; cursor: pointer;
+      border: 6px solid transparent; border-image: var(--src) 16 fill / 6px stretch; background: none;
+      font: 800 9px/10px "Bahnschrift", system-ui, sans-serif; letter-spacing: .06em; color: #2a241c; filter: drop-shadow(0 2px 1px #000a); }
+    .btn.mute { --src: ${T('btn-red.png')}; color: #ffe9e4; text-shadow: 0 1px 1px #000a; }
+    .btn.on, .btn:active { --src: ${T('btn-cream-down.png')}; transform: translateY(1px); filter: drop-shadow(0 1px 0 #000a); }
+    .btn.mute.on, .btn.mute:active { --src: ${T('btn-red-down.png')}; }
+    .btn.solo.on { filter: drop-shadow(0 0 7px #ffb347); }
+    .btn.mute.on { filter: drop-shadow(0 0 7px #ff5a4a); }
+    .btn:disabled { opacity: .4; cursor: default; }
+    .fader-wrap { display: flex; gap: 6px; height: 160px; }
+    .scale { display: flex; flex-direction: column; justify-content: space-between; font-size: 10px; text-shadow: 0 1px 1px #000; color: var(--ink-dim); text-align: right; padding: 2px 0; min-width: 22px; }
+    .track { position: relative; width: 10px; border-radius: 5px; background: #050404; box-shadow: inset 0 0 4px #000, 0 1px 0 #ffffff14; touch-action: none; cursor: ns-resize; }
+    .cap { position: absolute; left: 50%; width: 24px; height: 46px; transform: translate(-50%, 50%); border-radius: 3px;
+      background: ${T('cap-cream.png')} center / 100% 100% no-repeat; box-shadow: 0 3px 5px #000c; }
+    .cap.red { background-image: ${T('cap-red.png')}; }
+    .led-meter { display: flex; flex-direction: column-reverse; gap: 2px; width: 7px; padding: 1px; background: #050404; border-radius: 2px; }
+    .led-meter i { flex: 1; border-radius: 1px; background: #1c1916; }
+    .led-meter i.g.on { background: #51e36a; box-shadow: 0 0 4px #51e36a; }
+    .led-meter i.y.on { background: #ffd24a; box-shadow: 0 0 4px #ffd24a; }
+    .led-meter i.r.on { background: #ff4a3a; box-shadow: 0 0 5px #ff4a3a; }
+    .status { flex-basis: 100%; display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; text-shadow: 0 1px 2px #000; letter-spacing: .14em; color: var(--ink-dim); padding: 0 6px; }
+  `;
+
+  async function installStudioDrawer() {
+    if (studio.host?.isConnected || studio.installing || !document.documentElement) return;
+    studio.installing = true;
+    try {
+      let tex = {};
+      try { tex = await ipcRenderer.invoke('poc:textures'); } catch {}
+      const T = (name) => (tex && typeof tex[name] === 'string' && tex[name].startsWith('data:image/') ? `url("${tex[name]}")` : 'none');
+      const host = document.createElement('div');
+      host.id = 'ytm-poc-studio';
+      const root = host.attachShadow({ mode: 'open' });
+      root.innerHTML = `<style>${STUDIO_CSS(T)}</style><div class="ui">
+        <div class="drawer"><div class="wood"></div><div class="console">
+          <section class="section"><i class="screw tl"></i><i class="screw tr"></i><i class="screw bl"></i><i class="screw br"></i>
+            <h3 class="title">Stems</h3><div class="channels"></div></section>
+          <div class="status"><span></span><span></span><span></span></div>
+        </div><div class="wood"></div></div>
+        <button type="button" class="tab" aria-label="Toggle studio drawer">STUDIO ▲</button></div>`;
+      studio.host = host; studio.root = root;
+      studio.statusEls = [...root.querySelectorAll('.status span')];
+      root.querySelector('.tab').addEventListener('click', () => studioSetOpen(!studio.open));
+      studioRebuildStrips();
+      document.documentElement.appendChild(host);
+      let wasOpen = false;
+      try { wasOpen = localStorage.getItem('ytm-poc-drawer-open') === '1'; } catch {}
+      studioSetOpen(wasOpen);
+    } finally { studio.installing = false; }
   }
 
   function setChannelFormat(node) {
@@ -731,6 +868,13 @@ if (isPcmBridgePage()) {
     stemLimiter.connect(stemBus); stemBus.connect(eqInput);
     stemBus.gain.value = 0;
     stemNodes = { vocalGain, instGain, drumsGain, bassGain, otherGain, stemBus };
+    stemNodes.analysers = {};
+    for (const key of ["vocalGain", "instGain", "drumsGain", "bassGain", "otherGain"]) {
+      const an = context.createAnalyser();
+      an.fftSize = 512;
+      stemNodes[key].connect(an); // meter tap only, not connected onward
+      stemNodes.analysers[key] = an;
+    }
 
     const analyser = context.createAnalyser();
     analyser.fftSize = 2048;
