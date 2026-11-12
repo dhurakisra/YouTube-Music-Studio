@@ -139,6 +139,7 @@ if (isPcmBridgePage()) {
     gainSlider.value = '0';
     gainSlider.setAttribute('aria-label', 'Processed gain in dB');
     gainSlider.className = 'qrange';
+    ctrlReset(gainSlider, () => 0);
     gainSlider.addEventListener('input', () => setUserGain(Number(gainSlider.value)));
     const makeStemSlider = () => makeStemState(); // UI lives in the Studio drawer
     modelSelect = document.createElement('select');
@@ -153,6 +154,7 @@ if (isPcmBridgePage()) {
     const bufSlider = document.createElement('input');
     bufSlider.type = 'range'; bufSlider.min = '0.3'; bufSlider.max = '3'; bufSlider.step = '0.1'; bufSlider.value = String(stemLeadS);
     bufSlider.className = 'qrange';
+    ctrlReset(bufSlider, () => 1.0);
     bufSlider.setAttribute('aria-label', 'Stem jitter buffer in seconds (higher = fewer dropouts, more delay)');
     const bufValue = document.createElement('span');
     bufValue.textContent = stemLeadS.toFixed(1) + ' s';
@@ -194,6 +196,7 @@ if (isPcmBridgePage()) {
         const r = h('div', 'switches fill');
         const restore = h('input', 'qrange', null, { type: 'range', min: '0', max: '1', step: '0.05', 'aria-label': 'Residual restore amount' });
         restore.value = String(fxState.art.restore);
+        ctrlReset(restore, () => 0);
         restore.addEventListener('input', () => { fxState.art.restore = Number(restore.value); saveFx(); sendStemOpts(); });
         r.append(studioToggle('SHIFT', 'art', 'shift', sendStemOpts));
         return [r, row('RESTORE', restore)];
@@ -216,6 +219,16 @@ if (isPcmBridgePage()) {
   }
   function makeStemState() { return { value: '100', pos: STEM_FADER_DEFAULT, stemFlags: { solo: false, mute: false } }; }
   const studio = { host: null, root: null, open: false, strips: [], statusEls: null, raf: 0, installing: false, buf: null, lastStatus: 0 };
+
+  // Ctrl+click on a range slider puts it back to its default and fires its normal input/change handlers.
+  function ctrlReset(el, getDefault) {
+    el.addEventListener('click', (e) => {
+      if (!e.ctrlKey) return;
+      el.value = String(getDefault());
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  }
 
   // YTM enforces Trusted Types: no innerHTML. Build DOM with this helper.
   function h(tag, cls, text, attrs) {
@@ -272,7 +285,7 @@ if (isPcmBridgePage()) {
         applyStemLevels();
       };
       const fromEvent = (e) => { const r = track.getBoundingClientRect(); setPos(1 - (e.clientY - r.top) / r.height); };
-      track.addEventListener('pointerdown', (e) => { track.setPointerCapture(e.pointerId); fromEvent(e); });
+      track.addEventListener('pointerdown', (e) => { if (e.ctrlKey) { setPos(STEM_FADER_DEFAULT); return; } track.setPointerCapture(e.pointerId); fromEvent(e); }); // Ctrl+click = reset
       track.addEventListener('pointermove', (e) => { if (track.hasPointerCapture(e.pointerId)) fromEvent(e); });
       track.addEventListener('dblclick', () => setPos(STEM_FADER_DEFAULT)); // reset to 0 dB
       cap.style.bottom = (state.pos * 100) + '%';
@@ -332,7 +345,7 @@ if (isPcmBridgePage()) {
     const knob = h('div', 'knob ' + cls, null, { role: 'slider', 'aria-label': label, 'aria-valuemin': '0', 'aria-valuemax': '100' });
     const draw = () => { knob.style.setProperty('--a', (-135 + getV() * 270) + 'deg'); knob.setAttribute('aria-valuenow', String(Math.round(getV() * 100))); };
     let y0 = 0, v0 = 0;
-    knob.addEventListener('pointerdown', (e) => { knob.setPointerCapture(e.pointerId); y0 = e.clientY; v0 = getV(); });
+    knob.addEventListener('pointerdown', (e) => { if (e.ctrlKey) { setV(dflt); draw(); return; } knob.setPointerCapture(e.pointerId); y0 = e.clientY; v0 = getV(); });
     knob.addEventListener('pointermove', (e) => { if (!knob.hasPointerCapture(e.pointerId)) return; setV(Math.min(1, Math.max(0, v0 + (y0 - e.clientY) / 150))); draw(); });
     knob.addEventListener('dblclick', () => { setV(dflt); draw(); });
     draw();
@@ -376,6 +389,7 @@ if (isPcmBridgePage()) {
     const info = h('div', 'eqinfo-row');
     info.append(infoText, h('span', null, 'Q'), qSlider);
     sec.append(canvas, row1, row2, info);
+    ctrlReset(qSlider, () => EQ_DEFAULT_BANDS[selected].q);
 
     let selected = 2, dragging = -1, spectrum = null;
     const userPresets = loadUserPresets();
@@ -432,6 +446,7 @@ if (isPcmBridgePage()) {
       layout();
       const [x, y] = pos(e), i = bandAt(x, y);
       if (i < 0) return;
+      if (e.ctrlKey) { Object.assign(eqState.bands[i], EQ_DEFAULT_BANDS[i]); selected = i; manualCommit(); return; } // Ctrl+click = band back to defaults
       selected = i; dragging = i; canvas.setPointerCapture(e.pointerId); updateInfo();
     });
     canvas.addEventListener('pointermove', (e) => {
