@@ -171,8 +171,8 @@ function htdemucsStems(data) {
 }
 
 // Artifact reduction (HT-Demucs). Env toggles for A/B listening: YTM_POC_RESTORE=0..1, YTM_POC_SHIFT=0|1.
-const RESTORE = Math.min(1, Math.max(0, Number(process.env.YTM_POC_RESTORE) || 0));
-const SHIFT_FRAMES = process.env.YTM_POC_SHIFT === '1' ? 11025 : 0; // 0.25 s at 44.1 kHz
+let RESTORE = Math.min(1, Math.max(0, Number(process.env.YTM_POC_RESTORE) || 0));
+let SHIFT_FRAMES = process.env.YTM_POC_SHIFT === '1' ? 11025 : 0; // 0.25 s at 44.1 kHz; both can also be set live via 'stem:options'
 
 // One HT-Demucs pass; shift > 0 delays the input by `shift` frames and un-delays the output.
 async function htdemucsRun(audio, shift) {
@@ -338,6 +338,11 @@ async function shutdown() {
 
 parentPort.on('message', async (event) => {
   const message = event.data;
+  if (message?.type === 'stem:options') {
+    RESTORE = Math.min(1, Math.max(0, Number(message.restore) || 0));
+    SHIFT_FRAMES = message.shift === true ? 11025 : 0;
+    return;
+  }
   if (message?.type === 'stem:shutdown') {
     shuttingDown = true;
     if (!processing) await pump();

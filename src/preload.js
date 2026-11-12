@@ -190,8 +190,17 @@ if (isPcmBridgePage()) {
       row('MODE', modeSelect),
       row('GAIN', gainSlider),
       row('BUFFER', sessionEls.bufSlider, sessionEls.bufValue),
+      (() => { // HT-Demucs artefact reduction (applies live to the next windows)
+        const r = h('div', 'switches fill');
+        const restore = h('input', 'qrange', null, { type: 'range', min: '0', max: '1', step: '0.05', 'aria-label': 'Residual restore amount' });
+        restore.value = String(fxState.art.restore);
+        restore.addEventListener('input', () => { fxState.art.restore = Number(restore.value); saveFx(); sendStemOpts(); });
+        r.append(studioToggle('SHIFT', 'art', 'shift', sendStemOpts));
+        return [r, row('RESTORE', restore)];
+      })().reduce((frag, el) => { frag.appendChild(el); return frag; }, document.createDocumentFragment()),
       row('', button),
     );
+    sendStemOpts(); // restore saved artefact-reduction options in the stem process
   }
 
   // ---- Studio drawer: slide-up console in a Shadow DOM (isolated from YTM CSS). Stems section is live; the other sections come later. ----
@@ -539,6 +548,53 @@ if (isPcmBridgePage()) {
     };
   }
 
+  // Switch button with an LED, bound to a boolean in fxState.
+  function studioToggle(text, group, key, onChange) {
+    const btn = h('button', 'btn solo fxon', null, { type: 'button', 'aria-label': text });
+    const led = h('span', 'led');
+    btn.append(led, document.createTextNode(text));
+    const sync = () => { const v = fxState[group][key]; btn.classList.toggle('on', v); led.classList.toggle('on', v); btn.setAttribute('aria-pressed', String(v)); };
+    btn.addEventListener('click', () => { fxState[group][key] = !fxState[group][key]; sync(); saveFx(); onChange(); });
+    sync();
+    return btn;
+  }
+
+  function studioBuildVocalLab(sec) {
+    const group = 'voc', row = h('div', 'row fxknobs');
+    const defs = [['COMP', 'comp', ''], ['DE-ESS', 'deess', ''], ['PRES', 'pres', ''], ['REVERB', 'rev', 'red'], ['DECAY', 'decay', 'red'], ['DELAY', 'dly', 'red'], ['TIME', 'time', 'red']];
+    for (const [label, key, cls] of defs) {
+      const dflt = key === 'decay' ? 0.4 : key === 'time' ? 0.4 : 0;
+      row.appendChild(studioKnob(label, cls, () => fxState[group][key], (v) => { fxState[group][key] = v; applyVocalFxAll(); saveFx(); }, dflt));
+    }
+    const sw = h('div', 'switches'); sw.appendChild(studioToggle('VOCAL LAB', group, 'on', applyVocalFxAll));
+    sec.append(row, sw);
+  }
+
+  function studioBuildEnhancer(sec) {
+    const group = 'enh', row = h('div', 'row fxknobs');
+    const defs = [['DRIVE', 'drive', '', 0], ['WARMTH', 'warmth', '', 0], ['AIR', 'air', '', 0], ['WIDTH', 'width', 'red', 0.5]];
+    const build = () => {
+      row.textContent = '';
+      for (const [label, key, cls, dflt] of defs) {
+        row.appendChild(studioKnob(label, cls, () => fxState[group][key], (v) => { fxState[group][key] = v; applyEnhancer(); saveFx(); }, dflt));
+      }
+    };
+    build();
+    const sw = h('div', 'switches fill');
+    sw.appendChild(studioToggle('ENHANCER', group, 'on', () => { routeEnhancer(); applyEnhancer(); }));
+    // Character presets: starting points for [drive, warmth, air, width].
+    for (const [name, v] of [['ANALOG', [0.25, 0.5, 0.2, 0.5]], ['VINYL', [0.15, 0.7, 0, 0.45]], ['TAPE', [0.35, 0.6, 0.1, 0.5]]]) {
+      const b = h('button', 'btn', name, { type: 'button' });
+      b.addEventListener('click', () => {
+        [fxState.enh.drive, fxState.enh.warmth, fxState.enh.air, fxState.enh.width] = v;
+        fxState.enh.on = true; saveFx(); build(); routeEnhancer(); applyEnhancer();
+        sw.firstChild.classList.add('on'); sw.firstChild.firstChild.classList.add('on');
+      });
+      sw.appendChild(b);
+    }
+    sec.append(row, sw);
+  }
+
   const STUDIO_CSS = (T) => `
     :host { all: initial; }
     * { box-sizing: border-box; }
@@ -561,6 +617,12 @@ if (isPcmBridgePage()) {
     .section.session .eqinfo-row { justify-content: space-between; }
     .section.session .qrange { width: 100px; }
     .btn.capture { width: 100%; height: 28px; margin-top: 4px; }
+    .section.fx { width: 232px; flex: 0 0 auto; }
+    .section.fx.enh { width: 238px; }
+    .row.fxknobs { flex-wrap: wrap; justify-content: flex-start; gap: 10px 12px; padding-left: 6px; }
+    .btn.fxon { width: 100%; height: 26px; }
+    .switches.fill .btn.fxon { flex: 1 1 100%; }
+    .console { overflow-y: auto; }
     .section.eq { flex: 1 1 360px; max-width: 560px; min-width: 0; }
     .eq-screen { width: 100%; height: 150px; border-radius: 6px; display: block; background: #031003; touch-action: none; cursor: crosshair;
       box-shadow: inset 0 0 22px #000, 0 0 0 2px #0a0f0a, 0 0 0 3px var(--edge); }
@@ -651,7 +713,11 @@ if (isPcmBridgePage()) {
       sessSection.classList.add('session');
       const status = h('div', 'status');
       status.append(h('span'), h('span'), h('span'));
-      consoleEl.append(sessSection, section, eqSection, outSection, status);
+      const labSection = studioMakeSection('Vocal Lab');
+      labSection.classList.add('fx');
+      const enhSection = studioMakeSection('Enhancer');
+      enhSection.classList.add('fx', 'enh');
+      consoleEl.append(sessSection, section, eqSection, labSection, enhSection, outSection, status);
       drawer.append(h('div', 'wood'), consoleEl, h('div', 'wood'));
       ui.append(drawer, h('button', 'tab', 'STUDIO \u25B2', { type: 'button', 'aria-label': 'Toggle studio drawer' }));
       root.append(style, ui);
@@ -662,6 +728,8 @@ if (isPcmBridgePage()) {
       studioBuildEq(eqSection);
       studioBuildOutput(outSection);
       studioBuildSession(sessSection);
+      studioBuildVocalLab(labSection);
+      studioBuildEnhancer(enhSection);
       applyOutput();
       document.documentElement.appendChild(host);
       let wasOpen = false;
@@ -903,14 +971,153 @@ if (isPcmBridgePage()) {
     const analyser = context.createAnalyser();
     analyser.fftSize = 4096; analyser.smoothingTimeConstant = 0.8;
     prev.connect(analyser); // tap only: drives the EQ screen spectrum
-    prev.connect(master);
-    masterEq = { context, input, filters, analyser, limiter, eqOut, master, outNode, anL, anR, limiterOn: null };
+    enhancer = buildEnhancer(context);
+    enhancer.output.connect(master);
+    masterEq = { context, input, filters, analyser, limiter, eqOut, master, outNode, anL, anR, limiterOn: null, enhOn: null };
+    routeEnhancer(); applyEnhancer(); // Enhancer off = eqOut goes straight to master (clean bypass)
     routeLimiter();
     for (const [i, b] of eqState.bands.entries()) {
       filters[i].frequency.value = b.freq; filters[i].Q.value = b.q; filters[i].gain.value = eqState.enabled ? b.gain : 0;
     }
     return input;
   }
+
+  // ---- Enhancer (master bus) and Vocal Lab (vocal stem): native Web Audio nodes only, the YTM CSP blocks AudioWorklet. ----
+  const FX_KEY = 'ytm-poc-fx-v1';
+  const fxState = (() => {
+    const fresh = {
+      enh: { on: false, drive: 0, warmth: 0, air: 0, width: 0.5 }, // width 0.5 = 100% (neutral), 0 = mono, 1 = 200%
+      voc: { on: false, comp: 0, deess: 0, pres: 0, rev: 0, decay: 0.4, dly: 0, time: 0.4 },
+      art: { shift: false, restore: 0 },
+    };
+    try {
+      const saved = JSON.parse(localStorage.getItem(FX_KEY) || 'null');
+      for (const group of Object.keys(fresh)) for (const k of Object.keys(fresh[group])) {
+        const v = saved?.[group]?.[k];
+        if (typeof fresh[group][k] === 'boolean') fresh[group][k] = v === true;
+        else if (Number.isFinite(v)) fresh[group][k] = Math.min(1, Math.max(0, v));
+      }
+    } catch {}
+    return fresh;
+  })();
+  function saveFx() { try { localStorage.setItem(FX_KEY, JSON.stringify(fxState)); } catch {} }
+  let enhancer = null;
+  const vocalFxInstances = [];
+  const fxGain = (context) => { const g = context.createGain(); setChannelFormat(g); return g; };
+  const fxBiquad = (context, type, freq, q) => {
+    const n = context.createBiquadFilter(); n.type = type; n.frequency.value = freq; if (q) n.Q.value = q; setChannelFormat(n); return n;
+  };
+
+  function buildEnhancer(context) {
+    const input = fxGain(context), output = fxGain(context);
+    const warmLow = fxBiquad(context, 'lowshelf', 180), warmHigh = fxBiquad(context, 'highshelf', 7000), air = fxBiquad(context, 'highshelf', 11000);
+    const dry = fxGain(context), shaperIn = fxGain(context), shaperOut = fxGain(context), wet = fxGain(context), sum = fxGain(context);
+    const shaper = context.createWaveShaper();
+    const curve = new Float32Array(2048);
+    for (let i = 0; i < curve.length; i += 1) curve[i] = Math.tanh(2 * ((i / (curve.length - 1)) * 2 - 1)) / Math.tanh(2);
+    shaper.curve = curve; shaper.oversample = '2x';
+    input.connect(warmLow); warmLow.connect(warmHigh); warmHigh.connect(air);
+    air.connect(dry); dry.connect(sum);
+    air.connect(shaperIn); shaperIn.connect(shaper); shaper.connect(shaperOut); shaperOut.connect(wet); wet.connect(sum);
+    // Width: mid/side. M = (L+R)/2, S = (L-R)/2 * width; L = M+S, R = M-S.
+    const split = context.createChannelSplitter(2), merge = context.createChannelMerger(2);
+    const mid = fxGain(context), side = fxGain(context), sideInv = fxGain(context);
+    const lm = fxGain(context), rm = fxGain(context), ls = fxGain(context), rs = fxGain(context);
+    lm.gain.value = 0.5; rm.gain.value = 0.5; ls.gain.value = 0.5; rs.gain.value = -0.5; sideInv.gain.value = -1;
+    sum.connect(split);
+    split.connect(lm, 0); split.connect(ls, 0); split.connect(rm, 1); split.connect(rs, 1);
+    lm.connect(mid); rm.connect(mid); ls.connect(side); rs.connect(side); side.connect(sideInv);
+    mid.connect(merge, 0, 0); side.connect(merge, 0, 0); mid.connect(merge, 0, 1); sideInv.connect(merge, 0, 1);
+    merge.connect(output);
+    return { context, input, output, warmLow, warmHigh, air, dry, wet, shaperIn, shaperOut, side, sideInv };
+  }
+
+  function applyEnhancer() {
+    if (!enhancer) return;
+    const e = enhancer, s = fxState.enh, on = s.on, t = e.context.currentTime;
+    const set = (p, v) => p.setTargetAtTime(v, t, 0.02);
+    set(e.warmLow.gain, on ? s.warmth * 4 : 0);
+    set(e.warmHigh.gain, on ? -s.warmth * 2.5 : 0);
+    set(e.air.gain, on ? s.air * 8 : 0);
+    const k = 1 + (on ? s.drive : 0) * 5, w = on ? Math.min(1, s.drive * 2) : 0;
+    set(e.shaperIn.gain, k); set(e.shaperOut.gain, 1 / (1 + 0.25 * (k - 1)));
+    set(e.wet.gain, w); set(e.dry.gain, 1 - w);
+    const width = on ? s.width * 2 : 1;
+    set(e.side.gain, width); // sideInv is fed by `side`, so it inherits the width
+  }
+
+  function routeEnhancer() {
+    if (!masterEq || !enhancer) return;
+    const want = fxState.enh.on;
+    if (masterEq.enhOn === want) return;
+    const { eqOut, master } = masterEq;
+    try { eqOut.disconnect(master); } catch {}
+    try { eqOut.disconnect(enhancer.input); } catch {}
+    eqOut.connect(want ? enhancer.input : master);
+    masterEq.enhOn = want;
+  }
+
+  // Generated reverb impulse response: decaying stereo noise with a darkening tail and a short pre-delay.
+  function makeReverbIR(context, seconds) {
+    const rate = context.sampleRate, len = Math.max(1, Math.floor(rate * seconds)), pre = Math.floor(rate * 0.015), fadeIn = Math.floor(rate * 0.005);
+    const buf = context.createBuffer(2, len + pre, rate);
+    for (let c = 0; c < 2; c += 1) {
+      const d = buf.getChannelData(c);
+      let lp = 0;
+      for (let i = 0; i < len; i += 1) {
+        const t = i / len;
+        lp += ((Math.random() * 2 - 1) - lp) * Math.max(0.08, 0.9 - 0.8 * t);
+        d[pre + i] = lp * Math.exp(-6.9 * t) * (i < fadeIn ? i / fadeIn : 1);
+      }
+    }
+    return buf;
+  }
+
+  // One vocal effects chain: [LR4 split: highs -> de-esser] -> compressor -> presence/air -> out, plus reverb and delay sends.
+  function buildVocalFx(context, destination) {
+    const input = fxGain(context), sum = fxGain(context), out = fxGain(context);
+    const lp = [fxBiquad(context, 'lowpass', 6500, 0.707), fxBiquad(context, 'lowpass', 6500, 0.707)];
+    const hp = [fxBiquad(context, 'highpass', 6500, 0.707), fxBiquad(context, 'highpass', 6500, 0.707)];
+    const ess = context.createDynamicsCompressor(); setChannelFormat(ess);
+    input.connect(lp[0]); lp[0].connect(lp[1]); lp[1].connect(sum);
+    input.connect(hp[0]); hp[0].connect(hp[1]); hp[1].connect(ess); ess.connect(sum);
+    const comp = context.createDynamicsCompressor(); setChannelFormat(comp);
+    const makeup = fxGain(context), pres = fxBiquad(context, 'peaking', 3200, 0.8), airShelf = fxBiquad(context, 'highshelf', 10000);
+    sum.connect(comp); comp.connect(makeup); makeup.connect(pres); pres.connect(airShelf); airShelf.connect(out);
+    const revSend = fxGain(context), conv = context.createConvolver(), revOut = fxGain(context);
+    out.connect(revSend); revSend.connect(conv); conv.connect(revOut);
+    const dlySend = fxGain(context), delay = context.createDelay(2), fb = fxGain(context), fbLp = fxBiquad(context, 'lowpass', 3500, 0.707), dlyOut = fxGain(context);
+    fb.gain.value = 0.38;
+    out.connect(dlySend); dlySend.connect(delay); delay.connect(fbLp); fbLp.connect(fb); fb.connect(delay); delay.connect(dlyOut);
+    out.connect(destination); revOut.connect(destination); dlyOut.connect(destination);
+    const fx = { context, input, ess, comp, makeup, pres, airShelf, revSend, conv, delay, dlySend, irKey: null, irTimer: 0 };
+    vocalFxInstances.push(fx);
+    applyVocalFx(fx, true);
+    return fx;
+  }
+
+  function applyVocalFx(fx, immediate) {
+    const s = fxState.voc, on = s.on, t = fx.context.currentTime;
+    const set = (p, v) => (immediate ? (p.value = v) : p.setTargetAtTime(v, t, 0.03));
+    const a = on ? s.comp : 0, d = on ? s.deess : 0;
+    set(fx.comp.threshold, -8 - a * 22); set(fx.comp.ratio, 1 + a * 5); set(fx.comp.knee, 10);
+    set(fx.comp.attack, 0.008); set(fx.comp.release, 0.15);
+    set(fx.makeup.gain, 10 ** (a * 5 / 20));
+    set(fx.ess.threshold, -20 - d * 20); set(fx.ess.ratio, 1 + d * 9); set(fx.ess.knee, 0);
+    set(fx.ess.attack, 0.001); set(fx.ess.release, 0.04);
+    set(fx.pres.gain, on ? s.pres * 6 : 0); set(fx.airShelf.gain, on ? s.pres * 3 : 0);
+    set(fx.revSend.gain, on ? s.rev * 0.8 : 0);
+    set(fx.dlySend.gain, on ? s.dly * 0.6 : 0); set(fx.delay.delayTime, 0.12 + s.time * 0.6);
+    const seconds = Math.round((0.4 + s.decay * 3.6) * 10) / 10;
+    if (fx.irKey !== seconds) {
+      fx.irKey = seconds;
+      clearTimeout(fx.irTimer);
+      const swap = () => { fx.conv.buffer = makeReverbIR(fx.context, seconds); };
+      if (immediate) swap(); else fx.irTimer = setTimeout(swap, 150); // debounce while a knob is being dragged
+    }
+  }
+  function applyVocalFxAll() { for (const fx of vocalFxInstances) applyVocalFx(fx); }
+  function sendStemOpts() { ipcRenderer.send('poc:stem-opts', { shift: fxState.art.shift, restore: fxState.art.restore }); }
 
   // RBJ biquad magnitude (dB) so the curve can be drawn without an audio node.
   function eqBandDb(b, f, fs) {
@@ -967,7 +1174,9 @@ if (isPcmBridgePage()) {
     const stemLimiter = context.createDynamicsCompressor();
     stemLimiter.threshold.value = -6; stemLimiter.ratio.value = 20; stemLimiter.attack.value = 0; stemLimiter.release.value = 0.1; stemLimiter.knee.value = 6;
     for (const node of [vocalGain, instGain, drumsGain, bassGain, otherGain, stemBus, stemLimiter]) setChannelFormat(node);
-    for (const node of [vocalGain, instGain, drumsGain, bassGain, otherGain]) node.connect(stemLimiter);
+    for (const node of [instGain, drumsGain, bassGain, otherGain]) node.connect(stemLimiter);
+    const vocalFx = buildVocalFx(context, stemLimiter); // Vocal Lab sits after the vocal fader, so mute/solo also silence its reverb tail
+    vocalGain.connect(vocalFx.input);
     stemLimiter.connect(stemBus); stemBus.connect(eqInput);
     stemBus.gain.value = 0;
     stemNodes = { vocalGain, instGain, drumsGain, bassGain, otherGain, stemBus };

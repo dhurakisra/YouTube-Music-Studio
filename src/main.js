@@ -106,6 +106,14 @@ ipcMain.on('poc:stem-model', (event, model) => {
   appendLog('stem_model_selected', { model, state: 'selected' });
 });
 
+// Artifact-reduction options for HT-Demucs (shift averaging, residual restore); applied live to the stem process.
+let stemOpts = { shift: false, restore: 0 };
+ipcMain.on('poc:stem-opts', (event, o) => {
+  if (!isTrustedYtmSender(event) || !o || typeof o !== 'object') return;
+  stemOpts = { shift: o.shift === true, restore: Math.min(1, Math.max(0, Number(o.restore) || 0)) };
+  try { stemProcess?.postMessage({ type: 'stem:options', ...stemOpts }); } catch {}
+});
+
 ipcMain.on('poc:metrics', (event, metrics) => {
   if (!isTrustedSender(event) || !metrics || typeof metrics !== 'object') return;
   const fields = safeData(metrics);
@@ -142,6 +150,7 @@ function ensureStemProcess() {
   const child = utilityProcess.fork(path.join(__dirname, 'stem-process.js'), [`--model=${selectedStemModel}`], { serviceName: 'YTM audio stem separation' });
   stemProcess = child;
   stemProcessRunning = true;
+  try { child.postMessage({ type: 'stem:options', ...stemOpts }); } catch {}
   appendLog('stem_process_started', { state: 'starting' });
   child.on('message', (message) => {
     if (!message || typeof message !== 'object') return;
