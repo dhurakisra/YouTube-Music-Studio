@@ -311,6 +311,8 @@ parentPort.on('message', async (event) => {
       if (PROFILE.kind !== 'pass' && !fs.existsSync(PROFILE.file)) throw new Error(`Model not found for profile "${MODEL_ID}": ${PROFILE.file}. Download it using the steps in ${BENCH_README}.`);
       if (PROFILE.kind !== 'pass') session = await ort.InferenceSession.create(PROFILE.file, {
         executionProviders: ['cpu'], graphOptimizationLevel: 'all',
+        // This machine has 32 logical cores: capped threads without spin-waiting leave room for the renderer's audio thread (window budget has ~4x headroom).
+        intraOpNumThreads: 8, interOpNumThreads: 1, extra: { session: { intra_op: { allow_spinning: '0' } } },
         enableCpuMemArena: true, enableMemPattern: true,
       });
       parentPort.postMessage({ type: 'stem:ready', model: MODEL_ID, windowFrames: WINDOW_FRAMES });

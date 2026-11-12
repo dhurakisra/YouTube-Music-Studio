@@ -992,8 +992,7 @@ if (isPcmBridgePage()) {
     const analyser = context.createAnalyser();
     analyser.fftSize = 4096; analyser.smoothingTimeConstant = 0.8;
     prev.connect(analyser); // tap only: drives the EQ screen spectrum
-    enhancer = buildEnhancer(context);
-    enhancer.output.connect(master);
+    enhancer = buildEnhancer(context); // wired in routeEnhancer(): while off, none of its nodes are connected to the destination
     masterEq = { context, input, filters, analyser, limiter, eqOut, master, outNode, anL, anR, limiterOn: null, enhOn: null };
     routeEnhancer(); applyEnhancer(); // Enhancer off = eqOut goes straight to master (clean bypass)
     routeLimiter();
@@ -1073,7 +1072,8 @@ if (isPcmBridgePage()) {
     const { eqOut, master } = masterEq;
     try { eqOut.disconnect(master); } catch {}
     try { eqOut.disconnect(enhancer.input); } catch {}
-    eqOut.connect(want ? enhancer.input : master);
+    try { enhancer.output.disconnect(master); } catch {}
+    if (want) { eqOut.connect(enhancer.input); enhancer.output.connect(master); } else eqOut.connect(master);
     masterEq.enhOn = want;
   }
 
@@ -1109,8 +1109,7 @@ if (isPcmBridgePage()) {
     const dlySend = fxGain(context), delay = context.createDelay(2), fb = fxGain(context), fbLp = fxBiquad(context, 'lowpass', 3500, 0.707), dlyOut = fxGain(context);
     fb.gain.value = 0.38;
     out.connect(dlySend); dlySend.connect(delay); delay.connect(fbLp); fbLp.connect(fb); fb.connect(delay); delay.connect(dlyOut);
-    out.connect(destination); revOut.connect(destination); dlyOut.connect(destination);
-    const fx = { context, input, source, destination, routed: null, ess, comp, makeup, pres, airShelf, revSend, conv, delay, dlySend, irKey: null, irTimer: 0 };
+    const fx = { outs: [out, revOut, dlyOut], context, input, source, destination, routed: null, ess, comp, makeup, pres, airShelf, revSend, conv, delay, dlySend, irKey: null, irTimer: 0 };
     vocalFxInstances.push(fx);
     applyVocalFx(fx, true);
     routeVocalFx(fx);
@@ -1123,7 +1122,8 @@ if (isPcmBridgePage()) {
     if (fx.routed === want) return;
     try { fx.source.disconnect(fx.input); } catch {}
     try { fx.source.disconnect(fx.destination); } catch {}
-    fx.source.connect(want ? fx.input : fx.destination);
+    for (const o of fx.outs) { try { o.disconnect(fx.destination); } catch {} }
+    if (want) { for (const o of fx.outs) o.connect(fx.destination); fx.source.connect(fx.input); } else fx.source.connect(fx.destination);
     fx.routed = want;
   }
 
