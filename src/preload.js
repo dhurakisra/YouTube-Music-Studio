@@ -662,6 +662,10 @@ if (isPcmBridgePage()) {
     }
     const startAt = Math.round(p.nextTime * (msg.sampleRate || STEM_RATE)) / (msg.sampleRate || STEM_RATE); // whole-sample start: no 1-sample gaps/overlaps between chunks
     const rate = msg.sampleRate || STEM_RATE;
+    // Capture clock runs ~0.4-0.7% slower than the playout clock: steer playbackRate from the lead error so the buffer stays level instead of draining into an underrun.
+    const leadErrS = (startAt - now) - stemLeadS;
+    const pr = 1 + Math.max(-0.015, Math.min(0.015, leadErrS * 0.02));
+    p.rate = pr;
     for (const [name, gainKey] of layers) {
       const data = outs[name], target = stemNodes[gainKey];
       const buffer = context.createBuffer(2, hop, rate);
@@ -669,16 +673,17 @@ if (isPcmBridgePage()) {
       for (let n = 0; n < hop; n += 1) { left[n] = data[2 * n]; right[n] = data[2 * n + 1]; }
       const node = context.createBufferSource();
       node.buffer = buffer;
+      node.playbackRate.value = pr;
       node.connect(target);
       node.start(startAt);
     }
-    p.nextTime = startAt + hop / rate;
+    p.nextTime = startAt + hop / rate / pr;
     p.chunks += 1;
     if (p.chunks % 5 === 1) {
       const leadMs = (startAt - now) * 1000;
       const outputMs = (typeof context.outputLatency === 'number' ? context.outputLatency : 0) * 1000;
       log('stem_playout', {
-        chunks: p.chunks, underruns: p.underruns, peak: Number(p.peakMax.toFixed(3)), handleMs: Number((p.handleMaxMs || 0).toFixed(1)), leadMs: Number(leadMs.toFixed(1)),
+        chunks: p.chunks, underruns: p.underruns, peak: Number(p.peakMax.toFixed(3)), handleMs: Number((p.handleMaxMs || 0).toFixed(1)), leadMs: Number(leadMs.toFixed(1)), rate: Number(p.rate.toFixed(4)),
         processingMs: msg.processingMs,
         delayEstimateMs: Math.round(frames / rate * 1000 + 93 + (msg.processingMs || 0) + leadMs + outputMs),
       });
