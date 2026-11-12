@@ -202,7 +202,6 @@ if (isPcmBridgePage()) {
     const updateSliderVisibility = () => { studioRebuildStrips(); applyStemLevels(); };
     modelSelect.addEventListener('change', updateSliderVisibility);
     updateSliderVisibility();
-    overlay.appendChild(installEqPanel(overlay));
     document.documentElement.appendChild(overlay);
     installStudioDrawer();
   }
@@ -299,6 +298,8 @@ if (isPcmBridgePage()) {
       s.held = Math.max(db, s.held - 1.2); // fast attack, gentle fall
       for (let j = 0; j < s.leds.length; j += 1) s.leds[j].classList.toggle('on', s.held > -42 + j * 2.8);
     }
+    studio.eqDraw?.();
+    studio.vuDraw?.();
     const now = performance.now();
     if (now - studio.lastStatus > 250) {
       studio.lastStatus = now;
@@ -322,6 +323,234 @@ if (isPcmBridgePage()) {
     if (open && !studio.raf) studio.raf = requestAnimationFrame(studioTick);
   }
 
+  function studioMakeSection(title) {
+    const sec = h('section', 'section');
+    for (const pos of ['tl', 'tr', 'bl', 'br']) sec.appendChild(h('i', 'screw ' + pos));
+    sec.appendChild(h('h3', 'title', title));
+    return sec;
+  }
+
+  function studioKnob(label, cls, getV, setV, dflt) {
+    const box = h('div', 'knob-box');
+    const knob = h('div', 'knob ' + cls, null, { role: 'slider', 'aria-label': label, 'aria-valuemin': '0', 'aria-valuemax': '100' });
+    const draw = () => { knob.style.setProperty('--a', (-135 + getV() * 270) + 'deg'); knob.setAttribute('aria-valuenow', String(Math.round(getV() * 100))); };
+    let y0 = 0, v0 = 0;
+    knob.addEventListener('pointerdown', (e) => { knob.setPointerCapture(e.pointerId); y0 = e.clientY; v0 = getV(); });
+    knob.addEventListener('pointermove', (e) => { if (!knob.hasPointerCapture(e.pointerId)) return; setV(Math.min(1, Math.max(0, v0 + (y0 - e.clientY) / 150))); draw(); });
+    knob.addEventListener('dblclick', () => { setV(dflt); draw(); });
+    draw();
+    box.append(knob, document.createTextNode(label));
+    return box;
+  }
+
+  function studioBuildEq(sec) {
+    const PAD_L = 30, PAD_B = 16, DB = 18, FMIN = 20, FMAX = 20000;
+    const COLORS = ['#ff6b6b', '#ffa94d', '#ffd43b', '#69db7c', '#4dabf7', '#b197fc'];
+    const canvas = h('canvas', 'eq-screen', null, { 'aria-label': 'Equalizer curve: drag points to adjust bands' });
+    const ctx = canvas.getContext('2d');
+    let W = 520, H = 150, plotW = 1, plotH = 1, dpr = window.devicePixelRatio || 1;
+    const layout = () => {
+      const w = canvas.clientWidth, hh = canvas.clientHeight;
+      if (!w || !hh) return false;
+      dpr = window.devicePixelRatio || 1;
+      if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(hh * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(hh * dpr); }
+      W = w; H = hh; plotW = W - PAD_L - 6; plotH = H - PAD_B - 6;
+      return true;
+    };
+    const xOf = (f) => PAD_L + plotW * Math.log(f / FMIN) / Math.log(FMAX / FMIN);
+    const fOf = (x) => FMIN * (FMAX / FMIN) ** ((x - PAD_L) / plotW);
+    const yOf = (db) => 6 + plotH * (0.5 - db / (2 * DB));
+    const dbOf = (y) => (0.5 - (y - 6) / plotH) * 2 * DB;
+    const fmtFreq = (f) => (f >= 1000 ? (f / 1000).toFixed(f >= 10000 ? 0 : 1) + ' kHz' : Math.round(f) + ' Hz');
+
+    const eqOn = h('button', 'btn solo', 'EQ ON', { type: 'button', 'aria-label': 'Equalizer enabled' });
+    const quick = [['FLAT', 'Flat'], ['BASS BOOST', 'Bass boost'], ['VOCAL', 'Vocal boost']].map(([text, preset]) => h('button', 'btn', text, { type: 'button', 'data-preset': preset }));
+    const row1 = h('div', 'switches fill');
+    row1.append(eqOn, ...quick);
+    const presetSelect = h('select', 'sel', null, { 'aria-label': 'Equalizer preset' });
+    const nameInput = h('input', 'txt', null, { type: 'text', maxlength: '40', placeholder: 'Preset name', 'aria-label': 'Name for saving the current equalizer as a preset' });
+    for (const type of ['keydown', 'keyup', 'keypress']) nameInput.addEventListener(type, (e) => e.stopPropagation()); // typing a name must not trigger YouTube Music hotkeys
+    const saveBtn = h('button', 'btn', 'SAVE', { type: 'button' });
+    const delBtn = h('button', 'btn', 'DEL', { type: 'button' });
+    const row2 = h('div', 'switches fill eqrow');
+    row2.append(presetSelect, nameInput, saveBtn, delBtn);
+    const infoText = h('span', 'eqinfo');
+    const qSlider = h('input', 'qrange', null, { type: 'range', min: '0.1', max: '10', step: '0.05', 'aria-label': 'Selected band Q' });
+    const info = h('div', 'eqinfo-row');
+    info.append(infoText, h('span', null, 'Q'), qSlider);
+    sec.append(canvas, row1, row2, info);
+
+    let selected = 2, dragging = -1, spectrum = null;
+    const userPresets = loadUserPresets();
+    const syncOn = () => { eqOn.classList.toggle('on', eqState.enabled); eqOn.setAttribute('aria-pressed', String(eqState.enabled)); };
+    const updateInfo = () => {
+      const b = eqState.bands[selected];
+      infoText.textContent = `BAND ${selected + 1} (${b.type === 'peaking' ? 'BELL' : b.type === 'lowshelf' ? 'LOW SHELF' : 'HIGH SHELF'}): ${fmtFreq(b.freq)}, ${b.gain > 0 ? '+' : ''}${b.gain.toFixed(1)} dB`;
+      qSlider.value = String(b.q);
+    };
+    const refreshPresetList = (selectValue) => {
+      presetSelect.textContent = '';
+      const add = (value, text) => { const o = document.createElement('option'); o.value = value; o.textContent = text; presetSelect.appendChild(o); };
+      add('', 'Custom');
+      for (const name of Object.keys(EQ_BUILTIN_PRESETS)) add('b:' + name, name);
+      for (const name of Object.keys(userPresets)) add('u:' + name, '★ ' + name);
+      presetSelect.value = selectValue ?? '';
+      if (presetSelect.value !== (selectValue ?? '')) presetSelect.value = '';
+      delBtn.disabled = !presetSelect.value.startsWith('u:');
+    };
+    const commit = () => { applyEq(); saveEqState(); updateInfo(); };
+    const manualCommit = () => { commit(); refreshPresetList(''); }; // any hand edit leaves the preset: back to "Custom"
+    const applyPreset = (v) => {
+      if (v.startsWith('b:')) {
+        const gains = EQ_BUILTIN_PRESETS[v.slice(2)];
+        eqState.bands.forEach((b, i) => Object.assign(b, EQ_DEFAULT_BANDS[i], { gain: gains[i] }));
+      } else if (v.startsWith('u:') && userPresets[v.slice(2)]) {
+        userPresets[v.slice(2)].forEach((p, i) => Object.assign(eqState.bands[i], p));
+      } else { refreshPresetList(''); return; }
+      commit(); refreshPresetList(v);
+    };
+    refreshPresetList(''); syncOn(); updateInfo();
+    for (const b of quick) b.addEventListener('click', () => applyPreset('b:' + b.getAttribute('data-preset')));
+    presetSelect.addEventListener('change', () => applyPreset(presetSelect.value));
+    eqOn.addEventListener('click', () => { eqState.enabled = !eqState.enabled; syncOn(); applyEq(); saveEqState(); });
+    saveBtn.addEventListener('click', () => {
+      const name = nameInput.value.trim().slice(0, 40);
+      if (!name || name in EQ_BUILTIN_PRESETS) { nameInput.focus(); return; } // built-in names are reserved
+      userPresets[name] = eqState.bands.map((b) => ({ freq: b.freq, gain: b.gain, q: b.q }));
+      saveUserPresets(userPresets); nameInput.value = ''; refreshPresetList('u:' + name);
+    });
+    delBtn.addEventListener('click', () => {
+      if (!presetSelect.value.startsWith('u:')) return;
+      delete userPresets[presetSelect.value.slice(2)];
+      saveUserPresets(userPresets); refreshPresetList('');
+    });
+
+    const bandAt = (x, y) => {
+      let best = -1, bestD = 14;
+      eqState.bands.forEach((b, i) => { const d = Math.hypot(xOf(b.freq) - x, yOf(b.gain) - y); if (d < bestD) { bestD = d; best = i; } });
+      return best;
+    };
+    const pos = (e) => { const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) * (W / r.width), (e.clientY - r.top) * (H / r.height)]; };
+    canvas.addEventListener('pointerdown', (e) => {
+      layout();
+      const [x, y] = pos(e), i = bandAt(x, y);
+      if (i < 0) return;
+      selected = i; dragging = i; canvas.setPointerCapture(e.pointerId); updateInfo();
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      if (dragging < 0) return;
+      const [x, y] = pos(e), b = eqState.bands[dragging];
+      b.freq = Math.round(Math.min(FMAX, Math.max(FMIN, fOf(Math.min(W - 6, Math.max(PAD_L, x))))));
+      b.gain = Math.round(Math.min(DB, Math.max(-DB, dbOf(y))) * 2) / 2;
+      manualCommit();
+    });
+    const endDrag = () => { dragging = -1; };
+    canvas.addEventListener('pointerup', endDrag); canvas.addEventListener('pointercancel', endDrag);
+    canvas.addEventListener('dblclick', (e) => {
+      const [x, y] = pos(e), i = bandAt(x, y);
+      if (i >= 0) { eqState.bands[i].gain = 0; selected = i; manualCommit(); }
+    });
+    canvas.addEventListener('wheel', (e) => {
+      const [x, y] = pos(e), i = bandAt(x, y);
+      if (i < 0) return;
+      e.preventDefault(); selected = i;
+      const b = eqState.bands[i];
+      b.q = Math.min(10, Math.max(0.1, b.q * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
+      manualCommit();
+    }, { passive: false });
+    qSlider.addEventListener('input', () => { eqState.bands[selected].q = Number(qSlider.value); manualCommit(); });
+
+    studio.eqDraw = () => {
+      if (!layout()) return;
+      const fs = masterEq?.context.sampleRate || 44100;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+      ctx.font = '10px sans-serif'; ctx.textBaseline = 'middle'; ctx.lineWidth = 1;
+      for (const db of [-12, -6, 0, 6, 12]) {
+        ctx.strokeStyle = db === 0 ? '#1f6a1f' : '#0f3a0f'; ctx.beginPath(); ctx.moveTo(PAD_L, yOf(db)); ctx.lineTo(W - 6, yOf(db)); ctx.stroke();
+        ctx.fillStyle = '#3c9a3c'; ctx.textAlign = 'right'; ctx.fillText((db > 0 ? '+' : '') + db, PAD_L - 5, yOf(db));
+      }
+      ctx.textAlign = 'center';
+      for (const f of [50, 100, 200, 500, 1000, 2000, 5000, 10000]) {
+        ctx.strokeStyle = '#0f3a0f'; ctx.beginPath(); ctx.moveTo(xOf(f), 6); ctx.lineTo(xOf(f), 6 + plotH); ctx.stroke();
+        ctx.fillStyle = '#3c9a3c'; ctx.fillText(f >= 1000 ? f / 1000 + 'k' : String(f), xOf(f), H - PAD_B / 2 + 2);
+      }
+      if (masterEq?.analyser) { // live spectrum (post-EQ, so it shows what you hear)
+        const an = masterEq.analyser;
+        if (!spectrum || spectrum.length !== an.frequencyBinCount) spectrum = new Float32Array(an.frequencyBinCount);
+        an.getFloatFrequencyData(spectrum);
+        ctx.beginPath(); ctx.moveTo(PAD_L, 6 + plotH);
+        const binHz = fs / an.fftSize;
+        for (let x = PAD_L; x <= W - 6; x += 2) {
+          const bin = Math.min(spectrum.length - 1, Math.max(1, Math.round(fOf(x) / binHz)));
+          const level = Math.max(0, Math.min(1, (spectrum[bin] + 100) / 80)); // -100..-20 dBFS
+          ctx.lineTo(x, 6 + plotH - level * plotH * 0.9);
+        }
+        ctx.lineTo(W - 6, 6 + plotH); ctx.closePath();
+        ctx.fillStyle = '#1d6a1d88'; ctx.fill();
+      }
+      ctx.beginPath(); // combined response curve
+      for (let x = PAD_L; x <= W - 6; x += 2) {
+        const f = fOf(x);
+        let db = 0;
+        if (eqState.enabled) for (const b of eqState.bands) db += eqBandDb(b, f, fs);
+        db = Math.max(-DB, Math.min(DB, db));
+        if (x === PAD_L) ctx.moveTo(x, yOf(db)); else ctx.lineTo(x, yOf(db));
+      }
+      ctx.strokeStyle = eqState.enabled ? '#6dff6d' : '#2d5a2d'; ctx.lineWidth = 2.5;
+      ctx.shadowColor = '#6dff6d'; ctx.shadowBlur = eqState.enabled ? 8 : 0; ctx.stroke(); ctx.shadowBlur = 0;
+      eqState.bands.forEach((b, i) => {
+        const x = xOf(b.freq), y = yOf(b.gain);
+        ctx.beginPath(); ctx.arc(x, y, i === selected ? 8 : 6, 0, Math.PI * 2);
+        ctx.fillStyle = COLORS[i % COLORS.length]; ctx.globalAlpha = eqState.enabled ? 1 : 0.4; ctx.fill(); ctx.globalAlpha = 1;
+        ctx.lineWidth = 2; ctx.strokeStyle = i === selected ? '#fff' : '#000'; ctx.stroke();
+        ctx.fillStyle = '#000'; ctx.textAlign = 'center'; ctx.fillText(String(i + 1), x, y + 0.5);
+      });
+    };
+  }
+
+  function studioBuildOutput(sec) {
+    const vus = h('div', 'vus');
+    const needles = [];
+    for (const label of ['L', 'R']) {
+      const d = h('div', 'vu');
+      d.append(h('span', 'lbl l', label), h('span', 'lbl c', 'VU'), h('i', 'nd'));
+      vus.appendChild(d); needles.push(d.querySelector('.nd'));
+    }
+    const knobs = h('div', 'row');
+    knobs.append(
+      studioKnob('MASTER', 'red big', () => eqState.master, (v) => { eqState.master = v; applyOutput(); saveEqState(); }, 0.8),
+      studioKnob('THRESH', '', () => eqState.thresh, (v) => { eqState.thresh = v; applyOutput(); saveEqState(); }, 5 / 6));
+    const lim = h('button', 'btn solo limiter', null, { type: 'button', 'aria-label': 'Output limiter enabled' });
+    const led = h('span', 'led');
+    lim.append(led, document.createTextNode('LIMITER'));
+    lim.title = 'Peak limiter after the EQ and master gain. Off = no processing.';
+    const syncLim = () => { lim.classList.toggle('on', eqState.limiter); led.classList.toggle('on', eqState.limiter); lim.setAttribute('aria-pressed', String(eqState.limiter)); };
+    lim.addEventListener('click', () => { eqState.limiter = !eqState.limiter; routeLimiter(); saveEqState(); syncLim(); });
+    syncLim();
+    const sw = h('div', 'switches'); sw.appendChild(lim);
+    const master = h('div', 'master'); master.append(knobs, sw);
+    sec.append(vus, master);
+
+    const buf = new Float32Array(2048), angles = [-39, -39];
+    const rmsDb = (an) => {
+      an.getFloatTimeDomainData(buf);
+      let s = 0;
+      for (let i = 0; i < buf.length; i += 1) s += buf[i] * buf[i];
+      return s > 0 ? 10 * Math.log10(s / buf.length) : -100;
+    };
+    // Needle: 0 VU (= -18 dBFS RMS) sits at the start of the red zone (+20 deg); ends at +-39 deg.
+    const angleOf = (db) => Math.max(-39, Math.min(39, db <= -18 ? 20 + (db + 18) * 2.95 : 20 + (db + 18) * 1.9));
+    studio.vuDraw = () => {
+      const ans = masterEq?.anL ? [masterEq.anL, masterEq.anR] : null;
+      needles.forEach((n, i) => {
+        const target = ans ? angleOf(rmsDb(ans[i])) : -39;
+        angles[i] += (target - angles[i]) * 0.25; // ~VU ballistics
+        n.style.transform = `rotate(${angles[i].toFixed(1)}deg)`;
+      });
+    };
+  }
+
   const STUDIO_CSS = (T) => `
     :host { all: initial; }
     * { box-sizing: border-box; }
@@ -340,6 +569,39 @@ if (isPcmBridgePage()) {
     .wood { background: ${T('wood.jpg')} center / 100% 100% no-repeat, #3a2012; box-shadow: inset 0 0 10px #000b, inset 0 0 0 1px #0006; }
     .drawer > .wood:last-child { transform: scaleX(-1); }
     .console { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px; padding: 8px; min-width: 0; }
+    .section.eq { flex: 1 1 360px; max-width: 560px; min-width: 0; }
+    .eq-screen { width: 100%; height: 150px; border-radius: 6px; display: block; background: #031003; touch-action: none; cursor: crosshair;
+      box-shadow: inset 0 0 22px #000, 0 0 0 2px #0a0f0a, 0 0 0 3px var(--edge); }
+    .switches { display: flex; gap: 6px; margin: 8px 0 0 4px; flex-wrap: wrap; align-items: center; }
+    .switches.fill .btn { flex: 1; width: auto; height: 26px; font-size: 10px; }
+    .switches.eqrow .btn { flex: 0 0 46px; }
+    .sel, .txt { height: 24px; min-width: 0; border: 1px solid #000; border-radius: 4px; background: #1b1713; color: #e9dfd0; font: 700 11px "Bahnschrift", system-ui, sans-serif; padding: 0 6px; }
+    .sel { flex: 1 1 90px; } .txt { flex: 1 1 80px; width: 80px; }
+    .eqinfo-row { display: flex; gap: 8px; align-items: center; margin: 6px 4px 0; font-size: 10px; font-weight: 700; letter-spacing: .1em; color: var(--ink-dim); text-shadow: 0 1px 2px #000; }
+    .eqinfo { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .qrange { width: 110px; }
+    .vus { display: flex; gap: 8px; margin-bottom: 8px; }
+    .vu { width: 128px; height: 80px; border-radius: 4px; position: relative; overflow: hidden;
+      background: ${T('vu-face.png')} center / 100% 100% no-repeat; box-shadow: inset 0 0 14px #000a, 0 0 0 2px #0a0807, 0 0 0 3px var(--edge); }
+    .vu .nd { position: absolute; left: 50%; bottom: -24.4%; width: 2px; height: 107%; margin-left: -1px; border-radius: 1px;
+      background: linear-gradient(#1a1208, #3a2a10); transform-origin: 50% 100%; transform: rotate(-39deg); box-shadow: 3px 2px 3px #0005; }
+    .vu .lbl { position: absolute; font-weight: 800; font-size: 12px; color: #3a2a10; letter-spacing: .1em; }
+    .vu .lbl.l { left: 8px; bottom: 6px; } .vu .lbl.c { left: 50%; bottom: 26%; transform: translateX(-50%); font-size: 15px; }
+    .vu::after { content: ""; position: absolute; inset: 0; background: linear-gradient(160deg, #ffffff38, transparent 38%); pointer-events: none; }
+    .master { display: flex; flex-direction: column; gap: 8px; width: 190px; }
+    .row { display: flex; gap: 12px; align-items: flex-end; justify-content: center; }
+    .knob-box { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10px; font-weight: 700; color: var(--ink-dim); letter-spacing: .12em; text-shadow: 0 1px 2px #000; }
+    .knob { position: relative; width: 38px; height: 38px; cursor: ns-resize; touch-action: none;
+      background: ${T('knob-cream.png')} center / 100% 100% no-repeat; filter: drop-shadow(0 3px 3px #000b); }
+    .knob::after { content: ""; position: absolute; left: 50%; top: 8px; width: 2.5px; height: 10px; margin-left: -1.25px;
+      background: ${T('pointer.png')} center / 100% 100% no-repeat; transform-origin: 50% 11px; transform: rotate(var(--a, 0deg)); }
+    .knob:not(.red):not(.blue):not(.big)::after { filter: brightness(.12) contrast(1.2); }
+    .knob.red { background-image: ${T('knob-red.png')}; }
+    .knob.big { width: 62px; height: 62px; background-image: ${T('knob-master.png')}; }
+    .knob.big::after { top: 12px; width: 4px; height: 17px; margin-left: -2px; transform-origin: 50% 19px; }
+    .btn.limiter { width: 80px; }
+    .led { width: 8px; height: 8px; border-radius: 50%; background: #3a2a14; display: inline-block; margin-right: 4px; }
+    .led.on { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
     .section { position: relative; padding: 8px; border: 1px solid #0009; border-radius: 6px;
       background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px; box-shadow: inset 0 1px 0 #ffffff14, inset 0 0 18px #000a, 0 2px 4px #000a; }
     .screw { position: absolute; width: 10px; height: 10px; background: ${T('screw.png')} center / 100% 100% no-repeat; filter: drop-shadow(0 1px 1px #000c); }
@@ -388,12 +650,14 @@ if (isPcmBridgePage()) {
       const ui = h('div', 'ui');
       const drawer = h('div', 'drawer');
       const consoleEl = h('div', 'console');
-      const section = h('section', 'section');
-      for (const pos of ['tl', 'tr', 'bl', 'br']) section.appendChild(h('i', 'screw ' + pos));
-      section.append(h('h3', 'title', 'Stems'), h('div', 'channels'));
+      const section = studioMakeSection('Stems');
+      section.appendChild(h('div', 'channels'));
+      const eqSection = studioMakeSection('Equalizer');
+      eqSection.classList.add('eq');
+      const outSection = studioMakeSection('Output');
       const status = h('div', 'status');
       status.append(h('span'), h('span'), h('span'));
-      consoleEl.append(section, status);
+      consoleEl.append(section, eqSection, outSection, status);
       drawer.append(h('div', 'wood'), consoleEl, h('div', 'wood'));
       ui.append(drawer, h('button', 'tab', 'STUDIO \u25B2', { type: 'button', 'aria-label': 'Toggle studio drawer' }));
       root.append(style, ui);
@@ -401,6 +665,9 @@ if (isPcmBridgePage()) {
       studio.statusEls = [...root.querySelectorAll('.status span')];
       root.querySelector('.tab').addEventListener('click', () => studioSetOpen(!studio.open));
       studioRebuildStrips();
+      studioBuildEq(eqSection);
+      studioBuildOutput(outSection);
+      applyOutput();
       document.documentElement.appendChild(host);
       let wasOpen = false;
       try { wasOpen = localStorage.getItem('ytm-poc-drawer-open') === '1'; } catch {}
@@ -529,12 +796,14 @@ if (isPcmBridgePage()) {
     { type: 'highshelf', freq: 12000, gain: 0, q: 0.707 },
   ];
   const eqState = (() => {
-    const fresh = { enabled: true, limiter: false, bands: EQ_DEFAULT_BANDS.map((b) => ({ ...b })) };
+    const fresh = { enabled: true, limiter: false, master: 0.8, thresh: 5 / 6, bands: EQ_DEFAULT_BANDS.map((b) => ({ ...b })) };
     try {
       const saved = JSON.parse(localStorage.getItem(EQ_STORE_KEY) || 'null');
       if (saved && Array.isArray(saved.bands) && saved.bands.length === fresh.bands.length) {
         fresh.enabled = saved.enabled !== false;
         fresh.limiter = saved.limiter === true; // opt-in only, never automatic
+        if (Number.isFinite(saved.master)) fresh.master = Math.min(1, Math.max(0, saved.master));
+        if (Number.isFinite(saved.thresh)) fresh.thresh = Math.min(1, Math.max(0, saved.thresh));
         saved.bands.forEach((b, i) => {
           const f = Number(b.freq), g = Number(b.gain), q = Number(b.q);
           if (Number.isFinite(f)) fresh.bands[i].freq = Math.min(20000, Math.max(20, f));
@@ -585,14 +854,24 @@ if (isPcmBridgePage()) {
     });
   }
 
+  // Output stage: eq -> master gain -> [limiter] -> out -> destination; out also feeds the L/R VU analysers.
+  function masterDb(v) { return v <= 0.8 ? -24 + (v / 0.8) * 24 : ((v - 0.8) / 0.2) * 6; } // knob 0.8 = 0 dB
+  function threshDb(v) { return -12 + v * 12; } // knob 5/6 = -2 dB (the old fixed ceiling)
+
+  function applyOutput() {
+    if (!masterEq) return;
+    const t = masterEq.context.currentTime;
+    masterEq.master.gain.setTargetAtTime(10 ** (masterDb(eqState.master) / 20), t, 0.02);
+    masterEq.limiter.threshold.setTargetAtTime(threshDb(eqState.thresh), t, 0.02);
+  }
+
   function routeLimiter() {
     if (!masterEq || masterEq.limiterOn === eqState.limiter) return;
-    const { eqOut, limiter, context } = masterEq;
-    try { eqOut.disconnect(context.destination); } catch {}
-    try { eqOut.disconnect(limiter); } catch {}
+    const { master, limiter, outNode } = masterEq;
+    try { master.disconnect(); } catch {}
     try { limiter.disconnect(); } catch {}
-    if (eqState.limiter) { eqOut.connect(limiter); limiter.connect(context.destination); }
-    else eqOut.connect(context.destination);
+    if (eqState.limiter) { master.connect(limiter); limiter.connect(outNode); }
+    else master.connect(outNode);
     masterEq.limiterOn = eqState.limiter;
   }
 
@@ -609,16 +888,28 @@ if (isPcmBridgePage()) {
       prev = f;
       return f;
     });
-    // Optional output limiter (user-controlled). Off = filters go straight to destination (clean bypass).
+    // Optional output limiter (user-controlled). Off = master goes straight to the output (clean bypass).
     const limiter = context.createDynamicsCompressor();
-    limiter.threshold.value = -2; limiter.knee.value = 0; limiter.ratio.value = 20;
+    limiter.threshold.value = threshDb(eqState.thresh); limiter.knee.value = 0; limiter.ratio.value = 20;
     limiter.attack.value = 0.003; limiter.release.value = 0.1;
     setChannelFormat(limiter);
+    const master = context.createGain();
+    master.gain.value = 10 ** (masterDb(eqState.master) / 20);
+    setChannelFormat(master);
+    const outNode = context.createGain();
+    setChannelFormat(outNode);
+    outNode.connect(context.destination);
+    const splitter = context.createChannelSplitter(2);
+    outNode.connect(splitter);
+    const anL = context.createAnalyser(), anR = context.createAnalyser();
+    anL.fftSize = 2048; anR.fftSize = 2048;
+    splitter.connect(anL, 0); splitter.connect(anR, 1); // taps only: drive the VU meters
     const eqOut = prev;
     const analyser = context.createAnalyser();
     analyser.fftSize = 4096; analyser.smoothingTimeConstant = 0.8;
-    prev.connect(analyser); // tap only: drives the EQ panel spectrum
-    masterEq = { context, input, filters, analyser, limiter, eqOut, limiterOn: null };
+    prev.connect(analyser); // tap only: drives the EQ screen spectrum
+    prev.connect(master);
+    masterEq = { context, input, filters, analyser, limiter, eqOut, master, outNode, anL, anR, limiterOn: null };
     routeLimiter();
     for (const [i, b] of eqState.bands.entries()) {
       filters[i].frequency.value = b.freq; filters[i].Q.value = b.q; filters[i].gain.value = eqState.enabled ? b.gain : 0;
@@ -643,214 +934,6 @@ if (isPcmBridgePage()) {
     const w = 2 * Math.PI * f / fs, c1 = Math.cos(w), s1 = Math.sin(w), c2 = Math.cos(2 * w), s2 = Math.sin(2 * w);
     const nr = b0 + b1 * c1 + b2 * c2, ni = -(b1 * s1 + b2 * s2), dr = a0 + a1 * c1 + a2 * c2, di = -(a1 * s1 + a2 * s2);
     return 10 * Math.log10((nr * nr + ni * ni) / (dr * dr + di * di));
-  }
-
-  function installEqPanel(anchor) {
-    const W = 560, H = 240, PAD_L = 34, PAD_B = 18, DB = 18, FMIN = 20, FMAX = 20000;
-    const COLORS = ['#ff6b6b', '#ffa94d', '#ffd43b', '#69db7c', '#4dabf7', '#b197fc'];
-    const toggle = document.createElement('button');
-    toggle.type = 'button'; toggle.textContent = 'EQ'; toggle.setAttribute('aria-label', 'Toggle equalizer panel');
-    toggle.style.cssText = 'padding:0 6px;font:inherit;cursor:pointer';
-    const panel = document.createElement('div');
-    Object.assign(panel.style, {
-      position: 'fixed', right: '16px', zIndex: '2147483647', display: 'none', padding: '8px 10px',
-      borderRadius: '7px', background: '#161616f2', color: '#fff', font: '12px sans-serif', boxShadow: '0 2px 8px #0008',
-    });
-    const head = document.createElement('div');
-    head.style.cssText = 'display:flex;gap:12px;align-items:center;margin-bottom:6px';
-    const enable = document.createElement('input');
-    enable.type = 'checkbox'; enable.checked = eqState.enabled; enable.setAttribute('aria-label', 'Equalizer enabled');
-    const enableLabel = document.createElement('label'); enableLabel.append(enable, ' EQ on');
-    const reset = document.createElement('button');
-    reset.type = 'button'; reset.textContent = 'Reset'; reset.style.cssText = 'font:inherit;cursor:pointer';
-    const hint = document.createElement('span');
-    hint.style.cssText = 'opacity:.65';
-    hint.textContent = 'Drag a point: left/right = frequency, up/down = gain. Scroll on a point = Q. Double-click = 0 dB.';
-    const limiterBox = document.createElement('input');
-    limiterBox.type = 'checkbox'; limiterBox.checked = eqState.limiter; limiterBox.setAttribute('aria-label', 'Output limiter enabled');
-    const limiterLabel = document.createElement('label'); limiterLabel.append(limiterBox, ' Limiter on');
-    limiterLabel.title = 'Peak limiter after the EQ (about -2 dB ceiling). Off = no processing.';
-    limiterBox.addEventListener('change', () => { eqState.limiter = limiterBox.checked; routeLimiter(); saveEqState(); });
-    head.append(enableLabel, limiterLabel, reset, hint);
-    const canvas = document.createElement('canvas');
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = W * dpr; canvas.height = H * dpr;
-    canvas.style.cssText = `width:${W}px;height:${H}px;display:block;touch-action:none;cursor:crosshair;border-radius:4px;background:#0c0c0c`;
-    canvas.setAttribute('aria-label', 'Equalizer curve: drag points to adjust bands');
-    const info = document.createElement('div');
-    info.style.cssText = 'margin-top:6px;display:flex;gap:8px;align-items:center;min-height:20px';
-    const infoText = document.createElement('span');
-    const qLabel = document.createElement('label'); qLabel.textContent = 'Q ';
-    const qSlider = document.createElement('input');
-    qSlider.type = 'range'; qSlider.min = '0.1'; qSlider.max = '10'; qSlider.step = '0.05'; qSlider.style.width = '120px';
-    qSlider.setAttribute('aria-label', 'Selected band Q');
-    qLabel.appendChild(qSlider);
-    info.append(infoText, qLabel);
-    const presetRow = document.createElement('div');
-    presetRow.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:6px';
-    const presetSelect = document.createElement('select');
-    presetSelect.setAttribute('aria-label', 'Equalizer preset');
-    const nameInput = document.createElement('input');
-    nameInput.type = 'text'; nameInput.maxLength = 40; nameInput.placeholder = 'Preset name'; nameInput.style.width = '110px';
-    nameInput.setAttribute('aria-label', 'Name for saving the current equalizer as a preset');
-    const saveBtn = document.createElement('button');
-    saveBtn.type = 'button'; saveBtn.textContent = 'Save'; saveBtn.style.cssText = 'font:inherit;cursor:pointer';
-    const delBtn = document.createElement('button');
-    delBtn.type = 'button'; delBtn.textContent = 'Delete'; delBtn.style.cssText = 'font:inherit;cursor:pointer';
-    for (const type of ['keydown', 'keyup', 'keypress']) nameInput.addEventListener(type, (e) => e.stopPropagation()); // typing a name must not trigger YouTube Music hotkeys
-    presetRow.append('Preset ', presetSelect, nameInput, saveBtn, delBtn);
-    panel.append(head, presetRow, canvas, info);
-
-    const ctx = canvas.getContext('2d');
-    const plotW = W - PAD_L - 6, plotH = H - PAD_B - 6;
-    const xOf = (f) => PAD_L + plotW * Math.log(f / FMIN) / Math.log(FMAX / FMIN);
-    const fOf = (x) => FMIN * (FMAX / FMIN) ** ((x - PAD_L) / plotW);
-    const yOf = (db) => 6 + plotH * (0.5 - db / (2 * DB));
-    const dbOf = (y) => (0.5 - (y - 6) / plotH) * 2 * DB;
-    const fmtFreq = (f) => (f >= 1000 ? (f / 1000).toFixed(f >= 10000 ? 0 : 1) + ' kHz' : Math.round(f) + ' Hz');
-    let selected = 2, dragging = -1, raf = 0, spectrum = null;
-
-    const updateInfo = () => {
-      const b = eqState.bands[selected];
-      infoText.textContent = `Band ${selected + 1} (${b.type === 'peaking' ? 'bell' : b.type === 'lowshelf' ? 'low shelf' : 'high shelf'}): ${fmtFreq(b.freq)}, ${b.gain > 0 ? '+' : ''}${b.gain.toFixed(1)} dB`;
-      qSlider.value = String(b.q);
-    };
-    const bandAt = (x, y) => {
-      let best = -1, bestD = 14;
-      eqState.bands.forEach((b, i) => { const d = Math.hypot(xOf(b.freq) - x, yOf(b.gain) - y); if (d < bestD) { bestD = d; best = i; } });
-      return best;
-    };
-    const draw = () => {
-      raf = panel.style.display === 'none' ? 0 : requestAnimationFrame(draw);
-      const fs = masterEq?.context.sampleRate || 44100;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, W, H);
-      ctx.font = '10px sans-serif'; ctx.textBaseline = 'middle';
-      // grid
-      ctx.lineWidth = 1;
-      for (const db of [-12, -6, 0, 6, 12]) {
-        ctx.strokeStyle = db === 0 ? '#555' : '#2a2a2a'; ctx.beginPath(); ctx.moveTo(PAD_L, yOf(db)); ctx.lineTo(W - 6, yOf(db)); ctx.stroke();
-        ctx.fillStyle = '#888'; ctx.textAlign = 'right'; ctx.fillText((db > 0 ? '+' : '') + db, PAD_L - 5, yOf(db));
-      }
-      ctx.textAlign = 'center';
-      for (const f of [50, 100, 200, 500, 1000, 2000, 5000, 10000]) {
-        ctx.strokeStyle = '#2a2a2a'; ctx.beginPath(); ctx.moveTo(xOf(f), 6); ctx.lineTo(xOf(f), 6 + plotH); ctx.stroke();
-        ctx.fillStyle = '#888'; ctx.fillText(f >= 1000 ? f / 1000 + 'k' : String(f), xOf(f), H - PAD_B / 2 + 2);
-      }
-      // live spectrum (post-EQ, so it shows what you hear)
-      if (masterEq?.analyser) {
-        const an = masterEq.analyser;
-        if (!spectrum || spectrum.length !== an.frequencyBinCount) spectrum = new Float32Array(an.frequencyBinCount);
-        an.getFloatFrequencyData(spectrum);
-        ctx.beginPath(); ctx.moveTo(PAD_L, 6 + plotH);
-        const binHz = fs / an.fftSize;
-        for (let x = PAD_L; x <= W - 6; x += 2) {
-          const bin = Math.min(spectrum.length - 1, Math.max(1, Math.round(fOf(x) / binHz)));
-          const level = Math.max(0, Math.min(1, (spectrum[bin] + 100) / 80)); // -100..-20 dBFS
-          ctx.lineTo(x, 6 + plotH - level * plotH * 0.9);
-        }
-        ctx.lineTo(W - 6, 6 + plotH); ctx.closePath();
-        ctx.fillStyle = '#3b82f655'; ctx.fill();
-      }
-      // combined response curve
-      ctx.beginPath();
-      for (let x = PAD_L; x <= W - 6; x += 2) {
-        const f = fOf(x);
-        let db = 0;
-        if (eqState.enabled) for (const b of eqState.bands) db += eqBandDb(b, f, fs);
-        db = Math.max(-DB, Math.min(DB, db));
-        if (x === PAD_L) ctx.moveTo(x, yOf(db)); else ctx.lineTo(x, yOf(db));
-      }
-      ctx.strokeStyle = eqState.enabled ? '#fff' : '#666'; ctx.lineWidth = 2; ctx.stroke();
-      // band handles
-      eqState.bands.forEach((b, i) => {
-        const x = xOf(b.freq), y = yOf(b.gain);
-        ctx.beginPath(); ctx.arc(x, y, i === selected ? 8 : 6, 0, Math.PI * 2);
-        ctx.fillStyle = COLORS[i % COLORS.length]; ctx.globalAlpha = eqState.enabled ? 1 : 0.4; ctx.fill(); ctx.globalAlpha = 1;
-        ctx.lineWidth = 2; ctx.strokeStyle = i === selected ? '#fff' : '#000'; ctx.stroke();
-        ctx.fillStyle = '#000'; ctx.textAlign = 'center'; ctx.fillText(String(i + 1), x, y + 0.5);
-      });
-    };
-
-    const pos = (e) => { const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) * (W / r.width), (e.clientY - r.top) * (H / r.height)]; };
-    let userPresets = loadUserPresets();
-    const refreshPresetList = (selectValue) => {
-      presetSelect.textContent = '';
-      const add = (value, text) => { const o = document.createElement('option'); o.value = value; o.textContent = text; presetSelect.appendChild(o); };
-      add('', 'Custom');
-      for (const name of Object.keys(EQ_BUILTIN_PRESETS)) add('b:' + name, name);
-      for (const name of Object.keys(userPresets)) add('u:' + name, '★ ' + name);
-      presetSelect.value = selectValue ?? '';
-      if (presetSelect.value !== (selectValue ?? '')) presetSelect.value = '';
-      delBtn.disabled = !presetSelect.value.startsWith('u:');
-      delBtn.style.opacity = delBtn.disabled ? '0.4' : '1';
-    };
-    const commit = () => { applyEq(); saveEqState(); updateInfo(); };
-    const manualCommit = () => { commit(); refreshPresetList(''); }; // any hand edit leaves the preset: back to "Custom"
-    refreshPresetList('');
-    presetSelect.addEventListener('change', () => {
-      const v = presetSelect.value;
-      if (v.startsWith('b:')) {
-        const gains = EQ_BUILTIN_PRESETS[v.slice(2)];
-        eqState.bands.forEach((b, i) => Object.assign(b, EQ_DEFAULT_BANDS[i], { gain: gains[i] }));
-      } else if (v.startsWith('u:') && userPresets[v.slice(2)]) {
-        userPresets[v.slice(2)].forEach((p, i) => Object.assign(eqState.bands[i], p));
-      } else { refreshPresetList(''); return; }
-      commit(); refreshPresetList(v);
-    });
-    saveBtn.addEventListener('click', () => {
-      const name = nameInput.value.trim().slice(0, 40);
-      if (!name || name in EQ_BUILTIN_PRESETS) { nameInput.focus(); return; } // built-in names are reserved
-      userPresets[name] = eqState.bands.map((b) => ({ freq: b.freq, gain: b.gain, q: b.q }));
-      saveUserPresets(userPresets); nameInput.value = ''; refreshPresetList('u:' + name);
-    });
-    delBtn.addEventListener('click', () => {
-      if (!presetSelect.value.startsWith('u:')) return;
-      delete userPresets[presetSelect.value.slice(2)];
-      saveUserPresets(userPresets); refreshPresetList('');
-    });
-    canvas.addEventListener('pointerdown', (e) => {
-      const [x, y] = pos(e), i = bandAt(x, y);
-      if (i < 0) return;
-      selected = i; dragging = i; canvas.setPointerCapture(e.pointerId); updateInfo();
-    });
-    canvas.addEventListener('pointermove', (e) => {
-      if (dragging < 0) return;
-      const [x, y] = pos(e), b = eqState.bands[dragging];
-      b.freq = Math.round(Math.min(FMAX, Math.max(FMIN, fOf(Math.min(W - 6, Math.max(PAD_L, x))))));
-      b.gain = Math.round(Math.min(DB, Math.max(-DB, dbOf(y))) * 2) / 2;
-      manualCommit();
-    });
-    const endDrag = () => { dragging = -1; };
-    canvas.addEventListener('pointerup', endDrag); canvas.addEventListener('pointercancel', endDrag);
-    canvas.addEventListener('dblclick', (e) => {
-      const [x, y] = pos(e), i = bandAt(x, y);
-      if (i >= 0) { eqState.bands[i].gain = 0; selected = i; manualCommit(); }
-    });
-    canvas.addEventListener('wheel', (e) => {
-      const [x, y] = pos(e), i = bandAt(x, y);
-      if (i < 0) return;
-      e.preventDefault(); selected = i;
-      const b = eqState.bands[i];
-      b.q = Math.min(10, Math.max(0.1, b.q * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
-      manualCommit();
-    }, { passive: false });
-    qSlider.addEventListener('input', () => { eqState.bands[selected].q = Number(qSlider.value); manualCommit(); });
-    enable.addEventListener('change', () => { eqState.enabled = enable.checked; applyEq(); saveEqState(); });
-    reset.addEventListener('click', () => {
-      eqState.bands.forEach((b, i) => Object.assign(b, EQ_DEFAULT_BANDS[i]));
-      commit(); refreshPresetList('b:Flat');
-    });
-    toggle.addEventListener('click', () => {
-      const open = panel.style.display === 'none';
-      if (open) {
-        panel.style.top = Math.round(anchor.getBoundingClientRect().bottom + 6) + 'px';
-        panel.style.display = 'block'; updateInfo();
-        if (!raf) raf = requestAnimationFrame(draw);
-      } else panel.style.display = 'none';
-    });
-    document.documentElement.appendChild(panel);
-    return toggle;
   }
 
   // The audible paths stay entirely in Web Audio; the main thread only receives measurement blocks.
