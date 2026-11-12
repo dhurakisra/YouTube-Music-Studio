@@ -411,73 +411,185 @@ if (isPcmBridgePage()) {
       return f;
     });
     prev.connect(context.destination);
-    masterEq = { context, input, filters };
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 4096; analyser.smoothingTimeConstant = 0.8;
+    prev.connect(analyser); // tap only: drives the EQ panel spectrum
+    masterEq = { context, input, filters, analyser };
     for (const [i, b] of eqState.bands.entries()) {
       filters[i].frequency.value = b.freq; filters[i].Q.value = b.q; filters[i].gain.value = eqState.enabled ? b.gain : 0;
     }
     return input;
   }
 
+  // RBJ biquad magnitude (dB) so the curve can be drawn without an audio node.
+  function eqBandDb(b, f, fs) {
+    const A = 10 ** (b.gain / 40), w0 = 2 * Math.PI * b.freq / fs, cw = Math.cos(w0), sw = Math.sin(w0);
+    const alpha = sw / (2 * b.q), sq = 2 * Math.sqrt(A) * alpha;
+    let b0, b1, b2, a0, a1, a2;
+    if (b.type === 'lowshelf') {
+      b0 = A * ((A + 1) - (A - 1) * cw + sq); b1 = 2 * A * ((A - 1) - (A + 1) * cw); b2 = A * ((A + 1) - (A - 1) * cw - sq);
+      a0 = (A + 1) + (A - 1) * cw + sq; a1 = -2 * ((A - 1) + (A + 1) * cw); a2 = (A + 1) + (A - 1) * cw - sq;
+    } else if (b.type === 'highshelf') {
+      b0 = A * ((A + 1) + (A - 1) * cw + sq); b1 = -2 * A * ((A - 1) + (A + 1) * cw); b2 = A * ((A + 1) + (A - 1) * cw - sq);
+      a0 = (A + 1) - (A - 1) * cw + sq; a1 = 2 * ((A - 1) - (A + 1) * cw); a2 = (A + 1) - (A - 1) * cw - sq;
+    } else {
+      b0 = 1 + alpha * A; b1 = -2 * cw; b2 = 1 - alpha * A; a0 = 1 + alpha / A; a1 = -2 * cw; a2 = 1 - alpha / A;
+    }
+    const w = 2 * Math.PI * f / fs, c1 = Math.cos(w), s1 = Math.sin(w), c2 = Math.cos(2 * w), s2 = Math.sin(2 * w);
+    const nr = b0 + b1 * c1 + b2 * c2, ni = -(b1 * s1 + b2 * s2), dr = a0 + a1 * c1 + a2 * c2, di = -(a1 * s1 + a2 * s2);
+    return 10 * Math.log10((nr * nr + ni * ni) / (dr * dr + di * di));
+  }
+
   function installEqPanel(anchor) {
+    const W = 560, H = 240, PAD_L = 34, PAD_B = 18, DB = 18, FMIN = 20, FMAX = 20000;
+    const COLORS = ['#ff6b6b', '#ffa94d', '#ffd43b', '#69db7c', '#4dabf7', '#b197fc'];
     const toggle = document.createElement('button');
-    toggle.type = 'button'; toggle.textContent = 'EQ'; toggle.setAttribute('aria-label', 'Toggle parametric equalizer panel');
+    toggle.type = 'button'; toggle.textContent = 'EQ'; toggle.setAttribute('aria-label', 'Toggle equalizer panel');
     toggle.style.cssText = 'padding:0 6px;font:inherit;cursor:pointer';
     const panel = document.createElement('div');
     Object.assign(panel.style, {
       position: 'fixed', right: '16px', zIndex: '2147483647', display: 'none', padding: '8px 10px',
-      borderRadius: '7px', background: '#161616ee', color: '#fff', font: '12px sans-serif', boxShadow: '0 2px 8px #0008',
+      borderRadius: '7px', background: '#161616f2', color: '#fff', font: '12px sans-serif', boxShadow: '0 2px 8px #0008',
     });
     const head = document.createElement('div');
-    head.style.cssText = 'display:flex;gap:10px;align-items:center;margin-bottom:6px';
+    head.style.cssText = 'display:flex;gap:12px;align-items:center;margin-bottom:6px';
     const enable = document.createElement('input');
     enable.type = 'checkbox'; enable.checked = eqState.enabled; enable.setAttribute('aria-label', 'Equalizer enabled');
     const enableLabel = document.createElement('label'); enableLabel.append(enable, ' EQ on');
     const reset = document.createElement('button');
     reset.type = 'button'; reset.textContent = 'Reset'; reset.style.cssText = 'font:inherit;cursor:pointer';
-    head.append(enableLabel, reset);
-    panel.appendChild(head);
-    const rows = [];
+    const hint = document.createElement('span');
+    hint.style.cssText = 'opacity:.65';
+    hint.textContent = 'Drag a point: left/right = frequency, up/down = gain. Scroll on a point = Q. Double-click = 0 dB.';
+    head.append(enableLabel, reset, hint);
+    const canvas = document.createElement('canvas');
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    canvas.style.cssText = `width:${W}px;height:${H}px;display:block;touch-action:none;cursor:crosshair;border-radius:4px;background:#0c0c0c`;
+    canvas.setAttribute('aria-label', 'Equalizer curve: drag points to adjust bands');
+    const info = document.createElement('div');
+    info.style.cssText = 'margin-top:6px;display:flex;gap:8px;align-items:center;min-height:20px';
+    const infoText = document.createElement('span');
+    const qLabel = document.createElement('label'); qLabel.textContent = 'Q ';
+    const qSlider = document.createElement('input');
+    qSlider.type = 'range'; qSlider.min = '0.1'; qSlider.max = '10'; qSlider.step = '0.05'; qSlider.style.width = '120px';
+    qSlider.setAttribute('aria-label', 'Selected band Q');
+    qLabel.appendChild(qSlider);
+    info.append(infoText, qLabel);
+    panel.append(head, canvas, info);
+
+    const ctx = canvas.getContext('2d');
+    const plotW = W - PAD_L - 6, plotH = H - PAD_B - 6;
+    const xOf = (f) => PAD_L + plotW * Math.log(f / FMIN) / Math.log(FMAX / FMIN);
+    const fOf = (x) => FMIN * (FMAX / FMIN) ** ((x - PAD_L) / plotW);
+    const yOf = (db) => 6 + plotH * (0.5 - db / (2 * DB));
+    const dbOf = (y) => (0.5 - (y - 6) / plotH) * 2 * DB;
     const fmtFreq = (f) => (f >= 1000 ? (f / 1000).toFixed(f >= 10000 ? 0 : 1) + ' kHz' : Math.round(f) + ' Hz');
-    const fmtGain = (g) => (g > 0 ? '+' : '') + g.toFixed(1) + ' dB';
-    const slider = (min, max, step, aria) => {
-      const s = document.createElement('input');
-      s.type = 'range'; s.min = String(min); s.max = String(max); s.step = String(step); s.style.width = '90px'; s.setAttribute('aria-label', aria);
-      return s;
+    let selected = 2, dragging = -1, raf = 0, spectrum = null;
+
+    const updateInfo = () => {
+      const b = eqState.bands[selected];
+      infoText.textContent = `Band ${selected + 1} (${b.type === 'peaking' ? 'bell' : b.type === 'lowshelf' ? 'low shelf' : 'high shelf'}): ${fmtFreq(b.freq)}, ${b.gain > 0 ? '+' : ''}${b.gain.toFixed(1)} dB`;
+      qSlider.value = String(b.q);
     };
-    const val = () => { const v = document.createElement('span'); v.style.cssText = 'display:inline-block;width:52px;text-align:right'; return v; };
-    eqState.bands.forEach((b, i) => {
-      const row = document.createElement('div');
-      row.style.cssText = 'display:flex;gap:6px;align-items:center;margin:3px 0';
-      const name = document.createElement('span'); name.style.width = '62px';
-      name.textContent = b.type === 'lowshelf' ? 'Low shelf' : b.type === 'highshelf' ? 'High shelf' : 'Band ' + i;
-      const freq = slider(Math.log10(20), Math.log10(20000), 0.005, 'Band ' + (i + 1) + ' frequency');
-      const freqV = val();
-      const gain = slider(-18, 18, 0.5, 'Band ' + (i + 1) + ' gain in dB');
-      const gainV = val();
-      const q = slider(0.1, 10, 0.05, 'Band ' + (i + 1) + ' Q');
-      const qV = val(); qV.style.width = '34px';
-      const sync = () => {
-        freq.value = String(Math.log10(b.freq)); freqV.textContent = fmtFreq(b.freq);
-        gain.value = String(b.gain); gainV.textContent = fmtGain(b.gain);
-        q.value = String(b.q); qV.textContent = 'Q ' + b.q.toFixed(2);
-      };
-      freq.addEventListener('input', () => { b.freq = Math.round(10 ** Number(freq.value)); sync(); applyEq(); saveEqState(); });
-      gain.addEventListener('input', () => { b.gain = Number(gain.value); sync(); applyEq(); saveEqState(); });
-      q.addEventListener('input', () => { b.q = Number(q.value); sync(); applyEq(); saveEqState(); });
-      sync();
-      rows.push(sync);
-      row.append(name, freq, freqV, gain, gainV, q, qV);
-      panel.appendChild(row);
+    const bandAt = (x, y) => {
+      let best = -1, bestD = 14;
+      eqState.bands.forEach((b, i) => { const d = Math.hypot(xOf(b.freq) - x, yOf(b.gain) - y); if (d < bestD) { bestD = d; best = i; } });
+      return best;
+    };
+    const draw = () => {
+      raf = panel.style.display === 'none' ? 0 : requestAnimationFrame(draw);
+      const fs = masterEq?.context.sampleRate || 44100;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+      ctx.font = '10px sans-serif'; ctx.textBaseline = 'middle';
+      // grid
+      ctx.lineWidth = 1;
+      for (const db of [-12, -6, 0, 6, 12]) {
+        ctx.strokeStyle = db === 0 ? '#555' : '#2a2a2a'; ctx.beginPath(); ctx.moveTo(PAD_L, yOf(db)); ctx.lineTo(W - 6, yOf(db)); ctx.stroke();
+        ctx.fillStyle = '#888'; ctx.textAlign = 'right'; ctx.fillText((db > 0 ? '+' : '') + db, PAD_L - 5, yOf(db));
+      }
+      ctx.textAlign = 'center';
+      for (const f of [50, 100, 200, 500, 1000, 2000, 5000, 10000]) {
+        ctx.strokeStyle = '#2a2a2a'; ctx.beginPath(); ctx.moveTo(xOf(f), 6); ctx.lineTo(xOf(f), 6 + plotH); ctx.stroke();
+        ctx.fillStyle = '#888'; ctx.fillText(f >= 1000 ? f / 1000 + 'k' : String(f), xOf(f), H - PAD_B / 2 + 2);
+      }
+      // live spectrum (post-EQ, so it shows what you hear)
+      if (masterEq?.analyser) {
+        const an = masterEq.analyser;
+        if (!spectrum || spectrum.length !== an.frequencyBinCount) spectrum = new Float32Array(an.frequencyBinCount);
+        an.getFloatFrequencyData(spectrum);
+        ctx.beginPath(); ctx.moveTo(PAD_L, 6 + plotH);
+        const binHz = fs / an.fftSize;
+        for (let x = PAD_L; x <= W - 6; x += 2) {
+          const bin = Math.min(spectrum.length - 1, Math.max(1, Math.round(fOf(x) / binHz)));
+          const level = Math.max(0, Math.min(1, (spectrum[bin] + 100) / 80)); // -100..-20 dBFS
+          ctx.lineTo(x, 6 + plotH - level * plotH * 0.9);
+        }
+        ctx.lineTo(W - 6, 6 + plotH); ctx.closePath();
+        ctx.fillStyle = '#3b82f655'; ctx.fill();
+      }
+      // combined response curve
+      ctx.beginPath();
+      for (let x = PAD_L; x <= W - 6; x += 2) {
+        const f = fOf(x);
+        let db = 0;
+        if (eqState.enabled) for (const b of eqState.bands) db += eqBandDb(b, f, fs);
+        db = Math.max(-DB, Math.min(DB, db));
+        if (x === PAD_L) ctx.moveTo(x, yOf(db)); else ctx.lineTo(x, yOf(db));
+      }
+      ctx.strokeStyle = eqState.enabled ? '#fff' : '#666'; ctx.lineWidth = 2; ctx.stroke();
+      // band handles
+      eqState.bands.forEach((b, i) => {
+        const x = xOf(b.freq), y = yOf(b.gain);
+        ctx.beginPath(); ctx.arc(x, y, i === selected ? 8 : 6, 0, Math.PI * 2);
+        ctx.fillStyle = COLORS[i % COLORS.length]; ctx.globalAlpha = eqState.enabled ? 1 : 0.4; ctx.fill(); ctx.globalAlpha = 1;
+        ctx.lineWidth = 2; ctx.strokeStyle = i === selected ? '#fff' : '#000'; ctx.stroke();
+        ctx.fillStyle = '#000'; ctx.textAlign = 'center'; ctx.fillText(String(i + 1), x, y + 0.5);
+      });
+    };
+
+    const pos = (e) => { const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) * (W / r.width), (e.clientY - r.top) * (H / r.height)]; };
+    const commit = () => { applyEq(); saveEqState(); updateInfo(); };
+    canvas.addEventListener('pointerdown', (e) => {
+      const [x, y] = pos(e), i = bandAt(x, y);
+      if (i < 0) return;
+      selected = i; dragging = i; canvas.setPointerCapture(e.pointerId); updateInfo();
     });
+    canvas.addEventListener('pointermove', (e) => {
+      if (dragging < 0) return;
+      const [x, y] = pos(e), b = eqState.bands[dragging];
+      b.freq = Math.round(Math.min(FMAX, Math.max(FMIN, fOf(Math.min(W - 6, Math.max(PAD_L, x))))));
+      b.gain = Math.round(Math.min(DB, Math.max(-DB, dbOf(y))) * 2) / 2;
+      commit();
+    });
+    const endDrag = () => { dragging = -1; };
+    canvas.addEventListener('pointerup', endDrag); canvas.addEventListener('pointercancel', endDrag);
+    canvas.addEventListener('dblclick', (e) => {
+      const [x, y] = pos(e), i = bandAt(x, y);
+      if (i >= 0) { eqState.bands[i].gain = 0; selected = i; commit(); }
+    });
+    canvas.addEventListener('wheel', (e) => {
+      const [x, y] = pos(e), i = bandAt(x, y);
+      if (i < 0) return;
+      e.preventDefault(); selected = i;
+      const b = eqState.bands[i];
+      b.q = Math.min(10, Math.max(0.1, b.q * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
+      commit();
+    }, { passive: false });
+    qSlider.addEventListener('input', () => { eqState.bands[selected].q = Number(qSlider.value); commit(); });
     enable.addEventListener('change', () => { eqState.enabled = enable.checked; applyEq(); saveEqState(); });
     reset.addEventListener('click', () => {
       eqState.bands.forEach((b, i) => Object.assign(b, EQ_DEFAULT_BANDS[i]));
-      rows.forEach((s) => s()); applyEq(); saveEqState();
+      commit();
     });
     toggle.addEventListener('click', () => {
       const open = panel.style.display === 'none';
-      if (open) panel.style.top = Math.round(anchor.getBoundingClientRect().bottom + 6) + 'px';
-      panel.style.display = open ? 'block' : 'none';
+      if (open) {
+        panel.style.top = Math.round(anchor.getBoundingClientRect().bottom + 6) + 'px';
+        panel.style.display = 'block'; updateInfo();
+        if (!raf) raf = requestAnimationFrame(draw);
+      } else panel.style.display = 'none';
     });
     document.documentElement.appendChild(panel);
     return toggle;
