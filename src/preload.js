@@ -192,18 +192,8 @@ if (isPcmBridgePage()) {
       row('MODE', modeSelect),
       row('GAIN', gainSlider),
       row('BUFFER', sessionEls.bufSlider, sessionEls.bufValue),
-      (() => { // HT-Demucs artefact reduction (applies live to the next windows)
-        const r = h('div', 'switches fill');
-        const restore = h('input', 'qrange', null, { type: 'range', min: '0', max: '1', step: '0.05', 'aria-label': 'Residual restore amount' });
-        restore.value = String(fxState.art.restore);
-        ctrlReset(restore, () => 0);
-        restore.addEventListener('input', () => { fxState.art.restore = Number(restore.value); saveFx(); sendStemOpts(); });
-        r.append(studioToggle('SHIFT', 'art', 'shift', sendStemOpts));
-        return [r, row('RESTORE', restore)];
-      })().reduce((frag, el) => { frag.appendChild(el); return frag; }, document.createDocumentFragment()),
       row('', button),
     );
-    sendStemOpts(); // restore saved artefact-reduction options in the stem process
   }
 
   // ---- Studio drawer: slide-up console in a Shadow DOM (isolated from YTM CSS). Stems section is live; the other sections come later. ----
@@ -708,6 +698,7 @@ if (isPcmBridgePage()) {
     .led-meter i.g.on { background: #51e36a; box-shadow: 0 0 4px #51e36a; }
     .led-meter i.y.on { background: #ffd24a; box-shadow: 0 0 4px #ffd24a; }
     .led-meter i.r.on { background: #ff4a3a; box-shadow: 0 0 5px #ff4a3a; }
+    .clock { font: 700 13px Consolas, monospace; letter-spacing: .12em; color: var(--amber); text-shadow: 0 0 6px #ffb34766; }
     .status { flex-basis: 100%; display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; text-shadow: 0 1px 2px #000; letter-spacing: .14em; color: var(--ink-dim); padding: 0 6px; }
   `;
 
@@ -734,7 +725,10 @@ if (isPcmBridgePage()) {
       const sessSection = studioMakeSection('Session');
       sessSection.classList.add('session');
       const status = h('div', 'status');
-      status.append(h('span'), h('span'), h('span'));
+      const clock = h('span', 'clock', '--:--:--');
+      status.append(h('span'), h('span'), h('span'), clock);
+      const tick = () => { const d = new Date(), p = (n) => String(n).padStart(2, '0'); clock.textContent = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; };
+      tick(); setInterval(tick, 500); // local time, to match skips heard against the UTC logs (+3 h here)
       const labSection = studioMakeSection('Vocal Lab');
       labSection.classList.add('fx');
       const enhSection = studioMakeSection('Enhancer');
@@ -1009,8 +1003,7 @@ if (isPcmBridgePage()) {
   const fxState = (() => {
     const fresh = {
       enh: { on: false, drive: 0, warmth: 0, air: 0, width: 0.5 }, // width 0.5 = 100% (neutral), 0 = mono, 1 = 200%
-      voc: { on: false, comp: 0, deess: 0, pres: 0, rev: 0, decay: 0.4, dly: 0, time: 0.4 },
-      art: { shift: false, restore: 0 },
+      voc: { on: false, comp: 0, deess: 0, pres: 0, rev: 0, decay: 0.4, dly: 0, time: 0.4 },
     };
     try {
       const saved = JSON.parse(localStorage.getItem(FX_KEY) || 'null');
@@ -1150,7 +1143,6 @@ if (isPcmBridgePage()) {
     }
   }
   function applyVocalFxAll() { for (const fx of vocalFxInstances) { routeVocalFx(fx); applyVocalFx(fx); } }
-  function sendStemOpts() { ipcRenderer.send('poc:stem-opts', { shift: fxState.art.shift, restore: fxState.art.restore }); }
 
   // RBJ biquad magnitude (dB) so the curve can be drawn without an audio node.
   function eqBandDb(b, f, fs) {
