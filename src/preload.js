@@ -92,6 +92,7 @@ if (isPcmBridgePage()) {
   let nextSequence = 0;
   let button;
   let overlay;
+  let sessionEls = null;
   let modeSelect;
   let gainSlider;
   let vocalSlider;
@@ -113,31 +114,13 @@ if (isPcmBridgePage()) {
 
   function installControls() {
     if (!document.documentElement) return;
-    if (!button?.isConnected) {
-      button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = captureActive ? 'Stop capture' : 'Start capture';
-      button.setAttribute('aria-label', 'Start or stop audio capture');
-      Object.assign(button.style, {
-        position: 'fixed', top: '12px', right: '16px', zIndex: '2147483647',
-        padding: '9px 12px', border: '0', borderRadius: '6px', background: '#1264a3',
-        color: 'white', font: '600 13px sans-serif', boxShadow: '0 2px 8px #0008', cursor: 'pointer',
-      });
-      button.addEventListener('click', toggleCapture);
-      document.documentElement.appendChild(button);
-      log('capture_button_ready', { state: 'ready' });
-    }
-    if (overlay?.isConnected) { installStudioDrawer(); return; }
+    if (overlay) { installStudioDrawer(); return; }
 
-    overlay = document.createElement('div');
-    Object.assign(overlay.style, {
-      position: 'fixed', top: '54px', right: '16px', zIndex: '2147483647',
-      display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px',
-      borderRadius: '7px', background: '#161616ee', color: '#fff',
-      font: '12px sans-serif', boxShadow: '0 2px 8px #0008',
-    });
-    const label = document.createElement('label');
-    label.textContent = 'Mode';
+    // Session controls are built once and mounted in the Studio drawer's "Session" section (no floating overlay).
+    overlay = { built: true };
+    button = h('button', 'btn capture', captureActive ? 'STOP' : 'START', { type: 'button', 'aria-label': 'Start or stop audio capture' });
+    button.addEventListener('click', toggleCapture);
+    log('capture_button_ready', { state: 'ready' });
     modeSelect = document.createElement('select');
     modeSelect.setAttribute('aria-label', 'Audio processing mode');
     for (const [value, text] of [['bypass', 'Bypass'], ['processed', 'Processed (LPF)'], ['stems', 'Stems (vocal/instr.)']]) {
@@ -148,8 +131,6 @@ if (isPcmBridgePage()) {
     }
     modeSelect.value = 'bypass';
     modeSelect.addEventListener('change', () => setMode(modeSelect.value, true));
-    const gainLabel = document.createElement('label');
-    gainLabel.textContent = 'Gain';
     gainSlider = document.createElement('input');
     gainSlider.type = 'range';
     gainSlider.min = '-24';
@@ -157,11 +138,9 @@ if (isPcmBridgePage()) {
     gainSlider.step = '1';
     gainSlider.value = '0';
     gainSlider.setAttribute('aria-label', 'Processed gain in dB');
-    gainSlider.style.width = '96px';
+    gainSlider.className = 'qrange';
     gainSlider.addEventListener('input', () => setUserGain(Number(gainSlider.value)));
     const makeStemSlider = () => makeStemState(); // UI lives in the Studio drawer
-    const modelLabel = document.createElement('label');
-    modelLabel.textContent = 'Model';
     modelSelect = document.createElement('select');
     modelSelect.setAttribute('aria-label', 'Stem separation model (applies on next capture start)');
     for (const [value, text] of [['umx-hq', 'UMX-HQ (fast, ~3 s)'], ['htdemucs', 'HT-Demucs (best, ~10 s)'], ['passthrough', 'TEST: no separation (~9 s)']]) {
@@ -171,11 +150,9 @@ if (isPcmBridgePage()) {
       modelSelect.appendChild(option);
     }
     modelSelect.value = 'umx-hq';
-    const bufLabel = document.createElement('label');
-    bufLabel.textContent = 'Buffer';
     const bufSlider = document.createElement('input');
     bufSlider.type = 'range'; bufSlider.min = '0.3'; bufSlider.max = '3'; bufSlider.step = '0.1'; bufSlider.value = String(stemLeadS);
-    bufSlider.style.width = '80px';
+    bufSlider.className = 'qrange';
     bufSlider.setAttribute('aria-label', 'Stem jitter buffer in seconds (higher = fewer dropouts, more delay)');
     const bufValue = document.createElement('span');
     bufValue.textContent = stemLeadS.toFixed(1) + ' s';
@@ -193,7 +170,7 @@ if (isPcmBridgePage()) {
       log('stem_buffer_changed', { leadS: stemLeadS });
     });
     modelSelect.disabled = captureActive;
-    overlay.append(modelLabel, modelSelect, bufLabel, bufSlider, bufValue, label, modeSelect, gainLabel, gainSlider);
+    sessionEls = { bufSlider, bufValue };
     vocalSlider = makeStemSlider('Vocal', 'Vocal stem level percent');
     instSlider = makeStemSlider('Instr.', 'Instrumental stem level percent');
     drumsSlider = makeStemSlider('Drums', 'Drums stem level percent');
@@ -202,8 +179,19 @@ if (isPcmBridgePage()) {
     const updateSliderVisibility = () => { studioRebuildStrips(); applyStemLevels(); };
     modelSelect.addEventListener('change', updateSliderVisibility);
     updateSliderVisibility();
-    document.documentElement.appendChild(overlay);
     installStudioDrawer();
+  }
+
+  function studioBuildSession(sec) {
+    const row = (label, ...els) => { const r = h('div', 'eqinfo-row'); r.append(h('span', null, label), ...els); return r; };
+    for (const el of [modelSelect, modeSelect]) { el.classList.add('sel'); for (const k of ['keydown', 'keyup', 'keypress']) el.addEventListener(k, (e) => e.stopPropagation()); }
+    sec.append(
+      row('MODEL', modelSelect),
+      row('MODE', modeSelect),
+      row('GAIN', gainSlider),
+      row('BUFFER', sessionEls.bufSlider, sessionEls.bufValue),
+      row('', button),
+    );
   }
 
   // ---- Studio drawer: slide-up console in a Shadow DOM (isolated from YTM CSS). Stems section is live; the other sections come later. ----
@@ -569,6 +557,10 @@ if (isPcmBridgePage()) {
     .wood { background: ${T('wood.jpg')} center / 100% 100% no-repeat, #3a2012; box-shadow: inset 0 0 10px #000b, inset 0 0 0 1px #0006; }
     .drawer > .wood:last-child { transform: scaleX(-1); }
     .console { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px; padding: 8px; min-width: 0; }
+    .section.session { width: 210px; flex: 0 0 auto; }
+    .section.session .eqinfo-row { justify-content: space-between; }
+    .section.session .qrange { width: 100px; }
+    .btn.capture { width: 100%; height: 28px; margin-top: 4px; }
     .section.eq { flex: 1 1 360px; max-width: 560px; min-width: 0; }
     .eq-screen { width: 100%; height: 150px; border-radius: 6px; display: block; background: #031003; touch-action: none; cursor: crosshair;
       box-shadow: inset 0 0 22px #000, 0 0 0 2px #0a0f0a, 0 0 0 3px var(--edge); }
@@ -655,9 +647,11 @@ if (isPcmBridgePage()) {
       const eqSection = studioMakeSection('Equalizer');
       eqSection.classList.add('eq');
       const outSection = studioMakeSection('Output');
+      const sessSection = studioMakeSection('Session');
+      sessSection.classList.add('session');
       const status = h('div', 'status');
       status.append(h('span'), h('span'), h('span'));
-      consoleEl.append(section, eqSection, outSection, status);
+      consoleEl.append(sessSection, section, eqSection, outSection, status);
       drawer.append(h('div', 'wood'), consoleEl, h('div', 'wood'));
       ui.append(drawer, h('button', 'tab', 'STUDIO \u25B2', { type: 'button', 'aria-label': 'Toggle studio drawer' }));
       root.append(style, ui);
@@ -667,6 +661,7 @@ if (isPcmBridgePage()) {
       studioRebuildStrips();
       studioBuildEq(eqSection);
       studioBuildOutput(outSection);
+      studioBuildSession(sessSection);
       applyOutput();
       document.documentElement.appendChild(host);
       let wasOpen = false;
@@ -720,7 +715,7 @@ if (isPcmBridgePage()) {
           baseLatency: typeof context.baseLatency === 'number' ? context.baseLatency : null,
           outputLatency: typeof context.outputLatency === 'number' ? context.outputLatency : null,
         });
-        if (button) button.textContent = 'Stop capture';
+        if (button) button.textContent = 'STOP';
         scanMedia();
         return true;
       }).catch((error) => {
@@ -759,7 +754,7 @@ if (isPcmBridgePage()) {
     captureActive = false;
     lastMetricsAt = 0;
     lastZeroStart = null;
-    if (button) button.textContent = 'Start capture';
+    if (button) button.textContent = 'START';
     log('capture_stopped', { state: 'stopped' });
     return true;
   }
