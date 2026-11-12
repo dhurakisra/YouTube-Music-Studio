@@ -231,9 +231,11 @@ if (isPcmBridgePage()) {
 
   function studioStemLayout() {
     const ht = modelSelect?.value === 'htdemucs' || modelSelect?.value === 'passthrough';
-    return ht
+    const layout = ht
       ? [['VOCALS', vocalSlider, 'vocalGain', ''], ['DRUMS', drumsSlider, 'drumsGain', 'red'], ['BASS', bassSlider, 'bassGain', ''], ['OTHER', otherSlider, 'otherGain', 'red']]
       : [['VOCALS', vocalSlider, 'vocalGain', ''], ['INSTR.', instSlider, 'instGain', 'red']];
+    layout.push(['KARAOKE', micStrip, 'mic', 'red']); // the live microphone; its fader is the same control as the Mic LEVEL knob
+    return layout;
   }
 
   function studioRebuildStrips() {
@@ -263,22 +265,25 @@ if (isPcmBridgePage()) {
         soloBtn.setAttribute('aria-pressed', String(f.solo)); muteBtn.setAttribute('aria-pressed', String(f.mute));
         soloBtn.disabled = f.mute; muteBtn.disabled = f.solo; // S and M are mutually exclusive
       };
-      soloBtn.addEventListener('click', () => { state.stemFlags.solo = !state.stemFlags.solo; refreshFlags(); applyStemLevels(); });
-      muteBtn.addEventListener('click', () => { state.stemFlags.mute = !state.stemFlags.mute; refreshFlags(); applyStemLevels(); });
+      const apply = () => (state.apply ? state.apply() : applyStemLevels());
+      soloBtn.addEventListener('click', () => { state.stemFlags.solo = !state.stemFlags.solo; refreshFlags(); apply(); });
+      muteBtn.addEventListener('click', () => { state.stemFlags.mute = !state.stemFlags.mute; refreshFlags(); apply(); });
       refreshFlags();
+      if (state.noSolo) soloBtn.style.display = 'none';
       const track = el.querySelector('.track'), cap = el.querySelector('.cap');
       const setPos = (pos) => {
         state.pos = Math.min(1, Math.max(0, pos));
         state.value = String(faderPosToLevel(state.pos) * 100);
         cap.style.bottom = (state.pos * 100) + '%';
         track.setAttribute('aria-valuenow', String(Math.round(state.pos * 100)));
-        applyStemLevels();
+        apply();
       };
       const fromEvent = (e) => { const r = track.getBoundingClientRect(); setPos(1 - (e.clientY - r.top) / r.height); };
       track.addEventListener('pointerdown', (e) => { if (e.ctrlKey) { setPos(STEM_FADER_DEFAULT); return; } track.setPointerCapture(e.pointerId); fromEvent(e); }); // Ctrl+click = reset
       track.addEventListener('pointermove', (e) => { if (track.hasPointerCapture(e.pointerId)) fromEvent(e); });
       track.addEventListener('dblclick', () => setPos(STEM_FADER_DEFAULT)); // reset to 0 dB
       cap.style.bottom = (state.pos * 100) + '%';
+      if (nodeKey === 'mic') studio.micFaderRefresh = () => { cap.style.bottom = (state.pos * 100) + '%'; };
       studio.strips.push({ leds: [...el.querySelectorAll('.led-meter i')], nodeKey, held: -100 });
     }
   }
@@ -292,7 +297,7 @@ if (isPcmBridgePage()) {
     if (!studio.buf) studio.buf = new Float32Array(512);
     for (const s of studio.strips) {
       let peak = 0;
-      const node = an?.[s.nodeKey];
+      const node = s.nodeKey === 'mic' ? mic?.an : an?.[s.nodeKey];
       if (node) {
         node.getFloatTimeDomainData(studio.buf);
         for (let i = 0; i < studio.buf.length; i += 1) { const a = Math.abs(studio.buf[i]); if (a > peak) peak = a; }
@@ -354,6 +359,7 @@ if (isPcmBridgePage()) {
     knob.addEventListener('pointercancel', finish);
     draw();
     box.append(knob, document.createTextNode(label));
+    box.redraw = draw;
     return box;
   }
 
@@ -579,17 +585,51 @@ if (isPcmBridgePage()) {
     return btn;
   }
 
+  // Reverb/delay presets (rev = reverb send, decay 0..1 = 0.4..4 s, dly = delay send, time 0..1 = 0.12..0.72 s).
+  const REVERB_PRESETS = {
+    'Dry': { rev: 0, dly: 0 },
+    'Small Room': { rev: 0.22, decay: 0.08, dly: 0 },
+    'Vocal Booth': { rev: 0.14, decay: 0.03, dly: 0 },
+    'Studio Plate': { rev: 0.3, decay: 0.28, dly: 0 },
+    'Bright Hall': { rev: 0.36, decay: 0.55, dly: 0 },
+    'Cathedral': { rev: 0.46, decay: 0.95, dly: 0 },
+    'Slapback': { rev: 0.12, decay: 0.05, dly: 0.35, time: 0 },
+    'Tape Echo': { rev: 0.2, decay: 0.3, dly: 0.4, time: 0.45 },
+    'Karaoke Classic': { rev: 0.38, decay: 0.4, dly: 0.18, time: 0.35 },
+    'Stadium': { rev: 0.5, decay: 0.8, dly: 0.3, time: 0.6 },
+  };
   function studioBuildVocalLab(sec) {
     const group = 'voc', row = h('div', 'row fxknobs');
     const defs = [['COMP', 'comp', ''], ['DE-ESS', 'deess', ''], ['PRES', 'pres', ''], ['REVERB', 'rev', 'red'], ['DECAY', 'decay', 'red'], ['DELAY', 'dly', 'red'], ['TIME', 'time', 'red']];
+    const boxes = [];
+    const presetSel = h('select', 'sel', null, { 'aria-label': 'Reverb and delay preset' });
+    for (const k of ['keydown', 'keyup', 'keypress']) presetSel.addEventListener(k, (e) => e.stopPropagation());
+    const add = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; presetSel.appendChild(o); };
+    add('', 'Custom');
+    for (const name of Object.keys(REVERB_PRESETS)) add(name, name);
+    const near = (x, y) => Math.abs(x - y) < 0.005;
+    const syncPreset = () => { // show the preset the knobs currently match, otherwise Custom
+      const v = fxState.voc;
+      const hit = Object.entries(REVERB_PRESETS).find(([, p]) => Object.entries(p).every(([k, val]) => near(v[k], val)));
+      presetSel.value = hit ? hit[0] : '';
+    };
     for (const [label, key, cls] of defs) {
       const dflt = key === 'decay' ? 0.4 : key === 'time' ? 0.4 : 0;
-      row.appendChild(studioKnob(label, cls, () => fxState[group][key], (v) => { fxState[group][key] = v; applyVocalFxAll(key === 'decay'); saveFx(); }, dflt, key === 'decay' ? () => applyVocalFxAll() : undefined));
+      const box = studioKnob(label, cls, () => fxState[group][key], (v) => { fxState[group][key] = v; applyVocalFxAll(key === 'decay'); saveFx(); syncPreset(); }, dflt, key === 'decay' ? () => applyVocalFxAll() : undefined);
+      boxes.push(box); row.appendChild(box);
     }
+    presetSel.addEventListener('change', () => {
+      const p = REVERB_PRESETS[presetSel.value];
+      if (!p) return;
+      Object.assign(fxState.voc, p); saveFx(); applyVocalFxAll();
+      boxes.forEach((bx) => bx.redraw());
+    });
+    syncPreset();
+    const pr = h('div', 'eqinfo-row'); pr.append(h('span', null, 'PRESET'), presetSel);
     const labBtn = studioToggle('VOCAL LAB', group, 'on', applyVocalFxAll);
     studio.syncVocalLab = labBtn.syncFn;
     const sw = h('div', 'switches'); sw.appendChild(labBtn);
-    sec.append(row, sw);
+    sec.append(pr, row, sw);
   }
 
   function studioBuildEnhancer(sec) {
@@ -689,7 +729,9 @@ if (isPcmBridgePage()) {
       if (mic) { stopMic(); try { await startMic(); } catch (error) { info.textContent = 'MIC ERROR: ' + String(error?.name || error).slice(0, 40); } sync(); }
     });
     const row = h('div', 'row fxknobs');
-    row.appendChild(studioKnob('LEVEL', 'red', () => micState.level, (v) => { micState.level = v; applyMicLevel(); }, 0.77, saveMic));
+    const lvl = studioKnob('LEVEL', 'red', () => micState.level, (v) => { micState.level = v; applyMicLevel(); studio.micFaderRefresh?.(); }, STEM_FADER_DEFAULT, saveMic);
+    studio.micKnobRedraw = lvl.redraw;
+    row.appendChild(lvl);
     const sw = h('div', 'switches'); sw.appendChild(onBtn);
     const ir = h('div', 'eqinfo-row'); ir.append(h('span', null, 'INPUT'), select);
     const ir2 = h('div', 'eqinfo-row'); ir2.appendChild(info);
@@ -839,7 +881,7 @@ if (isPcmBridgePage()) {
       const ui = h('div', 'ui');
       const drawer = h('div', 'drawer');
       const consoleEl = h('div', 'console');
-      const section = studioMakeSection('Stems');
+      const section = studioMakeSection('Mixer');
       section.appendChild(h('div', 'channels'));
       const eqSection = studioMakeSection('Equalizer');
       eqSection.classList.add('eq');
@@ -1283,7 +1325,7 @@ if (isPcmBridgePage()) {
   // ---- Live microphone (karaoke): mic -> level -> Vocal Lab chain -> master stage (after EQ/Enhancer, before master gain and limiter). ----
   const MIC_KEY = 'ytm-poc-mic-v1';
   const micState = (() => {
-    const f = { device: '', level: 0.77 }; // level knob 0.77 = 0 dB; never starts switched on (feedback safety)
+    const f = { device: '', level: STEM_FADER_DEFAULT }; // same law as the mixer faders: 0.8 = 0 dB; never starts switched on (feedback safety)
     try {
       const sv = JSON.parse(localStorage.getItem(MIC_KEY) || 'null');
       if (typeof sv?.device === 'string') f.device = sv.device.slice(0, 300);
@@ -1292,8 +1334,15 @@ if (isPcmBridgePage()) {
     return f;
   })();
   let mic = null;
-  function saveMic() { try { localStorage.setItem(MIC_KEY, JSON.stringify(micState)); } catch {} }
-  function micGainOf(v) { return v <= 0 ? 0 : 10 ** ((-40 + v * 52) / 20); }
+  let saveMicTimer = 0;
+  function saveMic() { clearTimeout(saveMicTimer); saveMicTimer = setTimeout(() => { try { localStorage.setItem(MIC_KEY, JSON.stringify(micState)); } catch {} }, 400); }
+  // Mixer strip for the microphone: the fader position IS micState.level (so the Mic LEVEL knob and the fader are one control).
+  const micStrip = {
+    get pos() { return micState.level; }, set pos(v) { micState.level = v; },
+    value: '100', stemFlags: { solo: false, mute: false }, noSolo: true,
+    apply() { applyMicLevel(); saveMic(); studio.micKnobRedraw?.(); },
+  };
+  function micGainOf(v) { return micStrip.stemFlags.mute ? 0 : faderPosToLevel(v); }
   function applyMicLevel() { if (mic) mic.gain.gain.setTargetAtTime(micGainOf(micState.level), mic.context.currentTime, 0.02); }
 
   async function startMic() {
