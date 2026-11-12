@@ -114,3 +114,10 @@ SOHBET 6: HT-Demucs 4 stem (drums/bass/other/vocal) + 4 kaydirici entegre edildi
 
 SOHBET 6 SONU: CITLAR COZULDU. Sebep: ScriptProcessor (ana is parcacigi) PCM yakalamada blok kaybi; cozum: MediaStreamTrackProcessor ile yakalama (YTM CSP AudioWorklet'i engelliyor). Eklenenler: ayarlanabilir buffer (varsayilan 1.0 sn), solo/mute (karsilikli dislayan), 4 stem, headroom 0.7, passthrough tani modu (TEST), stem_jump/peak/handleMs tani loglari. Geri alinanlar: ORT thread siniri. Tuzak: log allowlist (main.js ALLOWED_EVENTS + preload allowedLogEvents + safeData) yeni olay/alan icin genisletilmeli, aksi halde SESSIZCE dusuyor.
 KALAN: 1) 10 dk stabilite (artik temiz yakalamayla) 2) docs/phase-1-results.md guncelle, Phase 1 kapat 3) tani kodunu (jump dedektoru, passthrough) istege bagli sadelestir.
+
+SOHBET 7: ACIK SORUN (test edilecek): STEMS MODUNDA ARA ARA ATLAMA (underrun).
+Teshis (loglardan): yakalama saati oynatma saatinden %0.4-0.7 yavas (chunk basina duvar 3.915-3.928 sn, ses 3.901 sn). Tampon chunk basina ~20-27 ms eriyip bosalinca underrun + yeniden lead. Buffer buyutmek (1 sn -> 2 sn) sadece geciktirir (1 sn: 51-131. chunk; 2 sn: 146. chunk). Olcum: 11 dk, dropped=0, islem ~1.0 sn (p95 1.09), underrun 3 (1 sn buffer) / 1 (2 sn buffer).
+Yapilan: b81bdaf — playStemBlock'ta playbackRate lead hatasina gore +-%1.5 ayarlanir (rate logu eklendi). HENUZ TEST EDILMEDI.
+TEST: uygulamayi yeniden baslat (preload), HT-Demucs + Stems, 10+ dk calma. Beklenen: underruns=0, rate ~0.994-0.997, leadMs hedefin biraz altinda sabit. Basarisizsa rate logu hiz ayarinin yetip yetmedigini gosterir.
+Not: stem_jump dedektoru ~4 sn'de bir tetikleniyor (muzik vuruslari), atlama gostergesi olarak guvenilmez; underruns sayaci esas alinsin.
+Diger KALAN: docs/phase-1-results.md'ye 10 dk stabilite sonucu isle; tani kodu sadelestirme (istege bagli).
