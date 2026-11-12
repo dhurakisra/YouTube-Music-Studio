@@ -575,6 +575,7 @@ if (isPcmBridgePage()) {
     const sync = () => { const v = fxState[group][key]; btn.classList.toggle('on', v); led.classList.toggle('on', v); btn.setAttribute('aria-pressed', String(v)); };
     btn.addEventListener('click', () => { fxState[group][key] = !fxState[group][key]; sync(); saveFx(); onChange(); });
     sync();
+    btn.syncFn = sync;
     return btn;
   }
 
@@ -585,7 +586,9 @@ if (isPcmBridgePage()) {
       const dflt = key === 'decay' ? 0.4 : key === 'time' ? 0.4 : 0;
       row.appendChild(studioKnob(label, cls, () => fxState[group][key], (v) => { fxState[group][key] = v; applyVocalFxAll(key === 'decay'); saveFx(); }, dflt, key === 'decay' ? () => applyVocalFxAll() : undefined));
     }
-    const sw = h('div', 'switches'); sw.appendChild(studioToggle('VOCAL LAB', group, 'on', applyVocalFxAll));
+    const labBtn = studioToggle('VOCAL LAB', group, 'on', applyVocalFxAll);
+    studio.syncVocalLab = labBtn.syncFn;
+    const sw = h('div', 'switches'); sw.appendChild(labBtn);
     sec.append(row, sw);
   }
 
@@ -619,6 +622,38 @@ if (isPcmBridgePage()) {
     }
     syncPresets();
     sec.append(row, sw);
+  }
+
+  // Karaoke: one click = capture on, Stems mode, vocal stem muted, mic on, Vocal Lab on. Clicking again restores the previous mode, vocal mute/solo and Vocal Lab state.
+  let karaoke = null;
+  function karaokeOff() {
+    if (!karaoke) return;
+    const k = karaoke; karaoke = null;
+    stopMic();
+    fxState.voc.on = k.prev.lab; saveFx(); applyVocalFxAll(); studio.syncVocalLab?.();
+    if (vocalSlider) { vocalSlider.stemFlags.mute = k.prev.mute; vocalSlider.stemFlags.solo = k.prev.solo; }
+    studioRebuildStrips(); applyStemLevels();
+    if (captureActive) setMode(k.prev.mode, true);
+    stemDiag('karaoke_off', { state: 'off' });
+  }
+  async function karaokeToggle(info) {
+    if (karaoke) { karaokeOff(); return; }
+    const flags = vocalSlider?.stemFlags || { mute: false, solo: false };
+    karaoke = { prev: { mode: modeSelect?.value || 'bypass', mute: !!flags.mute, solo: !!flags.solo, lab: fxState.voc.on } };
+    try {
+      if (!captureActive && !(await beginCapture())) throw new Error('capture did not start');
+      flags.mute = true; flags.solo = false;
+      studioRebuildStrips(); applyStemLevels();
+      setMode('stems', true);
+      await startMic();
+      fxState.voc.on = true; saveFx(); applyVocalFxAll(); studio.syncVocalLab?.(); // Vocal Lab onto the mic
+      stemDiag('karaoke_on', { state: 'on' });
+    } catch (error) {
+      karaokeOff();
+      const text = String(error?.name === 'Error' || !error?.name ? error?.message : error.name).slice(0, 40);
+      info.textContent = 'KARAOKE ERROR: ' + text;
+      stemDiag('karaoke_error', { error: text });
+    }
   }
 
   function studioBuildMic(sec) {
@@ -658,7 +693,18 @@ if (isPcmBridgePage()) {
     const sw = h('div', 'switches'); sw.appendChild(onBtn);
     const ir = h('div', 'eqinfo-row'); ir.append(h('span', null, 'INPUT'), select);
     const ir2 = h('div', 'eqinfo-row'); ir2.appendChild(info);
-    sec.append(ir, row, sw, ir2);
+    const right = h('div', 'micctl'); right.append(ir, row, sw, ir2);
+    const karaokeBtn = h('button', 'micbtn', null, { type: 'button', 'aria-label': 'Karaoke mode' });
+    karaokeBtn.title = 'Karaoke: starts capture, Stems mode, mutes the vocal stem, turns the mic and Vocal Lab on. Click again to restore.';
+    const kcol = h('div', 'mickcol'); kcol.append(karaokeBtn, h('div', 'miclabel', 'KARAOKE'));
+    const wrap = h('div', 'micwrap'); wrap.append(kcol, right);
+    sec.append(wrap);
+    const syncK = () => { karaokeBtn.classList.toggle('on', !!karaoke); karaokeBtn.setAttribute('aria-pressed', String(!!karaoke)); };
+    karaokeBtn.addEventListener('click', async () => {
+      karaokeBtn.disabled = true;
+      try { await karaokeToggle(info); } finally { karaokeBtn.disabled = false; sync(); syncK(); }
+    });
+    syncK();
     studio.micTick = () => { // input peak, so the level can be set without clipping
       if (!mic) return;
       mic.an.getFloatTimeDomainData(mic.buf);
@@ -693,6 +739,20 @@ if (isPcmBridgePage()) {
     .btn.capture { width: 100%; height: 28px; margin-top: 4px; }
     .section.fx { width: 232px; flex: 0 0 auto; }
     .section.fx.enh { width: 238px; }
+    .section.fx.mic { width: 308px; }
+    .micwrap { display: flex; gap: 8px; align-items: flex-start; }
+    .micctl { flex: 1; min-width: 0; }
+    .mickcol { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: none; }
+    .micbtn { position: relative; width: 58px; height: 182px; padding: 0; border: 0; cursor: pointer; background: ${T('mic.png')} center / contain no-repeat; }
+    .micbtn::after { content: ""; position: absolute; inset: 0; opacity: 0; pointer-events: none; transition: opacity .25s;
+      -webkit-mask: ${T('mic.png')} center / contain no-repeat; mask: ${T('mic.png')} center / contain no-repeat;
+      background: radial-gradient(ellipse 90% 55% at 50% 24%, #ffc25aee, #ff8a1f66 55%, transparent 80%); mix-blend-mode: screen; }
+    .micbtn.on { filter: drop-shadow(0 0 9px #ffb347cc) brightness(1.08); }
+    .micbtn.on::after { opacity: 1; }
+    .micbtn:active { transform: translateY(1px); }
+    .micbtn:disabled { opacity: .6; cursor: default; }
+    .miclabel { font-size: 10px; font-weight: 800; letter-spacing: .16em; color: var(--ink-dim); text-shadow: 0 1px 2px #000; }
+    .micctl .row.fxknobs { padding-left: 0; }
     .row.fxknobs { flex-wrap: wrap; justify-content: flex-start; gap: 10px 12px; padding-left: 6px; }
     .btn.fxon { width: 100%; height: 26px; }
     .switches.fill .btn.fxon { flex: 1 1 100%; }
@@ -792,7 +852,7 @@ if (isPcmBridgePage()) {
       const tick = () => { const d = new Date(), p = (n) => String(n).padStart(2, '0'); clock.textContent = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; };
       tick(); setInterval(tick, 500); // local time, to match skips heard against the UTC logs (+3 h here)
       const micSection = studioMakeSection('Mic');
-      micSection.classList.add('fx');
+      micSection.classList.add('fx', 'mic');
       const labSection = studioMakeSection('Vocal Lab');
       labSection.classList.add('fx');
       const enhSection = studioMakeSection('Enhancer');
