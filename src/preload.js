@@ -245,6 +245,7 @@ if (isPcmBridgePage()) {
     };
     modelSelect.addEventListener('change', updateSliderVisibility);
     updateSliderVisibility();
+    overlay.appendChild(installEqPanel(overlay));
     document.documentElement.appendChild(overlay);
   }
 
@@ -355,6 +356,133 @@ if (isPcmBridgePage()) {
     } finally { autoCycleRunning = false; }
   }
 
+  // Master parametric EQ: every audible path (dry, processed, stems) feeds eqInput; the chain ends at destination.
+  const EQ_STORE_KEY = 'ytm-poc-eq-v1';
+  const EQ_DEFAULT_BANDS = [
+    { type: 'lowshelf', freq: 80, gain: 0, q: 0.707 },
+    { type: 'peaking', freq: 250, gain: 0, q: 1 },
+    { type: 'peaking', freq: 1000, gain: 0, q: 1 },
+    { type: 'peaking', freq: 3000, gain: 0, q: 1 },
+    { type: 'peaking', freq: 8000, gain: 0, q: 1 },
+    { type: 'highshelf', freq: 12000, gain: 0, q: 0.707 },
+  ];
+  const eqState = (() => {
+    const fresh = { enabled: true, bands: EQ_DEFAULT_BANDS.map((b) => ({ ...b })) };
+    try {
+      const saved = JSON.parse(localStorage.getItem(EQ_STORE_KEY) || 'null');
+      if (saved && Array.isArray(saved.bands) && saved.bands.length === fresh.bands.length) {
+        fresh.enabled = saved.enabled !== false;
+        saved.bands.forEach((b, i) => {
+          const f = Number(b.freq), g = Number(b.gain), q = Number(b.q);
+          if (Number.isFinite(f)) fresh.bands[i].freq = Math.min(20000, Math.max(20, f));
+          if (Number.isFinite(g)) fresh.bands[i].gain = Math.min(18, Math.max(-18, g));
+          if (Number.isFinite(q)) fresh.bands[i].q = Math.min(10, Math.max(0.1, q));
+        });
+      }
+    } catch {}
+    return fresh;
+  })();
+  let masterEq = null;
+
+  function saveEqState() { try { localStorage.setItem(EQ_STORE_KEY, JSON.stringify(eqState)); } catch {} }
+
+  function applyEq() {
+    if (!masterEq) return;
+    const t = masterEq.context.currentTime;
+    eqState.bands.forEach((b, i) => {
+      const f = masterEq.filters[i];
+      f.frequency.setTargetAtTime(b.freq, t, 0.01);
+      f.Q.setTargetAtTime(b.q, t, 0.01);
+      f.gain.setTargetAtTime(eqState.enabled ? b.gain : 0, t, 0.01); // disabled = 0 dB on every band (transparent)
+    });
+  }
+
+  function getEqInput(context) {
+    if (masterEq && masterEq.context === context) return masterEq.input;
+    const input = context.createGain();
+    setChannelFormat(input);
+    let prev = input;
+    const filters = eqState.bands.map((b) => {
+      const f = context.createBiquadFilter();
+      f.type = b.type;
+      setChannelFormat(f);
+      prev.connect(f);
+      prev = f;
+      return f;
+    });
+    prev.connect(context.destination);
+    masterEq = { context, input, filters };
+    for (const [i, b] of eqState.bands.entries()) {
+      filters[i].frequency.value = b.freq; filters[i].Q.value = b.q; filters[i].gain.value = eqState.enabled ? b.gain : 0;
+    }
+    return input;
+  }
+
+  function installEqPanel(anchor) {
+    const toggle = document.createElement('button');
+    toggle.type = 'button'; toggle.textContent = 'EQ'; toggle.setAttribute('aria-label', 'Toggle parametric equalizer panel');
+    toggle.style.cssText = 'padding:0 6px;font:inherit;cursor:pointer';
+    const panel = document.createElement('div');
+    Object.assign(panel.style, {
+      position: 'fixed', right: '16px', zIndex: '2147483647', display: 'none', padding: '8px 10px',
+      borderRadius: '7px', background: '#161616ee', color: '#fff', font: '12px sans-serif', boxShadow: '0 2px 8px #0008',
+    });
+    const head = document.createElement('div');
+    head.style.cssText = 'display:flex;gap:10px;align-items:center;margin-bottom:6px';
+    const enable = document.createElement('input');
+    enable.type = 'checkbox'; enable.checked = eqState.enabled; enable.setAttribute('aria-label', 'Equalizer enabled');
+    const enableLabel = document.createElement('label'); enableLabel.append(enable, ' EQ on');
+    const reset = document.createElement('button');
+    reset.type = 'button'; reset.textContent = 'Reset'; reset.style.cssText = 'font:inherit;cursor:pointer';
+    head.append(enableLabel, reset);
+    panel.appendChild(head);
+    const rows = [];
+    const fmtFreq = (f) => (f >= 1000 ? (f / 1000).toFixed(f >= 10000 ? 0 : 1) + ' kHz' : Math.round(f) + ' Hz');
+    const fmtGain = (g) => (g > 0 ? '+' : '') + g.toFixed(1) + ' dB';
+    const slider = (min, max, step, aria) => {
+      const s = document.createElement('input');
+      s.type = 'range'; s.min = String(min); s.max = String(max); s.step = String(step); s.style.width = '90px'; s.setAttribute('aria-label', aria);
+      return s;
+    };
+    const val = () => { const v = document.createElement('span'); v.style.cssText = 'display:inline-block;width:52px;text-align:right'; return v; };
+    eqState.bands.forEach((b, i) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:6px;align-items:center;margin:3px 0';
+      const name = document.createElement('span'); name.style.width = '62px';
+      name.textContent = b.type === 'lowshelf' ? 'Low shelf' : b.type === 'highshelf' ? 'High shelf' : 'Band ' + i;
+      const freq = slider(Math.log10(20), Math.log10(20000), 0.005, 'Band ' + (i + 1) + ' frequency');
+      const freqV = val();
+      const gain = slider(-18, 18, 0.5, 'Band ' + (i + 1) + ' gain in dB');
+      const gainV = val();
+      const q = slider(0.1, 10, 0.05, 'Band ' + (i + 1) + ' Q');
+      const qV = val(); qV.style.width = '34px';
+      const sync = () => {
+        freq.value = String(Math.log10(b.freq)); freqV.textContent = fmtFreq(b.freq);
+        gain.value = String(b.gain); gainV.textContent = fmtGain(b.gain);
+        q.value = String(b.q); qV.textContent = 'Q ' + b.q.toFixed(2);
+      };
+      freq.addEventListener('input', () => { b.freq = Math.round(10 ** Number(freq.value)); sync(); applyEq(); saveEqState(); });
+      gain.addEventListener('input', () => { b.gain = Number(gain.value); sync(); applyEq(); saveEqState(); });
+      q.addEventListener('input', () => { b.q = Number(q.value); sync(); applyEq(); saveEqState(); });
+      sync();
+      rows.push(sync);
+      row.append(name, freq, freqV, gain, gainV, q, qV);
+      panel.appendChild(row);
+    });
+    enable.addEventListener('change', () => { eqState.enabled = enable.checked; applyEq(); saveEqState(); });
+    reset.addEventListener('click', () => {
+      eqState.bands.forEach((b, i) => Object.assign(b, EQ_DEFAULT_BANDS[i]));
+      rows.forEach((s) => s()); applyEq(); saveEqState();
+    });
+    toggle.addEventListener('click', () => {
+      const open = panel.style.display === 'none';
+      if (open) panel.style.top = Math.round(anchor.getBoundingClientRect().bottom + 6) + 'px';
+      panel.style.display = open ? 'block' : 'none';
+    });
+    document.documentElement.appendChild(panel);
+    return toggle;
+  }
+
   // The audible paths stay entirely in Web Audio; the main thread only receives measurement blocks.
   function connectAudioGraph(source, context, media) {
     setChannelFormat(source);
@@ -373,12 +501,13 @@ if (isPcmBridgePage()) {
     for (const node of [dryGain, lowpass, userGain, limiter, wetGain]) setChannelFormat(node);
 
     source.connect(dryGain);
-    dryGain.connect(context.destination);
+    const eqInput = getEqInput(context);
+    dryGain.connect(eqInput);
     source.connect(lowpass);
     lowpass.connect(userGain);
     userGain.connect(limiter);
     limiter.connect(wetGain);
-    wetGain.connect(context.destination);
+    wetGain.connect(eqInput);
     dryGain.gain.value = 1;
     wetGain.gain.value = 0;
 
@@ -391,7 +520,7 @@ if (isPcmBridgePage()) {
     stemLimiter.threshold.value = -6; stemLimiter.ratio.value = 20; stemLimiter.attack.value = 0; stemLimiter.release.value = 0.1; stemLimiter.knee.value = 6;
     for (const node of [vocalGain, instGain, drumsGain, bassGain, otherGain, stemBus, stemLimiter]) setChannelFormat(node);
     for (const node of [vocalGain, instGain, drumsGain, bassGain, otherGain]) node.connect(stemLimiter);
-    stemLimiter.connect(stemBus); stemBus.connect(context.destination);
+    stemLimiter.connect(stemBus); stemBus.connect(eqInput);
     stemBus.gain.value = 0;
     stemNodes = { vocalGain, instGain, drumsGain, bassGain, otherGain, stemBus };
 

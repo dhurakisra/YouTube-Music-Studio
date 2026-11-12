@@ -121,3 +121,5 @@ Yapilan: b81bdaf — playStemBlock'ta playbackRate lead hatasina gore +-%1.5 aya
 TEST: uygulamayi yeniden baslat (preload), HT-Demucs + Stems, 10+ dk calma. Beklenen: underruns=0, rate ~0.994-0.997, leadMs hedefin biraz altinda sabit. Basarisizsa rate logu hiz ayarinin yetip yetmedigini gosterir.
 Not: stem_jump dedektoru ~4 sn'de bir tetikleniyor (muzik vuruslari), atlama gostergesi olarak guvenilmez; underruns sayaci esas alinsin.
 Diger KALAN: docs/phase-1-results.md'ye 10 dk stabilite sonucu isle; tani kodu sadelestirme (istege bagli).
+
+SOHBET 7 / EQ: Master parametrik EQ eklendi (preload.js: getEqInput/applyEq/installEqPanel). 6 bant (low shelf 80, peaking 250/1k/3k/8k, high shelf 12k), frekans/gain/Q, EQ on/off, Reset, localStorage kaliciligi. dry/wet/stemBus -> eqInput -> filtreler -> destination (ayirmadan SONRA, tum modlarda). UI: overlay'deki "EQ" dugmesi paneli acar. TEST EDILMEDI (kullanici dinleyecek): bypass/stems modlarinda bant degisimi anlik duyulmali, Reset ve yeniden baslatmada ayarlar korunmali. Atlama duzeltmesi testi (b81bdaf) en sona birakildi.
