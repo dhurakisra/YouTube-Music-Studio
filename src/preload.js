@@ -8,7 +8,7 @@ const allowedLogEvents = new Set([
   'capture_worklet_error', 'capture_fallback', 'media_element_missing',
   'drm_or_silence', 'capture_error', 'processing_state', 'latency_info',
   'pcm_worker_attempt', 'pcm_worker_blocked', 'pcm_transport_started', 'pcm_transport_stopped', 'pcm_metrics', 'pcm_port_received', 'pcm_worker_port_ready',
-  'stem_jump', 'stem_buffer_changed', 'pcm_capture_mode', 'pcm_capture_error', 'stem_block_received', 'stem_transport_started', 'stem_transport_stopped', 'stem_playout',
+  'stem_jump', 'stem_buffer_changed', 'pcm_capture_mode', 'pcm_capture_error', 'stem_block_received', 'stem_transport_started', 'stem_transport_stopped', 'stem_playout', 'stem_diag',
 ]);
 const allowedCommandTypes = new Set(['capture:show-button', 'capture:toggle', 'capture:auto-cycle']);
 
@@ -1390,6 +1390,7 @@ if (isPcmBridgePage()) {
     if (transport.worker) setTimeout(() => transport.worker.terminate(), 50);
     log('pcm_transport_stopped', { state: 'stopped', transport: transport.transport });
     ipcRenderer.send('poc:stem-stop');
+    if (stemPlayer?.lagTimer) clearInterval(stemPlayer.lagTimer);
     stemPlayer = null;
     log('stem_transport_stopped', { state: 'stopped', transport: transport.transport });
     currentPcmTransport = null;
@@ -1431,7 +1432,15 @@ if (isPcmBridgePage()) {
       if (inputs[name].length !== frames * 2) return;
     }
     if (!stemPlayer) {
-      stemPlayer = { tails: {}, nextTime: 0, chunks: 0, underruns: 0 };
+      stemPlayer = { tails: {}, nextTime: 0, chunks: 0, underruns: 0, lastSource: null, lastStep: null, audioUnderruns: 0, lastOutputMs: null };
+      // Diagnostics: local wall clock on every record so heard skips can be matched by time; main-thread stall monitor (25 ms heartbeat).
+      let lastBeat = performance.now();
+      stemPlayer.lagTimer = setInterval(() => {
+        const t = performance.now(), lag = t - lastBeat - 25;
+        lastBeat = t;
+        if (lag > 50) stemDiag('mainthread_stall', { lagMs: Math.round(lag) });
+      }, 25);
+      stemDiag('playbackstats', { state: context.playbackStats ? 'available' : 'unavailable' });
       applyStemLevels();
     }
     const p = stemPlayer;
@@ -1473,8 +1482,26 @@ if (isPcmBridgePage()) {
     }
     p.peakMax = Math.max(p.peakMax || 0, peak);
     const now = context.currentTime;
+    const leadBefore = p.nextTime - now;
+    if (p.chunks > 0 && leadBefore >= 0.02 && leadBefore < 0.12) stemDiag('low_lead', { leadMs: Number((leadBefore * 1000).toFixed(1)), chunks: p.chunks, rate: Number((p.rate || 1).toFixed(4)) });
+    if (typeof msg.sourceSequence === 'number') { // windows normally advance by a constant number of input blocks; a different step means capture dropped/added input
+      if (p.lastSource != null) {
+        const step = msg.sourceSequence - p.lastSource;
+        if (p.lastStep != null && step !== p.lastStep) stemDiag('seq_step', { step, prevStep: p.lastStep, chunks: p.chunks });
+        p.lastStep = step;
+      }
+      p.lastSource = msg.sourceSequence;
+    }
+    const ps = context.playbackStats; // Chromium audio-output underrun counters, when this build has them
+    if (ps && typeof ps.underrunEvents === 'number' && ps.underrunEvents > p.audioUnderruns) {
+      p.audioUnderruns = ps.underrunEvents;
+      stemDiag('audio_underrun', { audioUnderruns: ps.underrunEvents, audioUnderrunMs: Math.round((ps.underrunDuration || 0) * 1000), chunks: p.chunks });
+    }
+    const outMs = (typeof context.outputLatency === 'number' ? context.outputLatency : 0) * 1000;
+    if (p.lastOutputMs != null && Math.abs(outMs - p.lastOutputMs) > 5) stemDiag('output_latency', { outputMs: Math.round(outMs), prevOutputMs: Math.round(p.lastOutputMs), chunks: p.chunks });
+    p.lastOutputMs = outMs;
     if (p.nextTime < now + 0.02) {
-      if (p.chunks > 0) p.underruns += 1;
+      if (p.chunks > 0) { p.underruns += 1; stemDiag('underrun', { leadMs: Number((leadBefore * 1000).toFixed(1)), chunks: p.chunks, rate: Number((p.rate || 1).toFixed(4)) }); }
       p.nextTime = now + stemLeadS;
     }
     const startAt = Math.round(p.nextTime * (msg.sampleRate || STEM_RATE)) / (msg.sampleRate || STEM_RATE); // whole-sample start: no 1-sample gaps/overlaps between chunks
@@ -1505,6 +1532,11 @@ if (isPcmBridgePage()) {
         delayEstimateMs: Math.round(frames / rate * 1000 + 93 + (msg.processingMs || 0) + leadMs + outputMs),
       });
     }
+  }
+
+  function stemDiag(kind, fields = {}) {
+    const d = new Date(), p2 = (n) => String(n).padStart(2, '0');
+    log('stem_diag', { kind, local: p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds()), ...fields });
   }
 
   function setMode(mode, shouldLog = true, onlyGraph = null) {

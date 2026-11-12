@@ -19,7 +19,7 @@ const ALLOWED_EVENTS = new Set([
   'pcm_transport_stopped', 'pcm_metrics', 'pcm_port_relayed', 'pcm_port_received', 'pcm_worker_port_ready',
   'stem_jump', 'stem_buffer_changed', 'pcm_capture_mode', 'pcm_capture_error', 'stem_process_started', 'stem_process_ready', 'stem_process_error', 'stem_metrics', 'stem_process_stopped',
   'stem_block_received', 'stem_transport_started', 'stem_transport_stopped', 'stem_model_selected', 'stem_model_selection_rejected',
-  'stem_window', 'stem_port_ready', 'stem_input_started', 'stem_playout',
+  'stem_window', 'stem_port_ready', 'stem_input_started', 'stem_playout', 'stem_diag',
 ]);
 
 let mainWindow;
@@ -45,7 +45,7 @@ function appendLog(event, fields = {}) {
 function safeData(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
   const output = {};
-  for (const key of ['sampleRate', 'channels', 'rms', 'nonzero', 'state', 'error', 'dropoutBlocks', 'timeGaps', 'baseLatency', 'outputLatency', 'cycle', 'total', 'receivedBlocks', 'droppedBlocks', 'latencyAvgMs', 'latencyP95Ms', 'latencyMaxMs', 'feedIntervalDeviationMs', 'sequence', 'transport', 'chunks', 'underruns', 'leadMs', 'processingMs', 'delayEstimateMs', 'model', 'windowFrames', 'leadS', 'peak', 'jump', 'jumpRatio', 'pos', 'handleMs', 'rate']) {
+  for (const key of ['sampleRate', 'channels', 'rms', 'nonzero', 'state', 'error', 'dropoutBlocks', 'timeGaps', 'baseLatency', 'outputLatency', 'cycle', 'total', 'receivedBlocks', 'droppedBlocks', 'latencyAvgMs', 'latencyP95Ms', 'latencyMaxMs', 'feedIntervalDeviationMs', 'sequence', 'transport', 'chunks', 'underruns', 'leadMs', 'processingMs', 'delayEstimateMs', 'model', 'windowFrames', 'leadS', 'peak', 'jump', 'jumpRatio', 'pos', 'handleMs', 'rate', 'kind', 'local', 'lagMs', 'step', 'prevStep', 'audioUnderruns', 'audioUnderrunMs', 'outputMs', 'prevOutputMs']) {
     if (Object.hasOwn(data, key) && (typeof data[key] === 'number' || typeof data[key] === 'string')) {
       output[key] = data[key];
     }
