@@ -237,6 +237,9 @@ function createWindow() {
     if (isMainFrame) appendLog('page_load_error', { state: String(code), error: description });
   });
 
+  // YouTube Music registers a beforeunload handler while a song plays; Electron then silently refuses to close the window. Let the close through.
+  mainWindow.webContents.on('will-prevent-unload', (event) => event.preventDefault());
+
   mainWindow.on('closed', () => {
     mainWindow = undefined;
     if (pcmBridgeWindow && !pcmBridgeWindow.isDestroyed()) pcmBridgeWindow.close();
@@ -255,6 +258,16 @@ function createWindow() {
       }
     }
     callback({ responseHeaders: details.responseHeaders });
+  });
+  // Microphone (karaoke input): audio-only capture is allowed for YouTube Music itself; every other permission keeps Electron's default (granted).
+  ytmSession.setPermissionRequestHandler((_wc, permission, callback, details) => {
+    if (permission !== 'media') return callback(true);
+    const types = details?.mediaTypes || [];
+    callback(isYtmUrl(details?.requestingUrl || '') && !types.includes('video'));
+  });
+  ytmSession.setPermissionCheckHandler((_wc, permission, requestingOrigin, details) => {
+    if (permission !== 'media') return true;
+    return isYtmUrl(requestingOrigin || details?.requestingUrl || '') && details?.mediaType !== 'video';
   });
   mainWindow.loadURL(YTM_URL);
 }

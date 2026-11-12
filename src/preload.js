@@ -303,6 +303,7 @@ if (isPcmBridgePage()) {
     }
     studio.eqDraw?.();
     studio.vuDraw?.();
+    studio.micTick?.();
     const now = performance.now();
     if (now - studio.lastStatus > 250) {
       studio.lastStatus = now;
@@ -620,6 +621,54 @@ if (isPcmBridgePage()) {
     sec.append(row, sw);
   }
 
+  function studioBuildMic(sec) {
+    const select = h('select', 'sel', null, { 'aria-label': 'Microphone input device' });
+    for (const k of ['keydown', 'keyup', 'keypress']) select.addEventListener(k, (e) => e.stopPropagation());
+    const refresh = async () => {
+      let devices = [];
+      try { devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput'); } catch {}
+      select.textContent = '';
+      const add = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; select.appendChild(o); };
+      add('', 'Default input');
+      devices.forEach((d, i) => { if (d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications') add(d.deviceId, d.label || 'Input ' + (i + 1)); });
+      select.value = micState.device;
+      if (select.value !== micState.device) select.value = '';
+    };
+    refresh();
+    const onBtn = h('button', 'btn solo fxon', null, { type: 'button', 'aria-label': 'Microphone on' });
+    const led = h('span', 'led');
+    onBtn.append(led, document.createTextNode('MIC'));
+    const info = h('span', 'eqinfo', 'USE HEADPHONES');
+    const sync = () => { const on = !!mic; onBtn.classList.toggle('on', on); led.classList.toggle('on', on); onBtn.setAttribute('aria-pressed', String(on)); };
+    onBtn.addEventListener('click', async () => {
+      if (mic) { stopMic(); sync(); info.textContent = 'USE HEADPHONES'; return; }
+      onBtn.disabled = true;
+      try { await startMic(); await refresh(); } catch (error) {
+        info.textContent = 'MIC ERROR: ' + String(error?.name || error).slice(0, 40);
+        stemDiag('mic_error', { error: String(error?.name || error).slice(0, 80) });
+      }
+      onBtn.disabled = false; sync();
+    });
+    select.addEventListener('change', async () => {
+      micState.device = select.value; saveMic();
+      if (mic) { stopMic(); try { await startMic(); } catch (error) { info.textContent = 'MIC ERROR: ' + String(error?.name || error).slice(0, 40); } sync(); }
+    });
+    const row = h('div', 'row fxknobs');
+    row.appendChild(studioKnob('LEVEL', 'red', () => micState.level, (v) => { micState.level = v; applyMicLevel(); }, 0.77, saveMic));
+    const sw = h('div', 'switches'); sw.appendChild(onBtn);
+    const ir = h('div', 'eqinfo-row'); ir.append(h('span', null, 'INPUT'), select);
+    const ir2 = h('div', 'eqinfo-row'); ir2.appendChild(info);
+    sec.append(ir, row, sw, ir2);
+    studio.micTick = () => { // input peak, so the level can be set without clipping
+      if (!mic) return;
+      mic.an.getFloatTimeDomainData(mic.buf);
+      let pk = 0;
+      for (let i = 0; i < mic.buf.length; i += 1) { const a = Math.abs(mic.buf[i]); if (a > pk) pk = a; }
+      const db = pk > 0 ? 20 * Math.log10(pk) : -100;
+      info.textContent = 'IN ' + (db > -99 ? db.toFixed(0) + ' dB' : '-inf dB') + (db > -1 ? '  CLIP' : '');
+    };
+  }
+
   const STUDIO_CSS = (T) => `
     :host { all: initial; }
     * { box-sizing: border-box; }
@@ -742,11 +791,13 @@ if (isPcmBridgePage()) {
       status.append(h('span'), h('span'), h('span'), clock);
       const tick = () => { const d = new Date(), p = (n) => String(n).padStart(2, '0'); clock.textContent = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; };
       tick(); setInterval(tick, 500); // local time, to match skips heard against the UTC logs (+3 h here)
+      const micSection = studioMakeSection('Mic');
+      micSection.classList.add('fx');
       const labSection = studioMakeSection('Vocal Lab');
       labSection.classList.add('fx');
       const enhSection = studioMakeSection('Enhancer');
       enhSection.classList.add('fx', 'enh');
-      consoleEl.append(sessSection, section, eqSection, labSection, enhSection, outSection, status);
+      consoleEl.append(sessSection, micSection, section, eqSection, labSection, enhSection, outSection, status);
       drawer.append(h('div', 'wood'), consoleEl, h('div', 'wood'));
       ui.append(drawer, h('button', 'tab', 'STUDIO \u25B2', { type: 'button', 'aria-label': 'Toggle studio drawer' }));
       root.append(style, ui);
@@ -757,6 +808,7 @@ if (isPcmBridgePage()) {
       studioBuildEq(eqSection);
       studioBuildOutput(outSection);
       studioBuildSession(sessSection);
+      studioBuildMic(micSection);
       studioBuildVocalLab(labSection);
       studioBuildEnhancer(enhSection);
       applyOutput();
@@ -1167,6 +1219,55 @@ if (isPcmBridgePage()) {
     }
   }
   function applyVocalFxAll(deferIR) { for (const fx of vocalFxInstances) { routeVocalFx(fx); applyVocalFx(fx, false, deferIR === true); } }
+
+  // ---- Live microphone (karaoke): mic -> level -> Vocal Lab chain -> master stage (after EQ/Enhancer, before master gain and limiter). ----
+  const MIC_KEY = 'ytm-poc-mic-v1';
+  const micState = (() => {
+    const f = { device: '', level: 0.77 }; // level knob 0.77 = 0 dB; never starts switched on (feedback safety)
+    try {
+      const sv = JSON.parse(localStorage.getItem(MIC_KEY) || 'null');
+      if (typeof sv?.device === 'string') f.device = sv.device.slice(0, 300);
+      if (Number.isFinite(sv?.level)) f.level = Math.min(1, Math.max(0, sv.level));
+    } catch {}
+    return f;
+  })();
+  let mic = null;
+  function saveMic() { try { localStorage.setItem(MIC_KEY, JSON.stringify(micState)); } catch {} }
+  function micGainOf(v) { return v <= 0 ? 0 : 10 ** ((-40 + v * 52) / 20); }
+  function applyMicLevel() { if (mic) mic.gain.gain.setTargetAtTime(micGainOf(micState.level), mic.context.currentTime, 0.02); }
+
+  async function startMic() {
+    if (mic) return true;
+    if (!activeContext || activeContext.state === 'closed') activeContext = new AudioContext({ latencyHint: 'interactive' });
+    const context = activeContext;
+    await context.resume();
+    getEqInput(context); // makes sure the master stage exists even when capture was never started
+    const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 };
+    if (micState.device) audio.deviceId = { ideal: micState.device };
+    const stream = await navigator.mediaDevices.getUserMedia({ audio });
+    const source = context.createMediaStreamSource(stream);
+    const gain = fxGain(context);
+    gain.gain.value = micGainOf(micState.level);
+    const an = context.createAnalyser(); an.fftSize = 1024;
+    source.connect(gain); gain.connect(an);
+    const fx = buildVocalFx(context, masterEq.master, gain);
+    mic = { stream, source, gain, an, fx, context, buf: new Float32Array(1024) };
+    stemDiag('mic_on', { state: 'on' });
+    return true;
+  }
+
+  function stopMic() {
+    if (!mic) return;
+    const m = mic; mic = null;
+    try { m.source.disconnect(); } catch {}
+    try { m.gain.disconnect(); } catch {}
+    for (const o of m.fx.outs) { try { o.disconnect(); } catch {} }
+    clearTimeout(m.fx.irTimer);
+    const i = vocalFxInstances.indexOf(m.fx);
+    if (i >= 0) vocalFxInstances.splice(i, 1);
+    for (const t of m.stream.getTracks()) t.stop();
+    stemDiag('mic_off', { state: 'off' });
+  }
 
   // RBJ biquad magnitude (dB) so the curve can be drawn without an audio node.
   function eqBandDb(b, f, fs) {
