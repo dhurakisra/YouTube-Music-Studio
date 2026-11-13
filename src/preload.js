@@ -2273,6 +2273,17 @@ if (isAutotunePage()) {
           border-bottom: 2px solid #0a0807 !important; box-shadow: inset 0 -1px 0 #ffffff1a, 0 5px 16px #000c !important; }
         ytmusic-nav-bar #left-content { background: transparent !important; }
         ytmusic-nav-bar ytmusic-logo { visibility: hidden !important; }
+        /* left guide: framed metal panel with its own textured inner plate */
+        ytmusic-app-layout #guide-wrapper { background: ${T('metal.jpg')} 0 0 / 256px 256px, #14110f !important; }
+        ytmusic-guide-renderer { box-sizing: border-box !important; margin: 6px 10px 0 !important; width: calc(100% - 20px) !important; height: calc(100vh - 112px - 134px) !important; overflow-y: auto !important; overflow-x: hidden !important;
+          border: 14px solid transparent !important; border-image: ${T('sk-square.png')} 62 / 18px stretch !important; background: linear-gradient(#0000003a, #0000008c), ${T('metal.jpg')} 0 0 / 256px 256px, #12100e !important; background-clip: padding-box !important; }
+        ytmusic-guide-entry-renderer tp-yt-paper-item { background: transparent !important; border: 1px solid transparent !important; border-radius: 4px !important; color: #e9dcc2 !important; font-weight: 700 !important; letter-spacing: .05em; text-shadow: 0 1px 2px #000; }
+        ytmusic-guide-entry-renderer:hover tp-yt-paper-item { background: #ffffff0f !important; color: #fff3d6 !important; }
+        ytmusic-guide-entry-renderer[active] tp-yt-paper-item { background: linear-gradient(#3a2a18, #1d140b) !important; border-color: #c58a3a !important; color: #ffb85a !important; box-shadow: 0 0 10px #ff9a3a44, inset 0 0 8px #000a; }
+        ytmusic-guide-renderer #divider, ytmusic-guide-renderer #divider * { border-color: #5a4630 !important; background-color: #5a4630 !important; }
+        ytmusic-guide-section-renderer h3, ytmusic-guide-section-renderer #guide-section-title { color: #b49568 !important; letter-spacing: .14em; text-transform: uppercase; font-size: 11px !important; }
+        ytmusic-guide-signin-promo-renderer .descriptive-text { color: #bfae8f !important; }
+        ytmusic-guide-signin-promo-renderer button { background: linear-gradient(#3a322a, #1b1816) !important; color: #e9dcc2 !important; border: 1px solid #6a5636 !important; }
         ytmusic-nav-bar #right-content ytmusic-settings-button { zoom: 1.4; }
         ytmusic-nav-bar #right-content ytmusic-settings-button #avatar, ytmusic-nav-bar #right-content ytmusic-settings-button img { border-radius: 50% !important; box-shadow: 0 0 0 2px #0a0807, 0 0 0 3px #8a6a3c; }
         ytmusic-nav-bar #right-content { position: fixed !important; top: 26px; right: 14px; zoom: 1.5; z-index: 2147483640; display: flex !important; align-items: center; }
