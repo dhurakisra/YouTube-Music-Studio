@@ -2421,7 +2421,7 @@ if (isAutotunePage()) {
         /* shelf titles: a small dark plate with faint filament wires; the lettering burns on the wires and flickers now and then */
         ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title { position: relative; display: inline-block !important; box-sizing: border-box; padding: 4px 20px 4px !important; margin: 2px 0 !important; font-size: 28px !important; line-height: 1.25 !important;
           background: #0d0a08e6; border: 1px solid #6a5636; border-radius: 6px; box-shadow: inset 0 0 12px #000, 0 2px 6px #000a; animation: poc-glow 7s linear infinite !important; opacity: 1 !important; }
-        ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title::before { content: ""; position: absolute; inset: 2px; pointer-events: none; border-radius: 4px; opacity: .32; animation: poc-wire 7s linear infinite;
+        ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title::before { content: ""; position: absolute; inset: 2px; pointer-events: none; border-radius: 4px; opacity: .2;
           background: repeating-linear-gradient(0deg, #ff9d3d 0 1px, transparent 1px 6px), repeating-linear-gradient(90deg, #ff9d3d 0 1px, transparent 1px 6px); }
         ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title > * { position: relative; }
         @keyframes poc-glow { 0%, 44%, 48%, 52%, 100% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 45% { color: #b9854a; text-shadow: 0 0 1px #ffb347; } 46% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99; } 47% { color: #d9a45c; text-shadow: 0 0 2px #ffb347, 0 0 5px #ff8a1f66; } 50% { color: #f0b865; text-shadow: 0 0 3px #ffb347, 0 0 8px #ff8a1f88; } }
