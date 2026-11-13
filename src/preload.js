@@ -1710,21 +1710,21 @@ if (isAutotunePage()) {
   function studioSparks() {
     const rnd = (a, b) => a + Math.random() * (b - a);
     const arm = (sp) => {
-      sp.style.left = rnd(4, 96) + '%'; // anywhere along the grid wires
-      sp.style.top = rnd(14, 90) + '%';
-      const dir = Math.random() < 0.5 ? -1 : 1;
-      sp.style.setProperty('--dx', dir * rnd(8, 30) + 'px');
-      sp.style.setProperty('--dy', rnd(-14, 26) + 'px');
-      sp.style.animationDuration = rnd(1.2, 5.5) + 's'; // the burst is the first ~9 % of the cycle (0.1-0.5 s), the rest is the pause
+      sp.style.left = rnd(3, 97) + '%'; // anywhere along the grid wires
+      sp.style.top = rnd(10, 92) + '%';
+      const ang = rnd(0, Math.PI * 2), dist = rnd(14, 44); // any direction: up, down, left, right, diagonal
+      sp.style.setProperty('--dx', Math.cos(ang) * dist + 'px');
+      sp.style.setProperty('--dy', Math.sin(ang) * dist * 0.8 + 'px');
+      sp.style.animationDuration = rnd(0.5, 3.2) + 's'; // burst = first ~7 % of the cycle (35-220 ms)
     };
     setInterval(() => {
       let titles = [];
       try { titles = document.querySelectorAll('ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title'); } catch { return; }
       for (const t of titles) {
         if (t.querySelector(':scope > .poc-spark')) continue;
-        for (let i = 0; i < 5; i += 1) {
+        for (let i = 0; i < 8; i += 1) {
           const sp = document.createElement('i'); sp.className = 'poc-spark';
-          arm(sp); sp.style.animationDelay = rnd(0, 4) + 's';
+          arm(sp); sp.style.animationDelay = rnd(0, 2.5) + 's';
           sp.addEventListener('animationiteration', () => arm(sp));
           t.appendChild(sp);
         }
@@ -2468,8 +2468,8 @@ if (isAutotunePage()) {
         ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title > * { position: relative; }
         @property --gh { syntax: '<number>'; inherits: false; initial-value: 0; }
         @property --gw { syntax: '<number>#'; inherits: false; initial-value: 255, 157, 61; }
-        ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title > i.poc-spark { position: absolute; z-index: 3; width: 2px; height: 2px; border-radius: 50%; pointer-events: none; opacity: 0; background: #fffbe6; box-shadow: 0 0 3px 1px #ffd27a, 0 0 8px 2px #ff7a1fcc; animation: poc-fall 3s linear infinite; }
-        @keyframes poc-fall { 0% { opacity: 0; transform: translate(0, 0) scale(1); } 0.6% { opacity: 1; transform: translate(0, 0) scale(2); } 3% { opacity: 1; transform: translate(calc(var(--dx) * .55), calc(var(--dy) * .35 - 4px)) scale(1.2); } 6% { opacity: .8; transform: translate(calc(var(--dx) * .85), calc(var(--dy) * .75)) scale(.8); } 9% { opacity: 0; transform: translate(var(--dx), calc(var(--dy) + 10px)) scale(.4); } 100% { opacity: 0; transform: translate(var(--dx), calc(var(--dy) + 10px)); } }
+        ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title > i.poc-spark { position: absolute; z-index: 3; width: 1.5px; height: 1.5px; border-radius: 50%; pointer-events: none; opacity: 0; background: #fffbe6; box-shadow: 0 0 2px 1px #ffd27a, 0 0 5px 1px #ff7a1fcc; animation: poc-fall 1.5s linear infinite; }
+        @keyframes poc-fall { 0% { opacity: 0; transform: translate(0, 0) scale(1); } 0.3% { opacity: 1; transform: translate(0, 0) scale(1.8); } 2.5% { opacity: 1; transform: translate(calc(var(--dx) * .8), calc(var(--dy) * .8)) scale(1); } 5% { opacity: .7; transform: translate(var(--dx), calc(var(--dy) + 6px)) scale(.7); } 7% { opacity: 0; transform: translate(calc(var(--dx) * 1.1), calc(var(--dy) + 12px)) scale(.4); } 100% { opacity: 0; transform: translate(calc(var(--dx) * 1.1), calc(var(--dy) + 12px)); } }
         @keyframes poc-heat { 0%, 12% { --gh: 0; --gw: 255, 157, 61; } 32% { --gh: .45; --gw: 255, 120, 45; } 46% { --gh: 1; --gw: 255, 82, 35; } 52% { --gh: .9; --gw: 255, 82, 35; } 76% { --gh: .25; --gw: 255, 130, 50; } 92%, 100% { --gh: 0; --gw: 255, 157, 61; } }
         @keyframes poc-glow { 0% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 58% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 59% { color: #8a5c2e; text-shadow: none; } 60% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 61% { color: #8a5c2e; text-shadow: none; } 62% { color: #d9a45c; text-shadow: 0 0 2px #ffb347, 0 0 5px #ff8a1f66; } 63% { color: #8a5c2e; text-shadow: none; } 64% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 65% { color: #8a5c2e; text-shadow: none; } 67% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 80% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 81% { color: #d9a45c; text-shadow: 0 0 2px #ffb347, 0 0 5px #ff8a1f66; } 82% { color: #8a5c2e; text-shadow: none; } 84% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 85% { color: #8a5c2e; text-shadow: none; } 86% { color: #8a5c2e; text-shadow: none; } 88% { color: #d9a45c; text-shadow: 0 0 2px #ffb347, 0 0 5px #ff8a1f66; } 89% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 100% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } }
         @keyframes poc-wire { 0%, 44%, 48%, 52%, 100% { opacity: .34; } 45% { opacity: .08; } 46% { opacity: .4; } 47% { opacity: .14; } 50% { opacity: .24; } 51% { opacity: .34; } }
