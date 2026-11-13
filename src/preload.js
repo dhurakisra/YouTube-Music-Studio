@@ -2020,8 +2020,11 @@ if (isAutotunePage()) {
     .topvu .knob.big { background-image: ${T('sk-knob.png')}; }
     .topvu .vu .lbl { font-size: 10px; } .topvu .vu .lbl.c { font-size: 12px; }
     .topvu .knob-box { flex-direction: column; font-size: 9px; gap: 1px; }
-    .topvu .knob.big { width: 60px; height: 60px; }
-    .topvu .knobw { padding: 0 6px; border-style: solid; border-color: transparent; border-width: 14px; border-image: ${T('sk-square.png')} 62 / 18px stretch; background: #0a0807; background-clip: padding-box; }
+    .topvu .knobw { padding: 0; border: 0; background: none; }
+    .topvu .knobw .knob-box { position: relative; width: 88px; height: 112px; box-sizing: border-box; padding-top: 98px; display: block; text-align: center; }
+    .topvu .knobw .knob-box::before { content: ""; position: absolute; left: 0; top: 0; width: 88px; height: 94px; background: ${T('sk-ring.png')} center / 100% 100% no-repeat; filter: drop-shadow(0 2px 3px #000a); }
+    .topvu .knobw .knob.big { position: absolute; left: 16px; top: 19px; width: 56px; height: 56px; background-image: ${T('sk-vknob.png')}; box-shadow: none; z-index: 1; }
+    .topvu .knobw .knob.big::after { top: 6px; height: 13px; width: 3px; margin-left: -1.5px; transform-origin: 50% 22px; filter: none; }
     .brand { -webkit-app-region: no-drag; position: fixed; left: 64px; top: 12px; width: 252px; height: 88px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 14px; text-decoration: none; cursor: pointer;
       border: 16px solid transparent; border-width: 16px 14px; border-image: ${T('sk-logo.png')} 46 / 16px 14px stretch; background: #0a0807; background-clip: padding-box; z-index: 2147483640; }
     .brandicon { width: 34px; height: 24px; flex: none; filter: drop-shadow(0 1px 2px #000); }
