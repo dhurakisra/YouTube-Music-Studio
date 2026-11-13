@@ -1689,7 +1689,7 @@ if (isAutotunePage()) {
       b.addEventListener('click', () => ipcRenderer.send('poc:win', cmd));
       wrap.appendChild(b);
     }
-    ui.appendChild(wrap);
+    ui.append(h('div', 'dragstrip'), wrap);
   }
 
   function studioBuildTopMeters(ui) {
@@ -1728,6 +1728,11 @@ if (isAutotunePage()) {
     const buf = new Float32Array(2048), angles = [-39, -39];
     const rmsDb = (an) => { an.getFloatTimeDomainData(buf); let t = 0; for (let i = 0; i < buf.length; i += 1) t += buf[i] * buf[i]; return t > 0 ? 10 * Math.log10(t / buf.length) : -100; };
     const angleOf = (db) => Math.max(-39, Math.min(39, db <= -18 ? 20 + (db + 18) * 2.95 : 20 + (db + 18) * 1.9));
+    const fit = () => { // the meter block shrinks with the window and hides when it would collide with the search field
+      const z = Math.min(1, (window.innerWidth - 250 - 850) / 470);
+      box.style.display = z < 0.45 ? 'none' : 'flex'; box.style.zoom = String(Math.max(0.45, z));
+    };
+    window.addEventListener('resize', fit); fit();
     let lastTapCheck = 0;
     setInterval(() => {
       if (document.hidden) return;
@@ -2004,6 +2009,7 @@ if (isAutotunePage()) {
         .np { position: relative; flex: 1 0 100%; display: flex; align-items: center; gap: 18px; box-sizing: border-box; margin-top: 4px;
       padding: 10px 18px; border: 1px solid #0009; border-radius: 10px; box-shadow: inset 0 0 18px #000a;
       background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; }
+    .dragstrip { -webkit-app-region: drag; position: fixed; left: 0; top: 0; right: 130px; height: 10px; z-index: 2147483639; }
     .winbtns { -webkit-app-region: no-drag; position: fixed; top: 6px; right: 8px; z-index: 2147483641; display: flex; gap: 4px; }
     .winbtn { width: 24px; height: 18px; padding: 0; border: 1px solid #0009; border-radius: 4px; cursor: pointer; font: 700 11px/1 "Bahnschrift", system-ui, sans-serif; color: var(--brass);
       background: linear-gradient(#3a322a, #1b1816); box-shadow: inset 0 1px 0 #ffffff1a, 0 1px 2px #000a; }
@@ -2023,7 +2029,6 @@ if (isAutotunePage()) {
     .brandname { font: 800 19px/1 "Bahnschrift", system-ui, sans-serif; color: #f1e6d3; white-space: nowrap; text-shadow: 0 1px 2px #000; letter-spacing: -.01em; }
     .brandname .bm { color: #ff6a3d; }
     .brandsub { margin-top: 5px; font: italic 700 9px/1 "Bahnschrift", system-ui, sans-serif; letter-spacing: .18em; color: var(--brass); white-space: nowrap; } .topvu .knob.big::after { top: 9px; height: 16px; width: 4px; margin-left: -2px; transform-origin: 50% 21px; }
-    @media (max-width: 1450px) { .topvu { display: none; } }
     .np.float { position: fixed; left: 12px; right: 12px; bottom: 10px; z-index: 2147483643; margin: 0; border-radius: 10px; height: 104px; padding: 6px 24px; }
     .tab.np-up { bottom: 114px; }
     .npticks { position: relative; height: 22px; margin-top: 1px; }
@@ -2261,8 +2266,7 @@ if (isAutotunePage()) {
         ytmusic-nav-bar ytmusic-logo { visibility: hidden !important; }
         ytmusic-search-box .search-box { background: #0a0807 !important; background-clip: border-box !important; border: 14px solid transparent !important; border-image: ${T('sk-pill.png')} 72 / 28px stretch !important; border-radius: 26px !important; box-shadow: none !important; height: 56px !important; box-sizing: border-box !important; }
         ytmusic-app-layout { --ytmusic-nav-bar-height: 112px !important; }
-        ytmusic-nav-bar { height: 112px !important; -webkit-app-region: drag; padding-right: 120px !important; box-sizing: border-box !important; }
-        ytmusic-nav-bar * { -webkit-app-region: no-drag; }
+        ytmusic-nav-bar { height: 112px !important; padding-right: 120px !important; box-sizing: border-box !important; }
         ytmusic-nav-bar ytmusic-search-box { margin-top: 0 !important; }
         ytmusic-search-box input { color: #eadfca !important; }
       `;
