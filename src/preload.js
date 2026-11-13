@@ -1634,7 +1634,7 @@ if (isAutotunePage()) {
         const tk = h('button', 'nptick' + (isMajor ? ' major' : ''), null, { type: 'button', 'aria-label': 'Jump to ' + fmtTime(t) });
         tk.style.left = (t / dur * 100) + '%';
         tk.appendChild(h('i', 'tkline'));
-        tk.appendChild(h('span', 'tklbl', Math.floor(t / 60) + '.' + String(t % 60).padStart(2, '0')));
+        tk.appendChild(h('span', 'tklbl', Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0')));
         tk.addEventListener('click', (ev) => { ev.stopPropagation(); const m = findMedia(); if (m) { try { m.currentTime = t; } catch {} } });
         ticks.appendChild(tk);
       }
