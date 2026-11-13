@@ -24,6 +24,10 @@ const ALLOWED_EVENTS = new Set([
 
 let mainWindow;
 let pcmBridgeWindow;
+let autotuneWindow;
+let autotuneReady = false;
+let autotuneQueue = [];
+let autotunePermsSet = false;
 let smokeTimer;
 let metricsTimer;
 let smokePageLoaded = false;
@@ -123,7 +127,18 @@ function writeRecIndex(list) {
   fs.renameSync(tmp, recIndexFile());
 }
 function cleanRecName(name) { return String(name ?? '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 80); }
-function publicRec(entry) { return { id: entry.id, name: entry.name, createdAt: entry.createdAt, durationS: entry.durationS, bytes: entry.bytes }; }
+function publicRec(entry) { return { id: entry.id, name: entry.name, createdAt: entry.createdAt, durationS: entry.durationS, bytes: entry.bytes, layers: (entry.layers || []).map((l) => l.key), kind: entry.kind === 'mix' ? 'mix' : 'raw', micOffsetMs: Number(entry.micOffsetMs) || 0 }; }
+const REC_LAYER_KEYS = new Set(['vocal', 'inst', 'drums', 'bass', 'drumsbass', 'other', 'micwet', 'micdry']);
+function layersDir(id) { return path.join(recDir(), `${id}.layers`); }
+function wavHeader(dataBytes, channels, sampleRate) {
+  const h = Buffer.alloc(44);
+  h.write('RIFF', 0); h.writeUInt32LE(36 + dataBytes, 4); h.write('WAVE', 8); h.write('fmt ', 12);
+  h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(channels, 22); h.writeUInt32LE(sampleRate, 24);
+  h.writeUInt32LE(sampleRate * channels * 2, 28); h.writeUInt16LE(channels * 2, 32); h.writeUInt16LE(16, 34);
+  h.write('data', 36); h.writeUInt32LE(dataBytes, 40);
+  return h;
+}
+
 function findRec(id) { return typeof id === 'string' ? readRecIndex().find((e) => e.id === id) : undefined; }
 function asArrayBuffer(value) {
   if (value instanceof ArrayBuffer) return value;
@@ -164,6 +179,7 @@ ipcMain.handle('poc:rec-save', async (event, payload) => {
       id, file, name: cleanRecName(name) || 'Recording', createdAt: new Date().toISOString(),
       durationS: Number(((left.byteLength / 2) / sampleRate).toFixed(2)), bytes: result.mp3.length,
     };
+    if (payload?.kind === 'mix') entry.kind = 'mix'; // bounced from the Mixer (finished product); everything else is a raw recording block
     writeRecIndex([entry, ...readRecIndex()]);
     appendLog('rec_saved', { state: 'saved', durationS: entry.durationS, bytes: entry.bytes });
     return { ok: true, entry: publicRec(entry) };
@@ -173,11 +189,69 @@ ipcMain.handle('poc:rec-save', async (event, payload) => {
   }
 });
 
+// Layered recordings: each layer is a lossless 16-bit WAV in <id>.layers/. Layers are added to an existing library entry right after its MP3 is saved.
+ipcMain.handle('poc:rec-layer', (event, payload) => {
+  if (!isTrustedYtmSender(event)) return { ok: false };
+  const { id, key, sampleRate, channels } = payload || {};
+  const pcm = asArrayBuffer(payload?.pcm);
+  if (typeof id !== 'string' || !REC_LAYER_KEYS.has(key) || !pcm || pcm.byteLength < 2 || pcm.byteLength > 900_000_000) return { ok: false, error: 'invalid layer' };
+  if (!Number.isFinite(sampleRate) || sampleRate < 8000 || sampleRate > 96000 || ![1, 2].includes(channels) || pcm.byteLength % (2 * channels) !== 0) return { ok: false, error: 'invalid layer' };
+  const list = readRecIndex();
+  const entry = list.find((e) => e.id === id);
+  if (!entry) return { ok: false, error: 'unknown recording' };
+  try {
+    fs.mkdirSync(layersDir(id), { recursive: true });
+    const data = Buffer.from(pcm);
+    fs.writeFileSync(path.join(layersDir(id), `${key}.wav`), Buffer.concat([wavHeader(data.length, channels, sampleRate), data]));
+    entry.layers = [...(entry.layers || []).filter((l) => l.key !== key), { key, file: `${key}.wav`, channels, sampleRate, frames: data.length / (2 * channels) }];
+    writeRecIndex(list);
+    appendLog('rec_saved', { state: 'layer-' + key, bytes: data.length });
+    return { ok: true };
+  } catch (error) {
+    appendLog('capture_error', { state: 'rec_layer_write_failed', error: String(error?.message || error).slice(0, 150) });
+    return { ok: false, error: 'could not write the layer' };
+  }
+});
+
 ipcMain.handle('poc:rec-read', (event, id) => {
   if (!isTrustedYtmSender(event)) return null;
   const entry = findRec(id);
   if (!entry) return null;
   try { return new Uint8Array(fs.readFileSync(path.join(recDir(), entry.file))); } catch { return null; }
+});
+
+// Layer WAV for the library mixer: the renderer sends only an id + a layer key (never a path); key must be one the entry really has.
+ipcMain.handle('poc:rec-layer-read', (event, id, key) => {
+  if (!isTrustedYtmSender(event)) return null;
+  const entry = findRec(id);
+  if (!entry || typeof key !== 'string' || !REC_LAYER_KEYS.has(key) || !(entry.layers || []).some((l) => l.key === key)) return null;
+  try { return new Uint8Array(fs.readFileSync(path.join(layersDir(entry.id), `${key}.wav`))); } catch { return null; }
+});
+
+// Lyrics: several public sources are tried in order (see lyrics-sources.js). Only artist, track, album and duration leave the machine; results are cached in memory.
+const { findLyrics } = require('./lyrics-sources');
+const lyricsCache = new Map();
+ipcMain.handle('poc:lyrics', async (event, q) => {
+  if (!isTrustedYtmSender(event)) return null;
+  const clean = (v) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, '').trim().slice(0, 150) : '');
+  const artist = clean(q?.artist), title = clean(q?.title), album = clean(q?.album);
+  const duration = Number.isFinite(q?.duration) && q.duration > 0 ? Math.round(q.duration) : 0;
+  if (!artist || !title) return { notFound: true };
+  const key = [artist, title, album, duration].join('|').toLowerCase();
+  if (lyricsCache.has(key)) return lyricsCache.get(key);
+  const result = await findLyrics({ artist, title, album, duration });
+  if (!result.error) lyricsCache.set(key, result); // network trouble is retried later
+  return result;
+});
+
+// Mic latency compensation (ms the mic layer was recorded late), estimated at REC time and fine-tuned by the user in the Mixer.
+ipcMain.handle('poc:rec-set-offset', (event, id, ms) => {
+  if (!isTrustedYtmSender(event)) return false;
+  const list = readRecIndex();
+  const entry = list.find((e) => e.id === id);
+  if (!entry || !Number.isFinite(ms)) return false;
+  entry.micOffsetMs = Math.max(-500, Math.min(500, Math.round(ms)));
+  try { writeRecIndex(list); return true; } catch { return false; }
 });
 
 ipcMain.handle('poc:rec-rename', (event, id, name) => {
@@ -197,6 +271,7 @@ ipcMain.handle('poc:rec-delete', (event, id) => {
   const entry = list.find((e) => e.id === id);
   if (!entry) return false;
   try { fs.rmSync(path.join(recDir(), entry.file), { force: true }); } catch {}
+  try { fs.rmSync(layersDir(entry.id), { recursive: true, force: true }); } catch {}
   writeRecIndex(list.filter((e) => e.id !== id));
   return true;
 });
@@ -313,6 +388,101 @@ ipcMain.on('poc:pcm-metrics', (event, metrics) => {
   appendLog('pcm_metrics', fields);
 });
 
+// ---- Auto-tune: a hidden local window (no restrictive CSP, so AudioWorklet works) pitch-corrects the mic and streams it back to the YTM page over a local WebRTC link. Main only relays signalling. ----
+function isTrustedAutotuneSender(event) {
+  const frame = event.senderFrame;
+  if (!frame || frame !== event.sender.mainFrame) return false;
+  try { return new URL(frame.url).protocol === 'file:' && frame.url.endsWith('/autotune.html'); } catch { return false; }
+}
+
+function cleanAtParams(p) {
+  const out = {};
+  if (!p || typeof p !== 'object') return out;
+  if (Number.isFinite(p.key)) out.key = Math.min(11, Math.max(0, Math.round(p.key)));
+  if (Number.isFinite(p.scale)) out.scale = Math.min(4, Math.max(0, Math.round(p.scale)));
+  if (Number.isFinite(p.speed)) out.speed = Math.min(1, Math.max(0, p.speed));
+  if (Number.isFinite(p.amount)) out.amount = Math.min(1, Math.max(0, p.amount));
+  return out;
+}
+
+function cleanAtMessage(m) {
+  if (!m || typeof m !== 'object' || typeof m.t !== 'string') return null;
+  const out = { t: m.t };
+  switch (m.t) {
+    case 'start': out.label = typeof m.label === 'string' ? m.label.slice(0, 200) : ''; out.params = cleanAtParams(m.params); break;
+    case 'params': out.params = cleanAtParams(m.params); break;
+    case 'offer': case 'answer':
+      if (typeof m.sdp !== 'string' || m.sdp.length > 30000) return null;
+      out.sdp = m.sdp; break;
+    case 'ice':
+      if (m.c === null) { out.c = null; break; }
+      if (!m.c || typeof m.c.candidate !== 'string' || m.c.candidate.length > 1000) return null;
+      out.c = {
+        candidate: m.c.candidate,
+        sdpMid: typeof m.c.sdpMid === 'string' ? m.c.sdpMid.slice(0, 40) : null,
+        sdpMLineIndex: Number.isInteger(m.c.sdpMLineIndex) ? m.c.sdpMLineIndex : null,
+        usernameFragment: typeof m.c.usernameFragment === 'string' ? m.c.usernameFragment.slice(0, 80) : undefined,
+      };
+      break;
+    case 'status':
+      for (const k of ['f0', 'midi', 'target', 'shift']) out[k] = Number.isFinite(m[k]) ? m[k] : 0;
+      break;
+    case 'error': out.error = String(m.error || '').slice(0, 200); break;
+    case 'stop': case 'ready': break;
+    default: return null;
+  }
+  return out;
+}
+
+function closeAutotuneWindow() {
+  const w = autotuneWindow;
+  autotuneWindow = undefined; autotuneReady = false; autotuneQueue = [];
+  if (w && !w.isDestroyed()) w.destroy();
+}
+
+function sendToAutotune(msg) {
+  if (!autotuneWindow || autotuneWindow.isDestroyed()) return;
+  if (autotuneReady) autotuneWindow.webContents.send('poc:at-msg', msg); else autotuneQueue.push(msg);
+}
+
+function createAutotuneWindow() {
+  closeAutotuneWindow();
+  if (!autotunePermsSet) { // the hidden window needs the microphone; nothing else on the default session gets any permission
+    autotunePermsSet = true;
+    const isLab = (url) => /\/autotune\.html$/.test(String(url || '').split(/[?#]/)[0]);
+    session.defaultSession.setPermissionRequestHandler((_wc, permission, callback, details) => callback(permission === 'media' && isLab(details?.requestingUrl)));
+    session.defaultSession.setPermissionCheckHandler((_wc, permission, origin, details) => permission === 'media' && isLab(details?.requestingUrl || origin));
+  }
+  autotuneWindow = new BrowserWindow({
+    show: false,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true, backgroundThrottling: false },
+  });
+  autotuneWindow.loadFile(path.join(__dirname, 'autotune.html'));
+}
+
+ipcMain.on('poc:at-to-lab', (event, raw) => {
+  if (!isTrustedYtmSender(event)) return;
+  const msg = cleanAtMessage(raw);
+  if (!msg || !['start', 'params', 'answer', 'ice', 'stop'].includes(msg.t)) return;
+  if (msg.t === 'stop') { closeAutotuneWindow(); return; }
+  if (msg.t === 'start') createAutotuneWindow();
+  sendToAutotune(msg);
+});
+
+ipcMain.on('poc:at-from-lab', (event, raw) => {
+  if (!isTrustedAutotuneSender(event) || !autotuneWindow || event.sender !== autotuneWindow.webContents) return;
+  const msg = cleanAtMessage(raw);
+  if (!msg) return;
+  if (msg.t === 'ready') {
+    autotuneReady = true;
+    for (const queued of autotuneQueue.splice(0)) autotuneWindow.webContents.send('poc:at-msg', queued);
+    return;
+  }
+  if (!['offer', 'ice', 'status', 'error'].includes(msg.t)) return;
+  if (msg.t === 'error') appendLog('stem_diag', { kind: 'autotune_error', error: msg.error });
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('poc:at-msg', msg);
+});
+
 function sendCommand(command) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.webContents.getURL().startsWith(YTM_URL)) {
@@ -360,6 +530,7 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = undefined;
     if (pcmBridgeWindow && !pcmBridgeWindow.isDestroyed()) pcmBridgeWindow.close();
+    closeAutotuneWindow();
   });
   const ytmSession = session.fromPartition(PARTITION);
   ytmSession.webRequest.onHeadersReceived({ urls: ['https://music.youtube.com/*'] }, (details, callback) => {
@@ -433,6 +604,9 @@ function appendStemWindowCsv(window) {
 function isYtmUrl(rawUrl) {
   try { return new URL(rawUrl).origin === 'https://music.youtube.com'; } catch { return false; }
 }
+
+// The auto-tune loopback is local-only: real host candidates (no mDNS obfuscation) so the hidden window and the page connect reliably.
+app.commandLine.appendSwitch('disable-features', 'WebRtcHideLocalIpsWithMdns');
 
 app.whenReady().then(() => {
   app.setName('YTM Audio POC');

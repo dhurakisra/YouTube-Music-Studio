@@ -40,7 +40,17 @@ function isPcmBridgePage() {
   try { return new URL(location.href).protocol === 'file:' && new URL(location.href).pathname.endsWith('/pcm-bridge.html'); } catch { return false; }
 }
 
-if (isPcmBridgePage()) {
+function isAutotunePage() {
+  try { return new URL(location.href).protocol === 'file:' && new URL(location.href).pathname.endsWith('/autotune.html'); } catch { return false; }
+}
+
+if (isAutotunePage()) {
+  // Hidden auto-tune window: a tiny message bridge to the main process (signalling only).
+  contextBridge.exposeInMainWorld('autotuneIpc', Object.freeze({
+    send(msg) { ipcRenderer.send('poc:at-from-lab', msg); },
+    onMessage(callback) { if (typeof callback === 'function') ipcRenderer.on('poc:at-msg', (_event, msg) => callback(msg)); },
+  }));
+} else if (isPcmBridgePage()) {
   let bridgeWorker = null;
   const metricListeners = new Set();
   function ensureBridgeWorker() {
@@ -187,13 +197,88 @@ if (isPcmBridgePage()) {
   function studioBuildSession(sec) {
     const row = (label, ...els) => { const r = h('div', 'eqinfo-row'); r.append(h('span', null, label), ...els); return r; };
     for (const el of [modelSelect, modeSelect]) { el.classList.add('sel'); for (const k of ['keydown', 'keyup', 'keypress']) el.addEventListener(k, (e) => e.stopPropagation()); }
-    sec.append(
-      row('MODEL', modelSelect),
-      row('MODE', modeSelect),
-      row('GAIN', gainSlider),
-      row('BUFFER', sessionEls.bufSlider, sessionEls.bufValue),
-      row('', button),
-    );
+    const listenBtn = h('button', 'btn bigbtn solo', 'LISTEN', { type: 'button', 'aria-label': 'Listen mode' });
+    listenBtn.title = 'Plain listening: YouTube Music as usual. Optionally listen with stem separation.';
+    const karaokeBtn = h('button', 'btn bigbtn solo recbig', 'KARAOKE', { type: 'button', 'aria-label': 'Karaoke mode' });
+    karaokeBtn.title = 'Sing over a song. Nothing starts until you press START KARAOKE.';
+    const info = h('div', 'eqinfo sessinfo', '');
+    const adv = h('div', 'adv');
+    adv.append(row('MODEL', modelSelect), row('MODE', modeSelect), row('GAIN', gainSlider), row('BUFFER', sessionEls.bufSlider, sessionEls.bufValue), row('', button));
+    const advToggle = h('button', 'advtoggle', 'ADVANCED \u25BE', { type: 'button' });
+    advToggle.addEventListener('click', () => { const o = adv.classList.toggle('open'); advToggle.textContent = o ? 'ADVANCED \u25B4' : 'ADVANCED \u25BE'; });
+    const stemBtn = h('button', 'btn bigbtn solo stemb', 'LISTEN WITH STEMS', { type: 'button', 'aria-label': 'Listen with system separation' });
+    stemBtn.title = 'Splits the song into vocals, drums, bass and other so you can mix them live (Mixer), change the key and more. It needs about 10 seconds of buffering before you hear anything. Leave it off to listen to YouTube Music as usual, in real time.';
+    const startBtn = h('button', 'btn bigbtn solo recbig startk', 'START KARAOKE', { type: 'button', 'aria-label': 'Start karaoke and recording' });
+    startBtn.title = 'Starts the song from the beginning, opens the microphone and the vocal chain, and records. It needs about 10 seconds of buffering first. Press again to finish and save.';
+    let busy = false;
+    // Interlocked push buttons: the active one stays down and does nothing when pressed again; the other one releases it.
+    // Neither mode starts any sound by itself: LISTEN = normal YouTube Music (stems are optional), KARAOKE = armed, waiting for START KARAOKE.
+    const enter = async (target) => {
+      if (busy || rec.saving || takePrep) return;
+      const fromMixer = !!libPlayer.mix;
+      if (appMode === target && !fromMixer) return;
+      busy = true;
+      try {
+        if (rec.active) await stopTake(info);
+        if (libPlayer.mix) { libPause(); libDropMix(); } // leave the recording mixer
+        if (karaoke) karaokeOff();
+        if (captureActive) stopCapture(); // back to plain YouTube Music playback
+        if (fxState.voc.on) { fxState.voc.on = false; saveFx(); applyVocalFxAll(); studio.syncVocalLab?.(); } // the chain only belongs to karaoke
+        if (target === 'listen') { setAppMode('listen'); info.textContent = ''; }
+        else {
+          const m = findMedia(); if (m && !m.paused) { try { m.pause(); } catch {} } // nothing plays until START KARAOKE
+          setAppMode('karaoke'); info.textContent = 'PRESS START KARAOKE WHEN READY';
+        }
+      } catch (error) { info.textContent = 'ERROR: ' + String(error?.name || error).slice(0, 30); } finally { busy = false; }
+    };
+    let stemPrep = false;
+    stemBtn.addEventListener('click', async () => {
+      if (stemPrep || busy || appMode !== 'listen') return;
+      if (captureActive) { stopCapture(); info.textContent = ''; return; } // pressing again returns to normal listening
+      stemPrep = true;
+      try {
+        ensureHt(); startMusic();
+        info.textContent = 'BUFFERING, PLEASE WAIT...';
+        if (!(await beginCapture())) { info.textContent = 'NO MUSIC PLAYING - OPEN A SONG FIRST'; return; }
+        setMode('stems', true);
+        const t0 = Date.now();
+        for (;;) { // you hear the song again after the stem delay: count it down
+          const total = Math.max(3000, Math.round(stemPlayer?.delayEstimateMs || 10000));
+          const left = Math.ceil((t0 + total - Date.now()) / 1000);
+          if (!captureActive || appMode !== 'listen') break;
+          if (left <= 0) { if (stemPlayer || Date.now() - t0 > 60000) break; info.textContent = 'BUFFERING, PLEASE WAIT...'; } else info.textContent = 'BUFFERING, PLEASE WAIT ' + left;
+          await sleepMs(200);
+        }
+        if (captureActive) info.textContent = '';
+      } catch (error) { info.textContent = 'ERROR: ' + String(error?.name || error).slice(0, 30); } finally { stemPrep = false; }
+    });
+    startBtn.addEventListener('click', () => { if (appMode === 'karaoke' && !busy) takeToggle(info).catch((error) => { info.textContent = 'ERROR: ' + String(error?.name || error).slice(0, 30); }); });
+    listenBtn.addEventListener('click', () => enter('listen'));
+    karaokeBtn.addEventListener('click', () => enter('karaoke'));
+    setInterval(() => {
+      const inMix = !!libPlayer.mix;
+      const l = appMode === 'listen' && !inMix, k = appMode === 'karaoke' && !inMix;
+      listenBtn.classList.toggle('on', l); listenBtn.setAttribute('aria-pressed', String(l));
+      karaokeBtn.classList.toggle('on', k); karaokeBtn.setAttribute('aria-pressed', String(k));
+      const stemsOn = l && captureActive; stemBtn.classList.toggle('on', stemsOn); stemBtn.setAttribute('aria-pressed', String(stemsOn));
+      const running = rec.active || takePrep;
+      startBtn.classList.toggle('on', running); startBtn.setAttribute('aria-pressed', String(running));
+      startBtn.textContent = rec.active ? 'STOP & SAVE' : rec.saving ? 'SAVING...' : takePrep ? 'BUFFERING...' : 'START KARAOKE';
+    }, 300);
+    sec.append(listenBtn, stemBtn, karaokeBtn, startBtn, info, advToggle, adv);
+    // Centred notice (top middle of the window) so the wait is impossible to miss; it follows the status text and disappears when buffering is over.
+    const toast = h('div', 'toastc');
+    const toastTitle = h('div', 'toasttitle'), toastSub = h('div', 'toastsub');
+    toast.append(toastTitle, toastSub);
+    studio.root.querySelector('.ui')?.appendChild(toast);
+    studio.infoEls = [info];
+    setInterval(() => {
+      const t = studio.infoEls.map((e) => e.textContent).find((x) => /^(BUFFERING|STARTING|PREPARING|SAVING)/.test(x));
+      if (!t) { toast.classList.remove('show'); return; }
+      toastTitle.textContent = t;
+      toastSub.textContent = /^SAVING/.test(t) ? 'Encoding your recording' : 'Separating the song takes about 10 seconds. Nothing is wrong, the music starts right after.';
+      toast.classList.add('show');
+    }, 200);
   }
 
   // ---- Studio drawer: slide-up console in a Shadow DOM (isolated from YTM CSS). Stems section is live; the other sections come later. ----
@@ -234,6 +319,7 @@ if (isPcmBridgePage()) {
     const layout = ht
       ? [['VOCALS', vocalSlider, 'vocalGain', ''], ['DRUMS', drumsSlider, 'drumsGain', 'red'], ['BASS', bassSlider, 'bassGain', ''], ['OTHER', otherSlider, 'otherGain', 'red']]
       : [['VOCALS', vocalSlider, 'vocalGain', ''], ['INSTR.', instSlider, 'instGain', 'red']];
+    if (libPlayer.mix) return libPlayer.mix.keys.map((k, i) => [LIB_LAYER_NAMES[k], libPlayer.mix.states[k], k, i % 2 ? 'red' : '']); // library recording with layers: its own channels
     layout.push(['KARAOKE', micStrip, 'mic', 'red']); // the live microphone; its fader is the same control as the Mic LEVEL knob
     return layout;
   }
@@ -243,6 +329,8 @@ if (isPcmBridgePage()) {
     const wrap = studio.root.querySelector('.channels');
     wrap.textContent = '';
     studio.strips = [];
+    studio.syncExport?.(); studio.syncOffset?.();
+    studio.consoleEl?.classList.toggle('mixview', !!libPlayer.mix); // MIX view while a layered recording is loaded
     for (const [name, state, nodeKey, capClass] of studioStemLayout()) {
       const el = document.createElement('div');
       el.className = 'strip';
@@ -297,7 +385,7 @@ if (isPcmBridgePage()) {
     if (!studio.buf) studio.buf = new Float32Array(512);
     for (const s of studio.strips) {
       let peak = 0;
-      const node = s.nodeKey === 'mic' ? mic?.an : an?.[s.nodeKey];
+      const node = libPlayer.mix?.ans[s.nodeKey] || (s.nodeKey === 'mic' ? mic?.an : an?.[s.nodeKey]);
       if (node) {
         node.getFloatTimeDomainData(studio.buf);
         for (let i = 0; i < studio.buf.length; i += 1) { const a = Math.abs(studio.buf[i]); if (a > peak) peak = a; }
@@ -305,6 +393,12 @@ if (isPcmBridgePage()) {
       const db = peak > 0 ? 20 * Math.log10(peak) : -100;
       s.held = Math.max(db, s.held - 1.2); // fast attack, gentle fall
       for (let j = 0; j < s.leds.length; j += 1) s.leds[j].classList.toggle('on', s.held > -42 + j * 2.8);
+    }
+    const gfx = libPlayer.mix?.fx || mic?.fx;
+    if (studio.gr && gfx) { // gain-reduction bars of the de-esser and compressor
+      studio.gr.comp.style.width = Math.min(100, -gfx.comp.reduction * 5) + '%';
+      studio.gr.ess.style.width = Math.min(100, -gfx.ess.reduction * 5) + '%';
+      if (studio.gr.gate) studio.gr.gate.style.width = (gfx.gateRouted ? Math.round((1 - gfx.gate.gain) * 100) : 0) + '%';
     }
     studio.eqDraw?.();
     studio.vuDraw?.();
@@ -330,6 +424,8 @@ if (isPcmBridgePage()) {
     const tab = studio.root.querySelector('.tab');
     tab.classList.toggle('open', open);
     tab.textContent = open ? 'STUDIO ▼' : 'STUDIO ▲';
+    studio.npEl?.classList.toggle('open', open);
+    studio.lyrEl?.classList.toggle('lift', open); studio.libEl?.classList.toggle('lift', open); // side panels end where the drawer begins
     try { localStorage.setItem('ytm-poc-drawer-open', open ? '1' : '0'); } catch {}
     if (open && !studio.raf) studio.raf = requestAnimationFrame(studioTick);
   }
@@ -551,9 +647,7 @@ if (isPcmBridgePage()) {
     lim.addEventListener('click', () => { eqState.limiter = !eqState.limiter; routeLimiter(); saveEqState(); syncLim(); });
     syncLim();
     const sw = h('div', 'switches'); sw.appendChild(lim);
-    const recUi = studioBuildRec();
-    sw.appendChild(recUi.btn);
-    const master = h('div', 'master'); master.append(knobs, sw, recUi.info);
+    const master = h('div', 'master'); master.append(knobs, sw);
     sec.append(vus, master);
 
     const buf = new Float32Array(2048), angles = [-39, -39];
@@ -600,38 +694,184 @@ if (isPcmBridgePage()) {
     'Karaoke Classic': { rev: 0.38, decay: 0.4, dly: 0.18, time: 0.35 },
     'Stadium': { rev: 0.5, decay: 0.8, dly: 0.3, time: 0.6 },
   };
-  function studioBuildVocalLab(sec) {
-    const group = 'voc', row = h('div', 'row fxknobs');
-    const defs = [['COMP', 'comp', ''], ['DE-ESS', 'deess', ''], ['PRES', 'pres', ''], ['REVERB', 'rev', 'red'], ['DECAY', 'decay', 'red'], ['DELAY', 'dly', 'red'], ['TIME', 'time', 'red']];
+  // Per-module presets and whole-chain presets.
+  const MOD_PRESETS = {
+    gate: { 'Off': { gOn: false }, 'Light': { gOn: true, gate: 0.2 }, 'Medium': { gOn: true, gate: 0.4 }, 'Tight': { gOn: true, gate: 0.65 } },
+    eq: { 'Flat': { low: 0.5, mud: 0.5 }, 'Warm': { low: 0.62, mud: 0.4 }, 'Clear (cut mud)': { low: 0.45, mud: 0.28 }, 'Fuller': { low: 0.7, mud: 0.5 } },
+    comp: { 'Gentle': { comp: 0.3 }, 'Medium': { comp: 0.55 }, 'Heavy': { comp: 0.8 } },
+    deess: { 'Soft': { deess: 0.3 }, 'Medium': { deess: 0.55 }, 'Strong': { deess: 0.8 } },
+    pres: { 'Subtle': { pres: 0.25 }, 'Bright': { pres: 0.5 }, 'Air': { pres: 0.8 } },
+    sat: { 'Warm': { saOn: true, drive: 0.25, smix: 0.4 }, 'Crunch': { saOn: true, drive: 0.55, smix: 0.5 }, 'Fuzz': { saOn: true, drive: 0.9, smix: 0.7 } },
+    dbl: { 'Subtle': { dbOn: true, dbl: 0.25, dspr: 0.4 }, 'Wide': { dbOn: true, dbl: 0.5, dspr: 0.8 }, 'Thick': { dbOn: true, dbl: 0.75, dspr: 0.6 } },
+    har: { 'Octave down': { hrOn: true, hint: 0, hlvl: 0.4 }, 'Third up': { hrOn: true, hint: 0.5, hlvl: 0.4 }, 'Fifth up': { hrOn: true, hint: 0.75, hlvl: 0.45 }, 'Octave up': { hrOn: true, hint: 1, hlvl: 0.35 } },
+    delay: { 'Off': { dly: 0 }, 'Slapback': { dly: 0.35, time: 0 }, 'Echo': { dly: 0.3, time: 0.45 }, 'Long echo': { dly: 0.4, time: 0.9 } },
+  };
+  const CHAIN_BASE = { gOn: false, gate: 0.3, cutOn: true, cut: 0.4, eqOn: true, low: 0.5, mud: 0.5, cpOn: true, comp: 0, esOn: true, deess: 0, prOn: true, pres: 0,
+    saOn: false, drive: 0, smix: 0.5, dbOn: false, dbl: 0, dspr: 0.5, hrOn: false, hint: 0.5, hlvl: 0.4, rvOn: true, rev: 0, decay: 0.4, dlOn: true, dly: 0, time: 0.4 };
+  const CHAIN_PRESETS = Object.fromEntries(Object.entries({
+    'Flat (all neutral)': {},
+    'Clean Pop': { gOn: true, gate: 0.25, cut: 0.45, low: 0.52, mud: 0.38, comp: 0.5, deess: 0.45, pres: 0.45, rev: 0.22, decay: 0.25 },
+    'Rock Edge': { gOn: true, gate: 0.4, cut: 0.5, mud: 0.35, comp: 0.7, deess: 0.4, pres: 0.5, saOn: true, drive: 0.35, smix: 0.45, dbOn: true, dbl: 0.25, rev: 0.15, decay: 0.15 },
+    'Hip-Hop': { gOn: true, gate: 0.45, cut: 0.5, mud: 0.3, comp: 0.75, deess: 0.6, pres: 0.4, saOn: true, drive: 0.2, smix: 0.4, rev: 0.1, decay: 0.1, dly: 0.22, time: 0.35 },
+    'Ballad': { cut: 0.35, low: 0.58, mud: 0.45, comp: 0.4, deess: 0.4, pres: 0.3, dbOn: true, dbl: 0.2, rev: 0.38, decay: 0.6, dly: 0.15, time: 0.5 },
+    'Karaoke Fun': { cut: 0.4, comp: 0.55, deess: 0.4, pres: 0.5, dbOn: true, dbl: 0.3, rev: 0.38, decay: 0.4, dly: 0.18, time: 0.35 },
+    'Radio / Lo-fi': { cut: 0.8, low: 0.35, mud: 0.6, comp: 0.85, pres: 0.3, saOn: true, drive: 0.6, smix: 0.6 },
+    'Stadium': { comp: 0.55, deess: 0.4, pres: 0.5, dbOn: true, dbl: 0.4, dspr: 0.8, rev: 0.5, decay: 0.85, dly: 0.3, time: 0.6 },
+    'Harmony Stack': { comp: 0.5, deess: 0.45, pres: 0.4, hrOn: true, hint: 0.75, hlvl: 0.5, dbOn: true, dbl: 0.3, rev: 0.3, decay: 0.4 },
+    'Podcast': { gOn: true, gate: 0.4, cut: 0.55, low: 0.55, mud: 0.35, comp: 0.6, deess: 0.5, pres: 0.35 },
+  }).map(([name, o]) => [name, { ...CHAIN_BASE, ...o, on: true }]));
+
+  // Vocal chain, in signal-flow order like a vocal recording session: input -> auto-tune -> low cut -> de-esser -> compressor -> presence/air -> reverb -> delay -> chain on / REC.
+  function studioBuildChain(sec) {
+    const row = h('div', 'chainrow');
     const boxes = [];
-    const presetSel = h('select', 'sel', null, { 'aria-label': 'Reverb and delay preset' });
-    for (const k of ['keydown', 'keyup', 'keypress']) presetSel.addEventListener(k, (e) => e.stopPropagation());
-    const add = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; presetSel.appendChild(o); };
-    add('', 'Custom');
-    for (const name of Object.keys(REVERB_PRESETS)) add(name, name);
-    const near = (x, y) => Math.abs(x - y) < 0.005;
-    const syncPreset = () => { // show the preset the knobs currently match, otherwise Custom
-      const v = fxState.voc;
-      const hit = Object.entries(REVERB_PRESETS).find(([, p]) => Object.entries(p).every(([k, val]) => near(v[k], val)));
-      presetSel.value = hit ? hit[0] : '';
+    const nl = ['keydown', 'keyup', 'keypress'];
+    const mod = (title, cls) => { const m = h('div', 'mod' + (cls ? ' ' + cls : '')); m.appendChild(h('div', 'modtitle', title)); return m; };
+    const toggles = [], selects = [];
+    const refreshAll = () => { boxes.forEach((bx) => bx.redraw()); selects.forEach((f) => f()); toggles.forEach((f) => f()); };
+    const modT = (title, flag, cls) => { // module with its own on/off LED
+      const m = mod(title, cls);
+      const led = h('button', 'modled', null, { type: 'button', 'aria-label': title + ' on or off', title: 'On / off' });
+      const sync = () => { const v = fxState.voc[flag]; led.classList.toggle('on', v); m.classList.toggle('off', !v); };
+      led.addEventListener('click', () => { fxState.voc[flag] = !fxState.voc[flag]; saveFx(); applyVocalFxAll(); sync(); });
+      m.firstChild.appendChild(led); toggles.push(sync); sync();
+      return m;
     };
-    for (const [label, key, cls] of defs) {
-      const dflt = key === 'decay' ? 0.4 : key === 'time' ? 0.4 : 0;
-      const box = studioKnob(label, cls, () => fxState[group][key], (v) => { fxState[group][key] = v; applyVocalFxAll(key === 'decay'); saveFx(); syncPreset(); }, dflt, key === 'decay' ? () => applyVocalFxAll() : undefined);
-      boxes.push(box); row.appendChild(box);
-    }
-    presetSel.addEventListener('change', () => {
-      const p = REVERB_PRESETS[presetSel.value];
-      if (!p) return;
-      Object.assign(fxState.voc, p); saveFx(); applyVocalFxAll();
-      boxes.forEach((bx) => bx.redraw());
+    const presetSelect = (map, label) => {
+      const sl = h('select', 'sel', null, { 'aria-label': label });
+      for (const k of ['keydown', 'keyup', 'keypress']) sl.addEventListener(k, (e) => e.stopPropagation());
+      const add = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sl.appendChild(o); };
+      add('', 'Preset...'); for (const name of Object.keys(map)) add(name, name);
+      const sync = () => { const v = fxState.voc; const hit = Object.entries(map).find(([, pr]) => Object.entries(pr).every(([k, val]) => k === 'on' || (typeof val === 'boolean' ? v[k] === val : Math.abs(v[k] - val) < 0.005))); sl.value = hit ? hit[0] : ''; };
+      sl.addEventListener('change', () => { const pr = map[sl.value]; if (!pr) return; Object.assign(fxState.voc, pr); saveFx(); applyVocalFxAll(); refreshAll(); studio.syncVocalLab?.(); });
+      selects.push(sync); sync();
+      return sl;
+    };
+    const body = (...els) => { const b = h('div', 'modbody'); b.append(...els); return b; };
+    const arrow = (cls) => h('div', 'modarrow' + (cls ? ' ' + cls : ''), '\u25B8');
+    const fxKnob = (label, key, cls, dflt) => {
+      const box = studioKnob(label, cls, () => fxState.voc[key], (v) => { fxState.voc[key] = v; applyVocalFxAll(key === 'decay'); saveFx(); selects.forEach((f) => f()); }, dflt, key === 'decay' ? () => applyVocalFxAll() : undefined);
+      boxes.push(box);
+      return box;
+    };
+    const gr = (key) => { const bar = h('div', 'grbar', null, { title: 'Gain reduction' }); const i = h('i'); bar.appendChild(i); (studio.gr ||= {})[key] = i; return bar; };
+
+    // 1. INPUT (live only)
+    const select = h('select', 'sel', null, { 'aria-label': 'Microphone input device' });
+    for (const k of nl) select.addEventListener(k, (e) => e.stopPropagation());
+    const refresh = async () => {
+      let devices = [];
+      try { devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput'); } catch {}
+      select.textContent = '';
+      const add = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; select.appendChild(o); };
+      add('', 'Default input');
+      devices.forEach((d, i) => { if (d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications') add(d.deviceId, d.label || 'Input ' + (i + 1)); });
+      select.value = micState.device;
+      if (select.value !== micState.device) select.value = '';
+    };
+    refresh();
+    const onBtn = h('button', 'btn solo fxon', null, { type: 'button', 'aria-label': 'Microphone on' });
+    const led = h('span', 'led');
+    onBtn.append(led, document.createTextNode('MIC'));
+    const info = h('span', 'eqinfo', 'USE HEADPHONES');
+    const syncMic = () => { const on = !!mic; onBtn.classList.toggle('on', on); led.classList.toggle('on', on); onBtn.setAttribute('aria-pressed', String(on)); };
+    setInterval(syncMic, 500);
+    onBtn.addEventListener('click', async () => {
+      if (mic) { stopMic(); syncMic(); info.textContent = 'USE HEADPHONES'; return; }
+      onBtn.disabled = true;
+      try { await startMic(); await refresh(); } catch (error) {
+        info.textContent = 'MIC ERROR: ' + String(error?.name || error).slice(0, 40);
+        stemDiag('mic_error', { error: String(error?.name || error).slice(0, 80) });
+      }
+      onBtn.disabled = false; syncMic();
     });
-    syncPreset();
-    const pr = h('div', 'eqinfo-row'); pr.append(h('span', null, 'PRESET'), presetSel);
-    const labBtn = studioToggle('VOCAL LAB', group, 'on', applyVocalFxAll);
+    select.addEventListener('change', async () => {
+      micState.device = select.value; saveMic();
+      if (mic) { stopMic(); try { await startMic(); } catch (error) { info.textContent = 'MIC ERROR: ' + String(error?.name || error).slice(0, 40); } syncMic(); }
+    });
+    const lvl = studioKnob('LEVEL', 'red', () => micState.level, (v) => { micState.level = v; applyMicLevel(); studio.micFaderRefresh?.(); }, STEM_FADER_DEFAULT, saveMic);
+    studio.micKnobRedraw = lvl.redraw;
+    const mInput = mod('INPUT', 'live input');
+    mInput.append(select, body(lvl, onBtn), info);
+    studio.micTick = () => { // input peak, so the level can be set without clipping
+      if (!mic) return;
+      mic.an.getFloatTimeDomainData(mic.buf);
+      let pk = 0;
+      for (let i = 0; i < mic.buf.length; i += 1) { const a = Math.abs(mic.buf[i]); if (a > pk) pk = a; }
+      const db = pk > 0 ? 20 * Math.log10(pk) : -100;
+      info.textContent = 'IN ' + (db > -99 ? db.toFixed(0) + ' dB' : '-inf dB') + (db > -1 ? '  CLIP' : '');
+    };
+
+    // 2. AUTO-TUNE (live only)
+    const pick = (label, items, key) => {
+      const sl = h('select', 'sel', null, { 'aria-label': label });
+      for (const k of nl) sl.addEventListener(k, (e) => e.stopPropagation());
+      items.forEach((t, i) => { const o = document.createElement('option'); o.value = String(i); o.textContent = t; sl.appendChild(o); });
+      sl.value = String(Math.round(fxState.at[key]));
+      sl.addEventListener('change', () => { fxState.at[key] = Number(sl.value); saveFx(); atSendParams(); });
+      return sl;
+    };
+    const atInfo = h('span', 'eqinfo', 'MIC OFF');
+    const idle = () => (mic ? 'LISTENING' : 'MIC OFF');
+    const atBtn = studioToggle('AUTO-TUNE', 'at', 'on', () => {
+      atInfo.textContent = fxState.at.on ? (mic ? 'CONNECTING' : 'TURN MIC ON') : 'OFF';
+      if (mic) micAttachSource(mic).catch((error) => { atInfo.textContent = 'MIC ERROR: ' + String(error?.name || error).slice(0, 40); });
+    });
+    studio.atStatus = (m) => {
+      if (!fxState.at.on) { atInfo.textContent = 'OFF'; return; }
+      if (m.t === 'error') atInfo.textContent = 'AUTO-TUNE UNAVAILABLE';
+      else if (m.t === 'idle') atInfo.textContent = 'TURN MIC ON';
+      else if (m.f0 > 0) { const c = Math.round((m.midi - m.target) * 100); atInfo.textContent = atNoteName(m.target) + '  ' + (c >= 0 ? '+' : '') + c + 'c'; }
+      else atInfo.textContent = idle();
+    };
+    const mTune = mod('AUTO-TUNE', 'live tune');
+    const keyRow = h('div', 'eqinfo-row'); keyRow.append(pick('Auto-tune key', AT_KEYS, 'key'), pick('Auto-tune scale', AT_SCALES, 'scale'));
+    mTune.append(keyRow, body(
+      studioKnob('SPEED', '', () => fxState.at.speed, (v) => { fxState.at.speed = v; atSendParams(); saveFx(); }, 0.7),
+      studioKnob('AMOUNT', 'red', () => fxState.at.amount, (v) => { fxState.at.amount = v; atSendParams(); saveFx(); }, 1)), atBtn, atInfo);
+
+    // signal-flow modules
+    const mGate = modT('GATE', 'gOn'); mGate.append(body(fxKnob('THRESH', 'gate', '', 0.3)), gr('gate'), presetSelect(MOD_PRESETS.gate, 'Gate preset'));
+    const mCut = modT('LOW CUT', 'cutOn'); mCut.append(body(fxKnob('FREQ', 'cut', '', 0.4)));
+    const mEq = modT('EQ', 'eqOn'); mEq.append(body(fxKnob('LOW', 'low', '', 0.5), fxKnob('MUD', 'mud', '', 0.5)), presetSelect(MOD_PRESETS.eq, 'EQ preset'));
+    const mComp = modT('COMP', 'cpOn'); mComp.append(body(fxKnob('AMOUNT', 'comp', '', 0)), gr('comp'), presetSelect(MOD_PRESETS.comp, 'Compressor preset'));
+    const mEss = modT('DE-ESS', 'esOn'); mEss.append(body(fxKnob('AMOUNT', 'deess', '', 0)), gr('ess'), presetSelect(MOD_PRESETS.deess, 'De-esser preset'));
+    const mPres = modT('PRESENCE', 'prOn'); mPres.append(body(fxKnob('AIR', 'pres', '', 0)), presetSelect(MOD_PRESETS.pres, 'Presence preset'));
+    const mSat = modT('SATURATION', 'saOn'); mSat.append(body(fxKnob('DRIVE', 'drive', 'red', 0), fxKnob('MIX', 'smix', 'red', 0.5)), presetSelect(MOD_PRESETS.sat, 'Saturation preset'));
+    const mDbl = modT('DOUBLER', 'dbOn'); mDbl.append(body(fxKnob('AMOUNT', 'dbl', 'red', 0), fxKnob('WIDTH', 'dspr', 'red', 0.5)), presetSelect(MOD_PRESETS.dbl, 'Doubler preset'));
+    const mHar = modT('HARMONIZER', 'hrOn');
+    const harSel = h('select', 'sel', null, { 'aria-label': 'Harmony interval' });
+    for (const k of nl) harSel.addEventListener(k, (e) => e.stopPropagation());
+    HARM_INTERVALS.forEach(([, t], i) => { const o = document.createElement('option'); o.value = String(i); o.textContent = t; harSel.appendChild(o); });
+    const syncHar = () => { harSel.value = String(Math.round(fxState.voc.hint * 4)); };
+    harSel.addEventListener('change', () => { fxState.voc.hint = Number(harSel.value) / 4; saveFx(); applyVocalFxAll(); selects.forEach((f) => f()); });
+    selects.push(syncHar); syncHar();
+    mHar.append(harSel, body(fxKnob('LEVEL', 'hlvl', 'red', 0.4)), presetSelect(MOD_PRESETS.har, 'Harmonizer preset'));
+    const mRev = modT('REVERB', 'rvOn'); mRev.append(body(fxKnob('SEND', 'rev', 'red', 0), fxKnob('DECAY', 'decay', 'red', 0.4)), presetSelect(REVERB_PRESETS, 'Reverb and delay preset'));
+    const mDly = modT('DELAY', 'dlOn'); mDly.append(body(fxKnob('SEND', 'dly', 'red', 0), fxKnob('TIME', 'time', 'red', 0.4)), presetSelect(MOD_PRESETS.delay, 'Delay preset'));
+
+    // 9. chain on + take (REC)
+    const labBtn = studioToggle('CHAIN ON', 'voc', 'on', applyVocalFxAll);
     studio.syncVocalLab = labBtn.syncFn;
-    const sw = h('div', 'switches'); sw.appendChild(labBtn);
-    sec.append(pr, row, sw);
+    const mOut = mod('OUTPUT');
+    const takeBtn = h('button', 'btn solo recbig takebtn', 'REC', { type: 'button', 'aria-label': 'Record a take' });
+    takeBtn.title = 'Records every layer (music stems, mic dry and with effects). Press again to finish and save.';
+    const takeInfo = h('span', 'eqinfo', '');
+    studio.infoEls?.push(takeInfo);
+    takeBtn.addEventListener('click', () => { takeToggle(takeInfo).catch((error) => { takeInfo.textContent = 'ERROR: ' + String(error?.name || error).slice(0, 30); }); });
+    setInterval(() => {
+      takeBtn.classList.toggle('on', rec.active || rec.saving); takeBtn.setAttribute('aria-pressed', String(rec.active));
+      if (rec.active) takeInfo.textContent = 'REC ' + fmtTime((Date.now() - rec.startedAt) / 1000);
+    }, 300);
+    const takeWrap = h('div', 'live'); takeWrap.append(takeBtn, takeInfo);
+    mOut.append(labBtn, takeWrap);
+
+    row.append(mInput, arrow('live'), mTune, arrow('live'), mGate, arrow(), mCut, arrow(), mEq, arrow(), mComp, arrow(), mEss, arrow(), mPres, arrow(), mSat, arrow(), mDbl, arrow(), mHar, arrow(), mRev, arrow(), mDly, arrow(), mOut);
+    const bar = h('div', 'chainbar');
+    const chainSel = presetSelect(CHAIN_PRESETS, 'Whole vocal chain preset');
+    chainSel.options[0].textContent = 'Choose a chain preset...';
+    bar.append(h('span', 'offlbl', 'VOCAL CHAIN PRESET'), chainSel, h('span', 'offlbl', 'Every module below is set at once; tweak any of them after.'));
+    sec.append(bar, row);
   }
 
   function studioBuildEnhancer(sec) {
@@ -667,7 +907,7 @@ if (isPcmBridgePage()) {
   }
 
   // ---- Recorder (master output -> MP3 in the recordings library) and the library player ----
-  const rec = { active: false, saving: false, recorder: null, dest: null, chunks: [], startedAt: 0, ctx: null, progress: 0 };
+  const rec = { layers: [], taps: null, layerMap: null, active: false, saving: false, recorder: null, dest: null, chunks: [], startedAt: 0, ctx: null, progress: 0 };
   let recLib = [];
   ipcRenderer.on('poc:rec-progress', (_event, pct) => { if (Number.isFinite(pct)) rec.progress = pct; });
 
@@ -680,6 +920,104 @@ if (isPcmBridgePage()) {
   function defaultRecName() {
     const d = new Date(), p = (n) => String(n).padStart(2, '0');
     return `Recording ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}.${p(d.getMinutes())}`;
+  }
+
+  // ---- Layered recording: each layer is captured losslessly (PCM) at the point where it is heard, before faders/EQ/Enhancer/master:
+  // stems come from the playout sources (raw), the mic is taken after the Vocal Lab chain (wet, what the singer hears) plus a dry copy for pitch analysis.
+  const REC_LAYER_MIME = 'audio/webm;codecs=pcm';
+  function recStartLayers(context) {
+    rec.layers = []; rec.taps = null; rec.layerMap = null;
+    if (!MediaRecorder.isTypeSupported(REC_LAYER_MIME)) return;
+    const map = {}, list = [];
+    const make = (key, channels) => {
+      const dest = context.createMediaStreamDestination();
+      dest.channelCount = channels;
+      const input = context.createGain();
+      input.connect(dest);
+      const recorder = new MediaRecorder(dest.stream, { mimeType: REC_LAYER_MIME });
+      const layer = { key, channels, input, dest, recorder, chunks: [] };
+      recorder.ondataavailable = (e) => { if (e.data?.size) layer.chunks.push(e.data); };
+      map[key] = layer; list.push(layer);
+      return layer;
+    };
+    if (stemNodes && stemPlayer && modeSelect?.value === 'stems') {
+      const ht = modelSelect?.value === 'htdemucs' || modelSelect?.value === 'passthrough';
+      const vocal = make('vocal', 2);
+      if (ht) {
+        const drums = make('drums', 2), bass = make('bass', 2), other = make('other', 2);
+        rec.taps = { vocalGain: vocal.input, drumsGain: drums.input, bassGain: bass.input, otherGain: other.input };
+      } else {
+        const inst = make('inst', 2);
+        rec.taps = { vocalGain: vocal.input, instGain: inst.input };
+      }
+    }
+    if (mic) {
+      make('micwet', 1); make('micdry', 1);
+      // The singer follows what they HEAR (output latency), then the mic delivers it late (input latency): the mic layer lands about this much after the music.
+      let inLat = 0;
+      try { inLat = Number(mic.stream?.getAudioTracks?.()[0]?.getSettings?.().latency) || 0; } catch {}
+      rec.micOffsetMs = Math.max(0, Math.min(400, Math.round(((context.outputLatency || 0) + (context.baseLatency || 0) + inLat) * 1000)));
+    }
+    rec.layerMap = map; rec.layers = list;
+    recWireTaps();
+    if (map.micdry) mic.gain.connect(map.micdry.input);
+    recTapMic();
+    for (const layer of list) layer.recorder.start(1000);
+    rec.ctxT0 = context.currentTime;
+  }
+
+  // Wet mic tap follows the Vocal Lab routing: chain outputs while it is on, the plain mic otherwise.
+  function recTapMic() {
+    const wet = rec.layerMap?.micwet;
+    if (!wet || !mic) return;
+    try { mic.gain.disconnect(wet.input); } catch {}
+    for (const o of mic.fx.outs) { try { o.disconnect(wet.input); } catch {} }
+    if (fxState.voc.on) for (const o of mic.fx.outs) o.connect(wet.input); else mic.gain.connect(wet.input);
+  }
+
+  // Stops every layer recorder and returns 16-bit interleaved PCM per non-silent layer.
+  async function recStopLayers() {
+    const layers = rec.layers || [];
+    recUnwireTaps();
+    rec.taps = null; rec.layerMap = null; rec.layers = [];
+    const ctx = rec.ctx, tStop = ctx.currentTime;
+    await Promise.all(layers.map((layer) => new Promise((resolve) => {
+      if (layer.recorder.state === 'inactive') return resolve();
+      layer.recorder.onstop = resolve;
+      try { layer.recorder.stop(); } catch { resolve(); }
+    })));
+    for (const layer of layers) {
+      try { layer.input.disconnect(); } catch {}
+      if (mic && layer.key === 'micdry') { try { mic.gain.disconnect(layer.input); } catch {} }
+      if (mic && layer.key === 'micwet') { try { mic.gain.disconnect(layer.input); } catch {} for (const o of mic.fx.outs) { try { o.disconnect(layer.input); } catch {} } }
+    }
+    const out = [];
+    for (const layer of layers) {
+      try {
+        const blob = new Blob(layer.chunks, { type: 'audio/webm' });
+        layer.chunks = [];
+        const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
+        const ch = Math.min(decoded.numberOfChannels, layer.channels), n = decoded.length;
+        const pcm = new Int16Array(n * ch);
+        let peak = 0;
+        for (let c = 0; c < ch; c += 1) {
+          const d = decoded.getChannelData(c);
+          for (let i = 0; i < n; i += 1) { const v = Math.max(-1, Math.min(1, d[i])); if (Math.abs(v) > peak) peak = Math.abs(v); pcm[i * ch + c] = Math.round(v * 32767); }
+        }
+        if (peak < 0.0005) { stemDiag('rec_layer_skipped', { kind: layer.key }); continue; } // never carried any signal
+        out.push({ key: layer.key, channels: ch, sampleRate: decoded.sampleRate, pcm: pcm.buffer });
+      } catch (error) { stemDiag('rec_error', { kind: layer.key, error: String(error?.name || error).slice(0, 60) }); }
+    }
+    // A recorder stops writing once its source goes silent/ends: pad every layer with silence to one common length so the layers stay aligned.
+    let want = Math.round((tStop - (rec.ctxT0 || tStop)) * (out[0]?.sampleRate || 0));
+    for (const o of out) want = Math.max(want, o.pcm.byteLength / 2 / o.channels);
+    for (const o of out) {
+      if (o.pcm.byteLength / 2 / o.channels >= want) continue;
+      const padded = new Int16Array(want * o.channels);
+      padded.set(new Int16Array(o.pcm));
+      o.pcm = padded.buffer;
+    }
+    return out;
   }
 
   async function startRec() {
@@ -695,6 +1033,7 @@ if (isPcmBridgePage()) {
     rec.chunks = [];
     recorder.ondataavailable = (e) => { if (e.data?.size) rec.chunks.push(e.data); };
     recorder.start(1000);
+    try { recStartLayers(context); } catch (error) { rec.layers = []; rec.taps = null; rec.layerMap = null; stemDiag('rec_error', { error: String(error?.name || error).slice(0, 60) }); }
     Object.assign(rec, { active: true, recorder, dest, startedAt: Date.now(), ctx: context, progress: 0 });
     stemDiag('rec_start', { state: 'recording' });
     return true;
@@ -708,6 +1047,8 @@ if (isPcmBridgePage()) {
     try {
       await new Promise((resolve) => { recorder.onstop = resolve; recorder.stop(); });
       try { masterEq.outNode.disconnect(dest); } catch {}
+      let layerData = [];
+      try { layerData = await recStopLayers(); } catch {}
       const blob = new Blob(rec.chunks, { type: recorder.mimeType || 'audio/webm' });
       rec.chunks = [];
       const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
@@ -718,6 +1059,13 @@ if (isPcmBridgePage()) {
         ri[i] = Math.round(Math.max(-1, Math.min(1, r[i])) * 32767);
       }
       const result = await ipcRenderer.invoke('poc:rec-save', { sampleRate: decoded.sampleRate, left: li.buffer, right: ri.buffer, name: defaultRecName() });
+      if (result?.ok && result.entry?.id) {
+        if (layerData.some((l) => l.key === 'micwet')) { try { await ipcRenderer.invoke('poc:rec-set-offset', result.entry.id, rec.micOffsetMs || 0); } catch {} }
+        for (const layer of layerData) {
+          try { await ipcRenderer.invoke('poc:rec-layer', { id: result.entry.id, key: layer.key, sampleRate: layer.sampleRate, channels: layer.channels, pcm: layer.pcm }); } catch {}
+        }
+        await recRefresh();
+      }
       stemDiag(result?.ok ? 'rec_saved' : 'rec_error', result?.ok ? { state: 'saved' } : { error: String(result?.error || 'unknown').slice(0, 80) });
       await recRefresh();
       return result || { ok: false, error: 'no result' };
@@ -728,36 +1076,196 @@ if (isPcmBridgePage()) {
     } finally { rec.saving = false; }
   }
 
-  // Library player: decoded MP3 -> master stage input (so EQ, Enhancer, master gain and limiter apply). No <audio> element, no CSP media rules involved.
-  const libPlayer = { id: null, buffer: null, source: null, ctx: null, offset: 0, startedAt: 0, playing: false };
+  // Mixer EXPORT: renders the layered recording with the current fader/solo/mute settings offline, files the result as a finished MP3 in the MIXED tab.
+  let mixExporting = false;
+  async function exportMix() {
+    const mix = libPlayer.mix;
+    if (!mix || mixExporting) return { ok: false, error: 'nothing to export' };
+    mixExporting = true;
+    try {
+      const sr = mix.bufs[mix.keys[0]].sampleRate;
+      const length = Math.ceil((Math.max(...mix.keys.map((k) => mix.bufs[k].duration)) + (mix.keys.includes('micdry') ? 3 : 0)) * sr); // + room for the reverb/delay tail
+      const off = new OfflineAudioContext(2, length, sr);
+      const bus = off.createDynamicsCompressor();
+      bus.threshold.value = -6; bus.ratio.value = 20; bus.attack.value = 0; bus.release.value = 0.1; bus.knee.value = 6;
+      const master = off.createGain();
+      master.gain.value = masterEq.master.gain.value;
+      bus.connect(master); master.connect(off.destination);
+      const anySolo = mix.keys.some((k) => mix.states[k].stemFlags.solo);
+      for (const k of mix.keys) {
+        const st = mix.states[k];
+        const audible = !st.stemFlags.mute && (!anySolo || st.stemFlags.solo);
+        const g = off.createGain();
+        g.gain.value = audible ? faderPosToLevel(st.pos) * (isMicLayer(k) ? 1 : STEM_HEADROOM) : 0;
+        const src = off.createBufferSource();
+        src.buffer = mix.bufs[k];
+        src.connect(g);
+        if (k === 'micdry') { // offline copy of the Vocal Lab chain with the current lab settings
+          const fx = buildVocalFx(off, bus, g);
+          const ix = vocalFxInstances.indexOf(fx);
+          if (ix >= 0) vocalFxInstances.splice(ix, 1);
+          applyVocalFx(fx, true);
+          const sec = Math.round((0.4 + fxState.voc.decay * 3.6) * 10) / 10;
+          fx.irKey = sec; fx.conv.buffer = makeReverbIR(off, sec);
+        } else g.connect(bus);
+        const shiftS = isMicLayer(k) ? (libPlayer.micOffsetMs || 0) / 1000 : 0;
+        if (shiftS >= 0) src.start(0, Math.min(shiftS, Math.max(0, mix.bufs[k].duration - 0.001))); else src.start(-shiftS, 0);
+      }
+      const out = await off.startRendering();
+      const l = out.getChannelData(0), r = out.getChannelData(1), n = out.length;
+      const li = new Int16Array(n), ri = new Int16Array(n);
+      for (let i = 0; i < n; i += 1) {
+        li[i] = Math.round(Math.max(-1, Math.min(1, l[i])) * 32767);
+        ri[i] = Math.round(Math.max(-1, Math.min(1, r[i])) * 32767);
+      }
+      const base = recLib.find((e) => e.id === libPlayer.id)?.name || 'Recording';
+      const result = await ipcRenderer.invoke('poc:rec-save', { sampleRate: sr, left: li.buffer, right: ri.buffer, name: (base + ' (mix)').slice(0, 80), kind: 'mix' });
+      await recRefresh();
+      return result || { ok: false, error: 'no result' };
+    } catch (error) {
+      stemDiag('rec_error', { error: String(error?.name || error).slice(0, 80) });
+      return { ok: false, error: String(error?.name || error) };
+    } finally { mixExporting = false; }
+  }
+
+  // Library player: decoded MP3 -> master gain + limiter only (EQ and Enhancer are skipped: they are already baked into the recording). No <audio> element, no CSP media rules involved.
+  const libPlayer = { micOffsetMs: 0, id: null, buffer: null, source: null, sources: [], mix: null, ctx: null, offset: 0, startedAt: 0, playing: false };
+  // Layered recordings: every layer WAV gets its own gain (= a Mixer channel) and meter, summed into a small limiter, then master gain + limiter. EQ/Enhancer/Vocal Lab are NOT applied (layers are raw; micwet already carries the Vocal Lab).
+  const LIB_LAYER_NAMES = { vocal: 'VOCALS', inst: 'INSTR.', drums: 'DRUMS', bass: 'BASS', drumsbass: 'DRUMS+BASS', other: 'OTHER', micwet: 'MIC', micdry: 'MIC' };
+  const LIB_LAYER_ORDER = ['vocal', 'inst', 'drums', 'bass', 'drumsbass', 'other', 'micwet', 'micdry'];
+  const isMicLayer = (k) => k === 'micwet' || k === 'micdry';
+  function libMixApply() {
+    const mix = libPlayer.mix;
+    if (!mix) return;
+    const now = mix.ctx.currentTime;
+    const anySolo = mix.keys.some((k) => mix.states[k].stemFlags.solo);
+    for (const k of mix.keys) {
+      const st = mix.states[k];
+      const audible = !st.stemFlags.mute && (!anySolo || st.stemFlags.solo);
+      mix.gains[k].gain.setTargetAtTime(audible ? faderPosToLevel(st.pos) * (isMicLayer(k) ? 1 : STEM_HEADROOM) : 0, now, 0.03);
+    }
+  }
+  function libDropMix() {
+    const mix = libPlayer.mix;
+    if (!mix) return;
+    libKillSource();
+    for (const k of mix.keys) { try { mix.gains[k].disconnect(); } catch {} }
+    try { mix.bus.disconnect(); } catch {}
+    if (mix.fx) {
+      const i = vocalFxInstances.indexOf(mix.fx);
+      if (i >= 0) vocalFxInstances.splice(i, 1);
+      clearTimeout(mix.fx.irTimer);
+      mix.fx.dispose?.();
+      for (const o of mix.fx.outs) { try { o.disconnect(); } catch {} }
+    }
+    libPlayer.mix = null;
+    Object.assign(libPlayer, { id: null, buffer: null, offset: 0, playing: false });
+    studioRebuildStrips();
+    studio.libRender?.();
+  }
+  async function libLoadMix(ctx, id, keys) {
+    const bufs = {};
+    for (const k of keys) {
+      const bytes = await ipcRenderer.invoke('poc:rec-layer-read', id, k);
+      if (!bytes) return null;
+      bufs[k] = await ctx.decodeAudioData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+    }
+    const bus = ctx.createDynamicsCompressor();
+    bus.threshold.value = -6; bus.ratio.value = 20; bus.attack.value = 0; bus.release.value = 0.1; bus.knee.value = 6;
+    bus.connect(masterEq.master);
+    const gains = {}, ans = {}, states = {};
+    let micFx = null;
+    for (const k of keys) {
+      const g = ctx.createGain();
+      if (k === 'micdry') micFx = buildVocalFx(ctx, bus, g); // the raw mic goes through the LIVE Vocal Lab (fader first, then effects), so the lab knobs shape it while mixing
+      else g.connect(bus);
+      const an = ctx.createAnalyser(); an.fftSize = 512; g.connect(an); // meter tap
+      gains[k] = g; ans[k] = an;
+      states[k] = { value: String(faderPosToLevel(STEM_FADER_DEFAULT) * 100), pos: STEM_FADER_DEFAULT, stemFlags: { solo: false, mute: false }, apply: libMixApply };
+    }
+    return { ctx, keys, bufs, gains, ans, states, bus, fx: micFx };
+  }
   const libPos = () => (libPlayer.playing ? libPlayer.offset + (libPlayer.ctx.currentTime - libPlayer.startedAt) : libPlayer.offset);
   function libKillSource() {
-    const src = libPlayer.source;
-    libPlayer.source = null;
-    if (!src) return;
-    src.onended = null;
-    try { src.stop(); } catch {}
-    try { src.disconnect(); } catch {}
+    const all = [libPlayer.source, ...libPlayer.sources];
+    libPlayer.source = null; libPlayer.sources = [];
+    for (const src of all) {
+      if (!src) continue;
+      src.onended = null;
+      try { src.stop(); } catch {}
+      try { src.disconnect(); } catch {}
+    }
   }
-  function libPause() {
+  // While a library recording plays, YouTube Music must be silent: its element is paused and every capture path (dry, processed, stems incl. the queued stem tail) is muted.
+  let ytmHeld = false;
+  function ytmHold(on) {
+    if (on === ytmHeld) return;
+    ytmHeld = on;
+    const medias = [...document.querySelectorAll('audio, video')];
+    if (on) {
+      for (const m of medias) { try { if (!m.paused) m.pause(); } catch {} }
+      const now = activeContext?.currentTime || 0;
+      for (const m of medias) {
+        const g = graphs.get(m);
+        if (!g) continue;
+        g.dryGain.gain.setTargetAtTime(0, now, 0.02); g.wetGain.gain.setTargetAtTime(0, now, 0.02); g.stemBus.gain.setTargetAtTime(0, now, 0.02);
+      }
+    } else if (captureActive) setMode(modeSelect?.value || 'bypass', false);
+    else {
+      const now = activeContext?.currentTime || 0;
+      for (const m of medias) {
+        const g = graphs.get(m);
+        if (!g) continue;
+        g.dryGain.gain.setTargetAtTime(1, now, 0.02); g.wetGain.gain.setTargetAtTime(0, now, 0.02); g.stemBus.gain.setTargetAtTime(0, now, 0.02);
+      }
+    }
+  }
+  // Pressing play in YouTube Music while a recording plays: the recording gives way (one thing at a time).
+  document.addEventListener('play', (e) => {
+    if (!ytmHeld || !(e.target instanceof HTMLMediaElement)) return;
+    if (libPlayer.playing) libPause();
+    else ytmHold(false);
+    libDropMix(); // the layered mixer gives the channels back to the live session
+    studio.libRender?.();
+  }, true);
+
+  function libPause(keepHold) {
     if (!libPlayer.playing) return;
     libPlayer.offset = Math.min(libPos(), libPlayer.buffer?.duration || 0);
     libKillSource();
     libPlayer.playing = false;
+    if (keepHold !== true) ytmHold(false);
   }
   function libStartAt(offset) {
     const { ctx, buffer } = libPlayer;
     libKillSource();
-    const src = ctx.createBufferSource();
-    src.buffer = buffer;
-    src.connect(masterEq.input);
+    ytmHold(true);
+    const mix = libPlayer.mix;
+    const srcs = [];
+    const t0 = ctx.currentTime + 0.05; // all layers start on the same sample
+    if (mix) {
+      libMixApply();
+      for (const k of mix.keys) { const s2 = ctx.createBufferSource(); s2.buffer = mix.bufs[k]; s2.connect(mix.gains[k]); srcs.push(s2); }
+    }
+    const micShiftS = (mix && libPlayer.micOffsetMs ? libPlayer.micOffsetMs : 0) / 1000; // mic layer was recorded late: read it earlier
+    const src = mix ? srcs[0] : ctx.createBufferSource();
+    if (!mix) src.buffer = buffer;
+    if (!mix) src.connect(masterEq.master); // after EQ and Enhancer: the recording already contains them, so only master gain + limiter apply (no double processing)
     src.onended = () => {
       if (libPlayer.source !== src) return;
       libPlayer.source = null; libPlayer.playing = false; libPlayer.offset = 0;
+      ytmHold(false);
       studio.libRender?.();
     };
-    src.start(0, Math.max(0, Math.min(offset, buffer.duration - 0.01)));
-    libPlayer.source = src; libPlayer.offset = offset; libPlayer.startedAt = ctx.currentTime; libPlayer.playing = true;
+    const at = Math.max(0, Math.min(offset, buffer.duration - 0.01));
+    if (mix) {
+      mix.keys.forEach((k, i) => {
+        if (!isMicLayer(k)) { srcs[i].start(t0, at); return; }
+        const pos = at + micShiftS;
+        if (pos >= 0) srcs[i].start(t0, Math.min(pos, Math.max(0, mix.bufs[k].duration - 0.001))); else srcs[i].start(t0 - pos, at);
+      });
+      libPlayer.sources = srcs.slice(1); } else src.start(0, at);
+    libPlayer.source = src; libPlayer.offset = offset; libPlayer.startedAt = mix ? t0 : ctx.currentTime; libPlayer.playing = true;
   }
   async function libToggle(id) {
     if (libPlayer.id === id && libPlayer.buffer) {
@@ -766,18 +1274,31 @@ if (isPcmBridgePage()) {
       studio.libRender?.();
       return;
     }
-    libPause();
+    libPause(true);
+    libDropMix();
     if (!activeContext || activeContext.state === 'closed') activeContext = new AudioContext({ latencyHint: 'interactive' });
     const ctx = activeContext;
     await ctx.resume();
     getEqInput(ctx);
-    const bytes = await ipcRenderer.invoke('poc:rec-read', id);
-    if (!bytes) return;
-    const buffer = await ctx.decodeAudioData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
-    Object.assign(libPlayer, { id, buffer, ctx, offset: 0 });
-    const media = findMedia();
-    if (media && !media.paused) media.pause(); // one thing at a time: pause the YouTube Music track
-    libStartAt(0);
+    const entry = recLib.find((r) => r.id === id);
+    let keys = LIB_LAYER_ORDER.filter((k) => entry?.layers?.includes(k));
+    if (keys.includes('micdry')) keys = keys.filter((k) => k !== 'micwet'); // the dry mic is the source; the Vocal Lab is applied live
+    let mix = null;
+    if (keys.length >= 1) { try { mix = await libLoadMix(ctx, id, keys); } catch (error) { stemDiag('rec_error', { error: String(error?.name || error).slice(0, 60) }); } }
+    if (mix) {
+      libPlayer.mix = mix;
+      libPlayer.micOffsetMs = Number(entry?.micOffsetMs) || 0;
+      Object.assign(libPlayer, { id, buffer: mix.bufs[keys[0]], ctx, offset: 0 });
+      studio.syncOffset?.();
+      if (mix.fx && !fxState.voc.on) { fxState.voc.on = true; saveFx(); applyVocalFxAll(); studio.syncVocalLab?.(); } // a vocal recording opens with the Vocal Lab on
+      studioRebuildStrips();
+    } else {
+      const bytes = await ipcRenderer.invoke('poc:rec-read', id);
+      if (!bytes) { ytmHold(false); return; }
+      const buffer = await ctx.decodeAudioData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+      Object.assign(libPlayer, { id, buffer, ctx, offset: 0 });
+    }
+    libStartAt(0); // pauses YouTube Music and mutes its capture paths (ytmHold)
     studio.libRender?.();
   }
   function libSeek(frac) {
@@ -788,7 +1309,7 @@ if (isPcmBridgePage()) {
   }
   function libForget(id) {
     if (libPlayer.id !== id) return;
-    libPause(); libKillSource();
+    libPause(); libKillSource(); libDropMix();
     Object.assign(libPlayer, { id: null, buffer: null, offset: 0, playing: false });
   }
 
@@ -832,12 +1353,21 @@ if (isPcmBridgePage()) {
     const closeBtn = h('button', 'libclose', '✕', { type: 'button', 'aria-label': 'Close recordings' });
     head.append(title, closeBtn);
     const list = h('div', 'liblist');
-    panel.append(h('i', 'screw tl'), h('i', 'screw tr'), head, list);
+    let libTab = 'raw'; // 'raw' = unmixed layer blocks, 'mix' = finished exports
+    const tabs = h('div', 'libtabs');
+    const tabRaw = h('button', 'btn libsub on', 'LAYERS', { type: 'button', 'aria-label': 'Show unmixed recordings (layers)' });
+    const tabMix = h('button', 'btn libsub', 'MIXED', { type: 'button', 'aria-label': 'Show finished mixes' });
+    tabs.append(tabRaw, tabMix);
+    const setTab = (t) => { libTab = t; tabRaw.classList.toggle('on', t === 'raw'); tabMix.classList.toggle('on', t === 'mix'); render(); };
+    tabRaw.addEventListener('click', () => setTab('raw'));
+    tabMix.addEventListener('click', () => setTab('mix'));
+    studio.libShowTab = setTab;
+    panel.append(h('i', 'screw tl'), h('i', 'screw tr'), head, tabs, list);
     const tab = h('button', 'libtab', 'RECORDINGS', { type: 'button', 'aria-label': 'Toggle recordings panel' });
     ui.append(panel, tab);
     let open = false;
     const setOpen = (v) => { open = v; panel.classList.toggle('open', v); tab.classList.toggle('open', v); if (v) recRefresh(); };
-    studio.libOpen = setOpen;
+    studio.libOpen = setOpen; studio.libEl = panel;
     tab.addEventListener('click', () => setOpen(!open));
     closeBtn.addEventListener('click', () => setOpen(false));
     let confirmId = null, renamingId = null;
@@ -846,9 +1376,12 @@ if (isPcmBridgePage()) {
     const bars = new Map();
     const render = () => {
       list.textContent = ''; bars.clear();
+      const shown = recLib.filter((e) => (e.kind === 'mix') === (libTab === 'mix'));
+      const nMix = recLib.filter((e) => e.kind === 'mix').length;
       title.textContent = 'MY RECORDINGS (' + recLib.length + ')';
-      if (!recLib.length) list.appendChild(h('div', 'libempty', 'No recordings yet. Press REC in the Output section.'));
-      for (const e of recLib) {
+      tabRaw.textContent = 'LAYERS (' + (recLib.length - nMix) + ')'; tabMix.textContent = 'MIXED (' + nMix + ')';
+      if (!shown.length) list.appendChild(h('div', 'libempty', libTab === 'mix' ? 'No mixes yet. Play a layered recording and press EXPORT in the Mixer.' : 'No recordings yet. Press REC in the Output section.'));
+      for (const e of shown) {
         const row = h('div', 'librow');
         const isCur = libPlayer.id === e.id;
         const play = h('button', 'btn libplay' + (isCur && libPlayer.playing ? ' on' : ''), isCur && libPlayer.playing ? '❚❚' : '▶', { type: 'button', 'aria-label': 'Play or pause ' + e.name });
@@ -907,8 +1440,360 @@ if (isPcmBridgePage()) {
     recRefresh();
   }
 
+  // ---- Key & Tempo (karaoke / listen) ----
+  // TEMPO: the YouTube Music element itself is slowed or sped up with pitch preserved (browser time-stretch), so the stems, the lyrics and the recording all follow it.
+  // KEY: every stem layer passes a streaming WSOLA pitch shifter (below) before its fader and before the recording taps, so layers are recorded in the key the singer sang in.
+  // Streaming stereo pitch shifter: WSOLA time stretch (by factor f) followed by resampling (by f). Duration is preserved, pitch moves by f.
+  // One instance handles one stereo pair; process() takes any block size and always produces the same number of samples it consumed.
+  class PairShifter {
+    constructor() {
+      this.CAP = 1 << 16; this.MASK = this.CAP - 1;
+      this.Hs = 512; this.W = 1024; this.D = 384; // synthesis hop, window, search radius (samples)
+      this.hann = new Float32Array(this.W);
+      for (let i = 0; i < this.W; i += 1) this.hann[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / this.W);
+      this.f = 1;
+      this.reset();
+    }
+    reset() {
+      const C = this.CAP;
+      this.inL = new Float32Array(C); this.inR = new Float32Array(C); this.inCount = 0;
+      this.stL = new Float32Array(C); this.stR = new Float32Array(C); this.stCount = 0;
+      this.accL = new Float32Array(this.W); this.accR = new Float32Array(this.W);
+      this.pNom = 0; this.prevBest = -1; this.rp = 1; this.first = true;
+      this.refD = new Float32Array(this.Hs / 4); this.candD = new Float32Array(Math.ceil((2 * this.D + this.Hs) / 4) + 8);
+    }
+    setFactor(f) { this.f = f; }
+    mono(i) { return 0.5 * (this.inL[i & this.MASK] + this.inR[i & this.MASK]); }
+    // Adds one windowed segment to the overlap accumulator and emits Hs finished samples. Returns false when the input does not reach far enough yet.
+    produceFrame() {
+      const { Hs, W, D, MASK } = this;
+      const Ha = Hs / this.f;
+      let p;
+      if (this.first) {
+        if (this.inCount < W + 8) return false;
+        p = 0; this.first = false; this.pNom = Ha;
+      } else {
+        const c = Math.round(this.pNom);
+        const t = this.prevBest + Hs; // where the previous segment would naturally continue
+        if (c + D + W > this.inCount || t + Hs > this.inCount) return false;
+        const lo = Math.max(0, c - D), hi = c + D;
+        // coarse search on 4x-decimated mono
+        const nd = Hs / 4, M = Math.floor((hi - lo) / 4);
+        const ref = this.refD, cand = this.candD;
+        for (let k = 0; k < nd; k += 1) { const b = t + 4 * k; ref[k] = this.mono(b) + this.mono(b + 1) + this.mono(b + 2) + this.mono(b + 3); }
+        const need = M + nd;
+        for (let k = 0; k < need; k += 1) { const b = lo + 4 * k; cand[k] = this.mono(b) + this.mono(b + 1) + this.mono(b + 2) + this.mono(b + 3); }
+        let eRef = 0; for (let k = 0; k < nd; k += 1) eRef += ref[k] * ref[k];
+        let bestJ = Math.floor(M / 2), bestS = -Infinity;
+        let eC = 0; for (let k = 0; k < nd; k += 1) eC += cand[k] * cand[k];
+        for (let j = 0; j <= M; j += 1) {
+          if (j > 0) { const o = cand[j - 1], n2 = cand[j - 1 + nd]; eC += n2 * n2 - o * o; }
+          let dot = 0; for (let k = 0; k < nd; k += 1) dot += ref[k] * cand[j + k];
+          const s = dot / Math.sqrt(eC * eRef + 1e-9);
+          if (s > bestS) { bestS = s; bestJ = j; }
+        }
+        // fine search at full rate around the coarse winner
+        const centre = lo + 4 * bestJ;
+        let bestP = centre, bestF = -Infinity;
+        for (let q = Math.max(lo, centre - 4); q <= Math.min(hi, centre + 4); q += 1) {
+          let dot = 0, e = 0;
+          for (let k = 0; k < Hs; k += 2) { const a = this.mono(t + k), b = this.mono(q + k); dot += a * b; e += b * b; }
+          const s = dot / Math.sqrt(e + 1e-9);
+          if (s > bestF) { bestF = s; bestP = q; }
+        }
+        p = bestP;
+        this.pNom += Ha;
+      }
+      this.prevBest = p;
+      const aL = this.accL, aR = this.accR, hw = this.hann;
+      for (let i = 0; i < W; i += 1) { const w = hw[i]; aL[i] += w * this.inL[(p + i) & MASK]; aR[i] += w * this.inR[(p + i) & MASK]; }
+      for (let i = 0; i < Hs; i += 1) { const o = (this.stCount + i) & MASK; this.stL[o] = aL[i]; this.stR[o] = aR[i]; }
+      this.stCount += Hs;
+      aL.copyWithin(0, Hs); aR.copyWithin(0, Hs); aL.fill(0, W - Hs); aR.fill(0, W - Hs);
+      return true;
+    }
+    process(inL, inR, outL, outR, n) {
+      const MASK = this.MASK, f = this.f;
+      for (let i = 0; i < n; i += 1) { const o = (this.inCount + i) & MASK; this.inL[o] = inL[i]; this.inR[o] = inR[i]; }
+      this.inCount += n;
+      if (this.inCount - this.pNom > this.CAP / 2) { this.reset(); this.f = f; } // fell hopelessly behind: restart cleanly
+      let rp = this.rp;
+      for (let i = 0; i < n; i += 1) {
+        while (this.stCount < Math.floor(rp) + 3) { if (!this.produceFrame()) break; }
+        const idx = Math.floor(rp);
+        if (this.stCount < idx + 3) { outL[i] = 0; outR[i] = 0; continue; } // still filling
+        const fr = rp - idx;
+        const o0 = (idx - 1) & MASK, o1 = idx & MASK, o2 = (idx + 1) & MASK, o3 = (idx + 2) & MASK;
+        // Catmull-Rom interpolation
+        const cr = (a, b, c, d) => b + 0.5 * fr * (c - a + fr * (2 * a - 5 * b + 4 * c - d + fr * (3 * (b - c) + d - a)));
+        outL[i] = cr(this.stL[o0], this.stL[o1], this.stL[o2], this.stL[o3]);
+        outR[i] = cr(this.stR[o0], this.stR[o1], this.stR[o2], this.stR[o3]);
+        rp += f;
+      }
+      this.rp = rp;
+    }
+  }
+
+  const tuneState = { semis: 0, tempo: 1 };
+  const STEM_SLOTS = ['vocalGain', 'instGain', 'drumsGain', 'bassGain', 'otherGain'];
+  // One ScriptProcessor carries all five stereo layers (10 channels): one callback per block instead of five.
+  function buildStemPitch(context, nodes) {
+    const nCh = STEM_SLOTS.length * 2;
+    const ins = {}, outs = {};
+    const merger = context.createChannelMerger(nCh);
+    const proc = context.createScriptProcessor(4096, nCh, nCh);
+    proc.channelCount = nCh; proc.channelCountMode = 'explicit'; proc.channelInterpretation = 'discrete';
+    merger.connect(proc);
+    const splitOut = context.createChannelSplitter(nCh);
+    proc.connect(splitOut);
+    STEM_SLOTS.forEach((key, k) => {
+      const input = fxGain(context), sp = context.createChannelSplitter(2);
+      input.connect(sp); sp.connect(merger, 0, 2 * k); sp.connect(merger, 1, 2 * k + 1);
+      const mo = context.createChannelMerger(2), output = fxGain(context);
+      splitOut.connect(mo, 2 * k, 0); splitOut.connect(mo, 2 * k + 1, 1); mo.connect(output); output.connect(nodes[key]);
+      ins[key] = input; outs[key] = output;
+    });
+    const pairs = STEM_SLOTS.map(() => ({ ps: new PairShifter(), seen: false, wasShifting: false }));
+    const self = { ins, outs, proc };
+    proc.onaudioprocess = (e) => {
+      const inp = e.inputBuffer, out = e.outputBuffer, n = inp.length;
+      if (nodes.pitch !== self) { for (let c = 0; c < nCh; c += 1) out.getChannelData(c).fill(0); return; } // superseded by a newer capture graph
+      const semis = tuneState.semis, f = 2 ** (semis / 12);
+      for (let k = 0; k < STEM_SLOTS.length; k += 1) {
+        const iL = inp.getChannelData(2 * k), iR = inp.getChannelData(2 * k + 1), oL = out.getChannelData(2 * k), oR = out.getChannelData(2 * k + 1);
+        const pr = pairs[k];
+        if (semis === 0) { oL.set(iL); oR.set(iR); pr.wasShifting = false; continue; } // untouched when the key is not changed
+        if (!pr.seen) { let a = 0; for (let i = 0; i < n; i += 64) a += Math.abs(iL[i]) + Math.abs(iR[i]); if (a < 1e-6) { oL.fill(0); oR.fill(0); continue; } pr.seen = true; }
+        if (!pr.wasShifting) { pr.ps.reset(); pr.wasShifting = true; }
+        pr.ps.setFactor(f);
+        pr.ps.process(iL, iR, oL, oR, n);
+      }
+    };
+    return self;
+  }
+  // Recording taps hang on the shifter outputs: layers are recorded after the key change, exactly as heard.
+  function recWireTaps() {
+    rec.tapWires = [];
+    const pitch = stemNodes?.pitch;
+    if (!pitch || !rec.taps) return;
+    for (const [key, tap] of Object.entries(rec.taps)) { const o = pitch.outs[key]; if (o && tap) { o.connect(tap); rec.tapWires.push([o, tap]); } }
+  }
+  function recUnwireTaps() {
+    for (const [o, tap] of rec.tapWires || []) { try { o.disconnect(tap); } catch {} }
+    rec.tapWires = [];
+  }
+  let tempoTouched = false;
+  function applyTempo() {
+    const m = findMedia();
+    if (!m) return;
+    const want = (appMode !== 'idle' && !libPlayer.mix) ? tuneState.tempo : 1; // only while listening / singing
+    if (want === 1 && !tempoTouched) return;
+    try { m.preservesPitch = true; m.webkitPreservesPitch = true; } catch {}
+    if (Math.abs(m.playbackRate - want) > 0.001) { try { m.playbackRate = want; } catch {} }
+    tempoTouched = want !== 1;
+  }
+  setInterval(applyTempo, 700); // also wins back the rate if YouTube Music resets it on a new song
+
+  function studioBuildTune(sec) {
+    const val = (cls) => h('div', 'tunevalue' + (cls ? ' ' + cls : ''), '');
+    const keyV = val(), tempoV = val();
+    const step = (label, fn) => { const b = h('button', 'btn tunebtn', label, { type: 'button', 'aria-label': label }); b.addEventListener('click', fn); return b; };
+    const show = () => {
+      keyV.textContent = (tuneState.semis > 0 ? '+' : '') + tuneState.semis;
+      tempoV.textContent = Math.round(tuneState.tempo * 100) + '%';
+    };
+    const setKey = (v) => { tuneState.semis = Math.max(-8, Math.min(8, v)); show(); };
+    const setTempo = (v) => { tuneState.tempo = Math.max(0.5, Math.min(1.5, Math.round(v * 100) / 100)); show(); applyTempo(); };
+    const keyRow = h('div', 'tunerow'); keyRow.append(h('span', 'tunelbl', 'KEY'), step('\u2212', () => setKey(tuneState.semis - 1)), keyV, step('+', () => setKey(tuneState.semis + 1)));
+    const tempoRow = h('div', 'tunerow'); tempoRow.append(h('span', 'tunelbl', 'TEMPO'), step('\u2212', () => setTempo(tuneState.tempo - 0.05)), tempoV, step('+', () => setTempo(tuneState.tempo + 0.05)));
+    const reset = h('button', 'btn', 'RESET', { type: 'button', 'aria-label': 'Reset key and tempo' });
+    reset.addEventListener('click', () => { setKey(0); setTempo(1); });
+    const note = h('div', 'eqinfo', 'KEY IN SEMITONES');
+    sec.append(keyRow, tempoRow, h('div', 'switches'), note);
+    sec.lastChild.previousSibling.appendChild(reset);
+    show();
+  }
+
+  // Now-playing window: floats above the open Studio drawer so the song stays visible and controllable while mixing.
+  function studioBuildNowPlaying(ui) {
+    const win = h('div', 'np');
+    const art = h('img', 'npart', null, { alt: '' });
+    const info = h('div', 'npinfo');
+    const title = h('div', 'nptitle'), artist = h('div', 'npartist');
+    const bar = h('div', 'libbar npbar'); const fill = h('div', 'libfill'); bar.appendChild(fill);
+    const times = h('div', 'npmeta');
+    info.append(title, artist, bar, times);
+    const q = (sel) => document.querySelector('ytmusic-player-bar ' + sel);
+    const mk = (text, label, fn, cls) => { const b = h('button', 'btn npbtn' + (cls ? ' ' + cls : ''), text, { type: 'button', 'aria-label': label }); b.addEventListener('click', fn); return b; };
+    const prev = mk('\u23EE', 'Previous song', () => q('.previous-button')?.click());
+    const playBtn = mk('\u25B6', 'Play or pause', () => { const pb = q('.play-pause-button'); if (pb) pb.click(); else { const m = findMedia(); if (m) { if (m.paused) m.play()?.catch?.(() => {}); else m.pause(); } } }, 'solo');
+    const next = mk('\u23ED', 'Next song', () => q('.next-button')?.click());
+    const ctl = h('div', 'npctl'); ctl.append(prev, playBtn, next);
+    bar.addEventListener('click', (ev) => { const m = findMedia(); if (!m || !Number.isFinite(m.duration)) return; const r = bar.getBoundingClientRect(); try { m.currentTime = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * m.duration; } catch {} });
+    win.append(art, info, ctl);
+    ui.appendChild(win);
+    studio.npEl = win;
+    let lastArt = '';
+    setInterval(() => {
+      if (!studio.open) return;
+      const md = navigator.mediaSession?.metadata;
+      title.textContent = md?.title || '\u2014'; artist.textContent = md?.artist || '';
+      const src = md?.artwork?.length ? md.artwork[md.artwork.length - 1].src : '';
+      if (src !== lastArt) { lastArt = src; if (src) art.src = src; else art.removeAttribute('src'); art.style.visibility = src ? 'visible' : 'hidden'; }
+      const m = findMedia();
+      const playing = !!m && !m.paused;
+      playBtn.textContent = playing ? '\u275A\u275A' : '\u25B6'; playBtn.classList.toggle('on', playing);
+      if (m && Number.isFinite(m.duration) && m.duration > 0) { fill.style.width = (m.currentTime / m.duration * 100) + '%'; times.textContent = fmtTime(m.currentTime) + ' / ' + fmtTime(m.duration); }
+      else { fill.style.width = '0%'; times.textContent = ''; }
+    }, 500);
+  }
+
+  // Lyrics panel (right edge, mirror of the recordings panel): artist / album / title on top, synced lines scrolling below.
+  // The song heard through the stems runs ~10 s behind the YouTube Music element, so the clock used for the lines subtracts that delay.
+  const lyrState = { key: '', data: null, status: '', idx: -2, offset: 0, lines: [], busy: false, retryAt: 0 };
+  try { lyrState.offset = Number(localStorage.getItem('ytm-poc-lyr-offset')) || 0; } catch {}
+  function studioBuildLyrics(ui) {
+    const panel = h('aside', 'lyr');
+    const head = h('div', 'libhead');
+    const closeBtn = h('button', 'libclose', '\u2715', { type: 'button', 'aria-label': 'Close lyrics' });
+    head.append(h('span', 'libtitle', 'LYRICS'), closeBtn);
+    const meta = h('div', 'lyrmeta');
+    const artistEl = h('div', 'lyrartist'), albumEl = h('div', 'lyralbum'), titleEl = h('div', 'lyrsong');
+    const sourceEl = h('div', 'lyralbum');
+    meta.append(artistEl, albumEl, titleEl, sourceEl);
+    const list = h('div', 'lyrlist');
+    const sync = h('div', 'lyrsync');
+    const offLbl = h('span', 'offlbl', '');
+    const mk = (t, d) => { const b = h('button', 'btn libact', t, { type: 'button', 'aria-label': 'Lyrics ' + (d < 0 ? 'earlier' : 'later') }); b.addEventListener('click', () => { lyrState.offset = Math.round((lyrState.offset + d) * 10) / 10; try { localStorage.setItem('ytm-poc-lyr-offset', String(lyrState.offset)); } catch {} showOff(); }); return b; };
+    const showOff = () => { offLbl.textContent = 'SYNC ' + (lyrState.offset >= 0 ? '+' : '') + lyrState.offset.toFixed(1) + ' s' + (lyrState.bufS ? ' \u00B7 BUFFER ' + lyrState.bufS.toFixed(1) + ' s' : ''); };
+    sync.append(mk('\u2212', -0.5), offLbl, mk('+', 0.5));
+    showOff();
+    panel.append(h('i', 'screw tl'), h('i', 'screw tr'), head, meta, list, sync);
+    const tab = h('button', 'lyrtab', 'LYRICS', { type: 'button', 'aria-label': 'Toggle lyrics panel' });
+    ui.append(panel, tab);
+    let open = false;
+    const setOpen = (v) => { open = v; panel.classList.toggle('open', v); tab.classList.toggle('open', v); };
+    studio.lyrOpen = setOpen; studio.lyrEl = panel;
+    tab.addEventListener('click', () => setOpen(!open));
+    closeBtn.addEventListener('click', () => setOpen(false));
+
+    let lineEls = [];
+    const renderLines = () => {
+      list.textContent = ''; lineEls = [];
+      const d = lyrState.data;
+      if (!d || d.notFound || d.error) { list.appendChild(h('div', 'libempty', lyrState.status || 'No lyrics.')); return; }
+      if (d.synced?.length) { lyrState.lines = d.synced; for (const l of d.synced) { const e = h('div', 'lyrline', l.text || '\u266A'); list.appendChild(e); lineEls.push(e); } }
+      else { lyrState.lines = []; for (const t of d.plain.split(/\r?\n/)) list.appendChild(h('div', 'lyrline plain', t || '\u00A0')); }
+      lyrState.idx = -2;
+    };
+    const load = async (md, media) => {
+      lyrState.busy = true; lyrState.status = 'Searching lyrics...'; lyrState.data = null; renderLines();
+      let res = null;
+      try { res = await ipcRenderer.invoke('poc:lyrics', { artist: md.artist, title: md.title, album: md.album, duration: media?.duration }); } catch {}
+      lyrState.busy = false;
+      if (lyrState.key !== [md.artist, md.title].join('|')) return; // the song changed meanwhile
+      if (!res || res.error) { lyrState.status = 'Could not reach the lyrics service.'; lyrState.retryAt = Date.now() + 30000; lyrState.data = { error: true }; }
+      else if (res.notFound) { lyrState.status = 'No lyrics found for this song.'; lyrState.data = res; }
+      else { lyrState.data = res; sourceEl.textContent = res.source ? 'via ' + res.source + (res.synced?.length ? '' : ' (not synced)') : ''; }
+      renderLines();
+    };
+    setInterval(() => {
+      const md = navigator.mediaSession?.metadata;
+      const media = findMedia();
+      const song = md?.title ? { artist: md.artist || '', title: md.title, album: md.album || '' } : null;
+      if (!song) { if (lyrState.key) { lyrState.key = ''; titleEl.textContent = ''; artistEl.textContent = ''; albumEl.textContent = ''; lyrState.data = null; lyrState.status = 'Play a song to see its lyrics.'; renderLines(); } return; }
+      const key = [song.artist, song.title].join('|');
+      const retry = lyrState.data?.error && Date.now() > lyrState.retryAt;
+      if ((key !== lyrState.key || retry) && !lyrState.busy) {
+        lyrState.key = key;
+        artistEl.textContent = song.artist; albumEl.textContent = song.album; titleEl.textContent = song.title;
+        load(song, media);
+        return;
+      }
+      if (!open || !media || !lyrState.lines.length) return;
+      const stems = modeSelect?.value === 'stems' && stemPlayer;
+      const bufS = stems ? (stemPlayer.delayEstimateMs || 10000) / 1000 : 0; // the measured stem buffer: lyrics follow what is heard
+      if (Math.abs(bufS - (lyrState.bufS || 0)) > 0.05) { lyrState.bufS = bufS; showOff(); }
+      const now = media.currentTime - bufS * (media.playbackRate || 1) + lyrState.offset; // the buffer is real seconds; the lyric clock runs in song seconds, which pass at the tempo rate
+      let idx = -1;
+      for (let i = 0; i < lyrState.lines.length && lyrState.lines[i].t <= now; i += 1) idx = i;
+      if (idx === lyrState.idx) return;
+      lyrState.idx = idx;
+      lineEls.forEach((e, i) => { e.classList.toggle('cur', i === idx); e.classList.toggle('past', i < idx); });
+      const cur = lineEls[idx];
+      if (cur) list.scrollTo({ top: Math.max(0, cur.offsetTop - list.clientHeight / 2 + cur.offsetHeight / 2), behavior: 'smooth' });
+    }, 250);
+    renderLines();
+  }
+
   // Karaoke: one click = capture on, Stems mode, vocal stem muted, mic on, Vocal Lab on. Clicking again restores the previous mode, vocal mute/solo and Vocal Lab state.
   let karaoke = null;
+  // LISTEN and KARAOKE are interlocked modes: the console shows only what the current mode needs ('idle' until one is chosen).
+  let appMode = 'listen'; // the program opens in LISTEN (plain YouTube Music playback)
+  function setAppMode(m) {
+    appMode = m;
+    studio.consoleEl?.classList.toggle('m-karaoke', m === 'karaoke');
+    studio.consoleEl?.classList.toggle('m-listen', m === 'listen');
+    if (m === 'karaoke') studio.lyrOpen?.(true); // the words are what you sing from
+  }
+  async function stopTake(info) { // finish and save the running take (stays in karaoke mode)
+    info.textContent = 'SAVING...';
+    const res = await stopRec();
+    info.textContent = res.ok ? 'SAVED: ' + res.entry.name : 'SAVE FAILED';
+    if (res.ok) { studio.libOpen?.(true); studio.libShowTab?.('raw'); }
+  }
+  let takePrep = false;
+  const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+  function ensureHt() { // best separation, and the only one that splits drums and bass; the model is locked once capture runs
+    if (captureActive || modelSelect.value === 'htdemucs') return;
+    modelSelect.value = 'htdemucs'; modelSelect.dispatchEvent(new Event('change'));
+  }
+  function startMusic() { const m = findMedia(); if (m?.paused) { try { m.play()?.catch?.(() => {}); } catch {} } }
+  async function endKaraokeRun() { // after a saved take: mic and stems off, music paused; the mode stays armed for the next take
+    karaokeOff();
+    if (captureActive) stopCapture();
+    const m = findMedia(); if (m && !m.paused) { try { m.pause(); } catch {} }
+  }
+  // START KARAOKE / REC: set everything up, wait out the stem buffer with a visible countdown, then record from the top of the song.
+  async function takeToggle(info) {
+    if (rec.saving || takePrep) return;
+    if (rec.active) { await stopTake(info); await endKaraokeRun(); return; }
+    takePrep = true;
+    let started = false;
+    const bus = () => [...document.querySelectorAll('audio, video')].map((m) => graphs.get(m)).filter(Boolean);
+    try {
+      if (!karaoke) {
+        ensureHt();
+        info.textContent = 'BUFFERING, PLEASE WAIT...';
+        if (libPlayer.mix) { libPause(); libDropMix(); }
+        await karaokeToggle(info); // capture + stems + vocal muted + mic + vocal chain
+        if (!karaoke) return; // karaokeToggle wrote the error
+        setAppMode('karaoke');
+      }
+      const t0 = Date.now();
+      while (!stemPlayer && karaoke && Date.now() - t0 < 60000) { info.textContent = 'BUFFERING, PLEASE WAIT...'; await sleepMs(250); }
+      if (!stemPlayer || !karaoke) { if (karaoke) { info.textContent = 'STEMS DID NOT START'; await endKaraokeRun(); } return; }
+      // Take from the top of the song: mute the stems, restart the song, and open them again exactly when the fresh audio reaches the output (the stems run ~10 s behind) -- recording starts at that moment.
+      for (const g of bus()) g.stemBus.gain.setTargetAtTime(0, activeContext.currentTime, 0.02);
+      const media = findMedia();
+      if (media) { try { media.currentTime = 0; } catch {} if (media.paused) { try { media.play()?.catch?.(() => {}); } catch {} } }
+      const tEnd = Date.now() + Math.max(3000, Math.round(stemPlayer.delayEstimateMs || 10000));
+      for (;;) {
+        const left = Math.ceil((tEnd - Date.now()) / 1000);
+        if (left <= 0 || !karaoke) break;
+        info.textContent = 'BUFFERING, PLEASE WAIT ' + left;
+        await sleepMs(200);
+      }
+      if (!karaoke) return;
+      for (const g of bus()) g.stemBus.gain.setTargetAtTime(1, activeContext.currentTime, 0.02);
+      await startRec();
+      started = rec.active;
+      info.textContent = 'RECORDING - SING!';
+    } finally {
+      takePrep = false;
+      if (!started && captureActive && karaoke) setMode('stems', false); // never leave the stems muted
+    }
+  }
   function karaokeOff() {
     if (!karaoke) return;
     const k = karaoke; karaoke = null;
@@ -939,86 +1824,76 @@ if (isPcmBridgePage()) {
     }
   }
 
-  function studioBuildMic(sec) {
-    const select = h('select', 'sel', null, { 'aria-label': 'Microphone input device' });
-    for (const k of ['keydown', 'keyup', 'keypress']) select.addEventListener(k, (e) => e.stopPropagation());
-    const refresh = async () => {
-      let devices = [];
-      try { devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput'); } catch {}
-      select.textContent = '';
-      const add = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; select.appendChild(o); };
-      add('', 'Default input');
-      devices.forEach((d, i) => { if (d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications') add(d.deviceId, d.label || 'Input ' + (i + 1)); });
-      select.value = micState.device;
-      if (select.value !== micState.device) select.value = '';
-    };
-    refresh();
-    const onBtn = h('button', 'btn solo fxon', null, { type: 'button', 'aria-label': 'Microphone on' });
-    const led = h('span', 'led');
-    onBtn.append(led, document.createTextNode('MIC'));
-    const info = h('span', 'eqinfo', 'USE HEADPHONES');
-    const sync = () => { const on = !!mic; onBtn.classList.toggle('on', on); led.classList.toggle('on', on); onBtn.setAttribute('aria-pressed', String(on)); };
-    onBtn.addEventListener('click', async () => {
-      if (mic) { stopMic(); sync(); info.textContent = 'USE HEADPHONES'; return; }
-      onBtn.disabled = true;
-      try { await startMic(); await refresh(); } catch (error) {
-        info.textContent = 'MIC ERROR: ' + String(error?.name || error).slice(0, 40);
-        stemDiag('mic_error', { error: String(error?.name || error).slice(0, 80) });
-      }
-      onBtn.disabled = false; sync();
-    });
-    select.addEventListener('change', async () => {
-      micState.device = select.value; saveMic();
-      if (mic) { stopMic(); try { await startMic(); } catch (error) { info.textContent = 'MIC ERROR: ' + String(error?.name || error).slice(0, 40); } sync(); }
-    });
-    const row = h('div', 'row fxknobs');
-    const lvl = studioKnob('LEVEL', 'red', () => micState.level, (v) => { micState.level = v; applyMicLevel(); studio.micFaderRefresh?.(); }, STEM_FADER_DEFAULT, saveMic);
-    studio.micKnobRedraw = lvl.redraw;
-    row.appendChild(lvl);
-    const sw = h('div', 'switches'); sw.appendChild(onBtn);
-    const ir = h('div', 'eqinfo-row'); ir.append(h('span', null, 'INPUT'), select);
-    const ir2 = h('div', 'eqinfo-row'); ir2.appendChild(info);
-    const right = h('div', 'micctl'); right.append(ir, row, sw, ir2);
-    const karaokeBtn = h('button', 'micbtn', null, { type: 'button', 'aria-label': 'Karaoke mode' });
-    karaokeBtn.title = 'Karaoke: starts capture, Stems mode, mutes the vocal stem, turns the mic and Vocal Lab on. Click again to restore.';
-    const kcol = h('div', 'mickcol'); kcol.append(karaokeBtn, h('div', 'miclabel', 'KARAOKE'));
-    const wrap = h('div', 'micwrap'); wrap.append(kcol, right);
-    sec.append(wrap);
-    const syncK = () => { karaokeBtn.classList.toggle('on', !!karaoke); karaokeBtn.setAttribute('aria-pressed', String(!!karaoke)); };
-    karaokeBtn.addEventListener('click', async () => {
-      karaokeBtn.disabled = true;
-      try { await karaokeToggle(info); } finally { karaokeBtn.disabled = false; sync(); syncK(); }
-    });
-    syncK();
-    studio.micTick = () => { // input peak, so the level can be set without clipping
-      if (!mic) return;
-      mic.an.getFloatTimeDomainData(mic.buf);
-      let pk = 0;
-      for (let i = 0; i < mic.buf.length; i += 1) { const a = Math.abs(mic.buf[i]); if (a > pk) pk = a; }
-      const db = pk > 0 ? 20 * Math.log10(pk) : -100;
-      info.textContent = 'IN ' + (db > -99 ? db.toFixed(0) + ' dB' : '-inf dB') + (db > -1 ? '  CLIP' : '');
-    };
-  }
-
   const STUDIO_CSS = (T) => `
     :host { all: initial; }
     * { box-sizing: border-box; }
-    .ui { --edge: #3a322c; --edge-hi: #5a4c40; --ink-dim: #cdbfa9; --brass: #d9b07a; --amber: #ffb347;
+    .ui { --dh: min(660px, 84vh); --edge: #3a322c; --edge-hi: #5a4c40; --ink-dim: #cdbfa9; --brass: #d9b07a; --amber: #ffb347;
       font-family: "Bahnschrift", "Segoe UI Condensed", "Arial Narrow", system-ui, sans-serif; color: #e9dfd0; }
     .tab { position: fixed; left: 50%; bottom: 0; transform: translateX(-50%); z-index: 2147483646; padding: 6px 22px 8px;
       border: 1px solid var(--edge-hi); border-bottom: 0; border-radius: 10px 10px 0 0; cursor: pointer;
       background: linear-gradient(#2c2622, #1b1816); color: var(--brass); font: 700 12px "Bahnschrift", system-ui, sans-serif; letter-spacing: .2em;
       transition: bottom .35s cubic-bezier(.2,.8,.2,1); }
     .tab:hover { color: var(--amber); }
-    .tab.open { bottom: 330px; }
-    .drawer { position: fixed; left: 0; right: 0; bottom: 0; z-index: 2147483645; height: 330px; transform: translateY(100%); visibility: hidden;
+    .tab.open { bottom: var(--dh); }
+    .drawer { position: fixed; left: 0; right: 0; bottom: 0; z-index: 2147483645; height: var(--dh); transform: translateY(100%); visibility: hidden;
       transition: transform .35s cubic-bezier(.2,.8,.2,1), visibility 0s .35s; display: grid; grid-template-columns: 24px 1fr 24px;
       background: ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; border-top: 2px solid var(--edge-hi); box-shadow: 0 -12px 40px #000c; }
     .drawer.open { transform: none; visibility: visible; transition: transform .35s cubic-bezier(.2,.8,.2,1); }
     .wood { background: ${T('wood.jpg')} center / 100% 100% no-repeat, #3a2012; box-shadow: inset 0 0 10px #000b, inset 0 0 0 1px #0006; }
     .drawer > .wood:last-child { transform: scaleX(-1); }
     .console { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px; padding: 8px; min-width: 0; }
+    .console { --fh: clamp(160px, calc(var(--dh) - 250px), 400px); }
+    .console.m-karaoke, .console.mixview { --fh: clamp(150px, calc(var(--dh) - 430px), 330px); }
+    .console.mixview > .section.eq, .console.mixview > .section.enh, .console.m-karaoke > .section.eq, .console.m-karaoke > .section.enh { display: none; }
+    .console > .section.chain { display: none; flex: 1 1 100%; }
+    .console > .section.tune { display: none; width: 170px; flex: 0 0 auto; }
+    .console.m-karaoke > .section.tune, .console.m-listen > .section.tune { display: block; }
+    .tunerow { display: flex; align-items: center; gap: 6px; margin: 4px 0 8px; }
+    .tunelbl { width: 48px; font-size: 10px; font-weight: 800; letter-spacing: .14em; color: var(--ink-dim); text-shadow: 0 1px 2px #000; }
+    .btn.tunebtn { width: 30px; height: 28px; font-size: 16px; }
+    .tunevalue { flex: 1; min-width: 44px; text-align: center; font: 700 16px Consolas, monospace; color: var(--amber); text-shadow: 0 0 6px #ffb34766; background: #031003; border-radius: 4px; padding: 3px 0; box-shadow: inset 0 0 8px #000; }
+    .console.m-karaoke > .section.chain, .console.mixview > .section.chain { display: block; }
+    .console.mixview .live { display: none; }
+    .console:not(.mixview) .offrow, .console:not(.mixview) .expbtn { display: none; }
+    .offrow .offin { flex: none; width: 64px; }
+    .chainrow { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px 4px; padding-bottom: 2px; }
+    .mod { display: flex; flex-direction: column; gap: 5px; justify-content: space-between; padding: 5px 8px; border: 1px solid #0008; border-radius: 5px; background: #0000002e; box-shadow: inset 0 0 10px #0008; flex: none; }
+    .mod .sel { flex: none; width: 100%; }
+    .chainbar { display: flex; align-items: center; gap: 10px; margin: 0 4px 8px 12px; }
+    .chainbar .sel { flex: 0 0 220px; }
+    .modled { width: 10px; height: 10px; margin-left: 6px; padding: 0; border-radius: 50%; border: 1px solid #000; background: #3a2a14; cursor: pointer; vertical-align: middle; }
+    .modled.on { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+    .mod.off .modbody, .mod.off .grbar { opacity: .4; }
+    .modtitle { font-size: 10px; font-weight: 800; letter-spacing: .16em; color: #f0c88e; text-align: center; text-shadow: 0 1px 2px #000; }
+    .modbody { display: flex; gap: 10px; align-items: flex-end; justify-content: center; }
+    .modarrow { align-self: center; flex: none; color: var(--brass); font-size: 16px; }
+    .grbar { height: 6px; border-radius: 3px; overflow: hidden; background: #050404; box-shadow: inset 0 0 3px #000; }
+    .grbar i { display: block; height: 100%; width: 0; background: var(--amber); }
+    .mod .btn.takebtn { width: 100%; height: 30px; font-size: 12px; margin-top: 4px; }
+    .mod { min-width: 0; max-width: 100%; }
+    .mod .eqinfo-row { margin: 0; flex-wrap: wrap; gap: 4px; }
+    .mod .sel { flex: 0 0 auto; width: auto; max-width: 150px; }
+    .mod .eqinfo { flex: none; max-width: 150px; }
+    .mod.input, .mod.tune { width: 156px; }
+    .mod.input .sel { width: 100%; max-width: none; }
+    .mod .switches { margin: 0; }
+    .mod .btn.fxon { width: 100%; }
+    .mod .knob-box { min-width: 44px; }
     .section.session { width: 210px; flex: 0 0 auto; }
+    .console.mixview > .section.session .advtoggle, .console.mixview > .section.session .adv { display: none; }
+    .btn.recbig { color: #ff6a5a; text-shadow: 0 0 6px #f334; }
+    .btn.recbig::before { content: ''; display: inline-block; width: 9px; height: 9px; margin-right: 8px; border-radius: 50%; background: #ff3b2f; box-shadow: 0 0 6px #ff3b2f88; vertical-align: -1px; }
+    .btn.recbig.on { color: #fff; filter: drop-shadow(0 0 9px #ff3b2f); }
+    .btn.recbig.on::before { background: #ff7a6e; box-shadow: 0 0 10px #ff3b2f; }
+    .btn.stemb, .btn.startk { display: none; }
+    .console.m-listen .btn.stemb, .console.m-karaoke .btn.startk { display: block; }
+    .console.mixview .btn.stemb, .console.mixview .btn.startk { display: none; }
+    .btn.stemb { font-size: 11px; letter-spacing: .08em; }
+    .btn.bigbtn { width: 100%; height: 40px; font-size: 13px; letter-spacing: .18em; margin-bottom: 6px; }
+    .sessinfo { min-height: 14px; margin-bottom: 4px; }
+    .advtoggle { background: none; border: 0; color: var(--ink-dim); cursor: pointer; font-size: 10px; letter-spacing: .12em; padding: 2px 0; text-align: left; }
+    .adv { display: none; }
+    .adv.open { display: block; }
     .section.session .eqinfo-row { justify-content: space-between; }
     .section.session .qrange { width: 100px; }
     .btn.capture { width: 100%; height: 28px; margin-top: 4px; }
@@ -1032,6 +1907,44 @@ if (isPcmBridgePage()) {
       border: 1px solid var(--edge-hi); border-left: 0; border-radius: 0 10px 10px 0; background: linear-gradient(90deg, #2c2622, #1b1816);
       color: var(--brass); font: 700 12px "Bahnschrift", system-ui, sans-serif; letter-spacing: .2em; transition: left .3s cubic-bezier(.2,.8,.2,1); }
     .libtab:hover { color: var(--amber); }
+    .np { position: fixed; left: 50%; bottom: calc(var(--dh) + 44px); transform: translate(-50%, 20px); z-index: 2147483644; display: none; align-items: center; gap: 14px;
+      width: min(560px, 90vw); padding: 10px 14px; border: 1px solid #0009; border-radius: 10px; box-shadow: 0 8px 30px #000c, inset 0 0 18px #000a;
+      background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; }
+    .np.open { display: flex; transform: translateX(-50%); }
+    .npart { width: 64px; height: 64px; flex: none; border-radius: 4px; object-fit: cover; background: #050404; box-shadow: 0 0 0 2px #0a0807, 0 0 0 3px var(--edge); }
+    .npinfo { flex: 1; min-width: 0; }
+    .nptitle { font-size: 15px; font-weight: 800; color: #f1e6d3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 2px #000; }
+    .npartist { font-size: 11px; letter-spacing: .12em; color: var(--brass); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+    .npmeta { font-size: 10px; letter-spacing: .08em; color: var(--ink-dim); margin-top: 4px; }
+    .npctl { display: flex; gap: 6px; flex: none; }
+    .btn.npbtn { width: 44px; height: 34px; font-size: 14px; }
+    .lyrtab { position: fixed; right: 0; top: 38%; z-index: 2147483644; padding: 12px 6px; writing-mode: vertical-rl; cursor: pointer;
+      border: 1px solid var(--edge-hi); border-right: 0; border-radius: 10px 0 0 10px; background: linear-gradient(270deg, #2c2622, #1b1816);
+      color: var(--brass); font: 700 12px "Bahnschrift", system-ui, sans-serif; letter-spacing: .2em; transition: right .3s cubic-bezier(.2,.8,.2,1); }
+    .lyrtab:hover { color: var(--amber); }
+    .lyrtab.open { right: 340px; }
+    .lyr { position: fixed; right: 0; top: 64px; bottom: 90px; width: 340px; z-index: 2147483643; display: flex; flex-direction: column; padding: 10px 8px 8px;
+      transform: translateX(102%); visibility: hidden; transition: transform .3s cubic-bezier(.2,.8,.2,1), visibility 0s .3s;
+      border: 1px solid #0009; border-right: 0; border-radius: 8px 0 0 8px; box-shadow: 0 0 30px #000c, inset 0 0 18px #000a;
+      background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; }
+    .lyr.lift, .lib.lift { bottom: calc(var(--dh) + 8px); }
+    .toastc { position: fixed; left: 50%; top: 84px; transform: translateX(-50%); z-index: 2147483647; display: none; text-align: center; max-width: min(520px, 90vw);
+      padding: 16px 30px; border: 1px solid var(--edge-hi); border-radius: 10px; box-shadow: 0 10px 40px #000d, inset 0 0 18px #000a;
+      background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; pointer-events: none; }
+    .toastc.show { display: block; }
+    .toasttitle { font-size: 20px; font-weight: 800; letter-spacing: .14em; color: var(--amber); text-shadow: 0 0 12px #ffb34777; }
+    .toastsub { margin-top: 6px; font-size: 12px; letter-spacing: .06em; color: var(--ink-dim); }
+    .lyr.open { transform: none; visibility: visible; transition: transform .3s cubic-bezier(.2,.8,.2,1); }
+    .lyrmeta { margin: 0 12px 8px; text-align: center; text-shadow: 0 1px 2px #000; }
+    .lyrartist { font-size: 11px; letter-spacing: .16em; color: var(--brass); text-transform: uppercase; }
+    .lyralbum { font-size: 10px; letter-spacing: .1em; color: var(--ink-dim); margin-top: 2px; }
+    .lyrsong { font-size: 17px; font-weight: 800; color: #f1e6d3; margin-top: 4px; }
+    .lyrlist { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 10px 80px; text-align: center; scroll-behavior: auto; }
+    .lyrline { font-size: 15px; line-height: 1.5; padding: 3px 0; color: #9d907d; text-shadow: 0 1px 2px #000; transition: color .2s, transform .2s; }
+    .lyrline.past { color: #b9ab95; }
+    .lyrline.cur { color: var(--amber); font-weight: 800; font-size: 17px; text-shadow: 0 0 10px #ffb34755; }
+    .lyrline.plain { color: #d6c9b3; }
+    .lyrsync { display: flex; justify-content: center; align-items: center; gap: 10px; padding-top: 6px; }
     .libtab.open { left: 320px; }
     .lib { position: fixed; left: 0; top: 64px; bottom: 90px; width: 320px; z-index: 2147483643; display: flex; flex-direction: column; padding: 10px 8px 8px;
       transform: translateX(-102%); visibility: hidden; transition: transform .3s cubic-bezier(.2,.8,.2,1), visibility 0s .3s;
@@ -1043,6 +1956,11 @@ if (isPcmBridgePage()) {
     .libclose { background: none; border: 0; color: var(--ink-dim); cursor: pointer; font-size: 14px; }
     .libclose:hover { color: var(--amber); }
     .liblist { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 0 4px; }
+    .libtabs { display: flex; gap: 6px; margin: 0 8px 8px 14px; }
+    .btn.libsub { flex: 1; height: 26px; font-size: 10px; letter-spacing: .12em; }
+    .offrow { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+    .offlbl { font-size: 10px; letter-spacing: .12em; color: var(--ink-dim); }
+    .offin { width: 64px; }
     .libempty { padding: 14px 8px; font-size: 11px; letter-spacing: .06em; color: var(--ink-dim); }
     .librow { display: flex; gap: 8px; align-items: center; padding: 8px; border: 1px solid #0008; border-radius: 6px; background: #0000002e; box-shadow: inset 0 0 10px #0008; }
     .btn.libplay { width: 36px; height: 36px; flex: none; font-size: 12px; }
@@ -1124,7 +2042,7 @@ if (isPcmBridgePage()) {
     .btn.solo.on { filter: drop-shadow(0 0 7px #ffb347); }
     .btn.mute.on { filter: drop-shadow(0 0 7px #ff5a4a); }
     .btn:disabled { opacity: .4; cursor: default; }
-    .fader-wrap { display: flex; gap: 6px; height: 160px; }
+    .fader-wrap { display: flex; gap: 6px; height: var(--fh, 160px); }
     .scale { display: flex; flex-direction: column; justify-content: space-between; font-size: 10px; text-shadow: 0 1px 1px #000; color: var(--ink-dim); text-align: right; padding: 2px 0; min-width: 22px; }
     .track { position: relative; width: 10px; border-radius: 5px; background: #050404; box-shadow: inset 0 0 4px #000, 0 1px 0 #ffffff14; touch-action: none; cursor: ns-resize; }
     .cap { position: absolute; left: 50%; width: 24px; height: 46px; transform: translate(-50%, 50%); border-radius: 3px;
@@ -1154,28 +2072,59 @@ if (isPcmBridgePage()) {
       const ui = h('div', 'ui');
       const drawer = h('div', 'drawer');
       const consoleEl = h('div', 'console');
+      studio.consoleEl = consoleEl;
       const section = studioMakeSection('Mixer');
+      section.classList.add('mixer');
       section.appendChild(h('div', 'channels'));
+      const expBtn = h('button', 'btn solo expbtn', 'EXPORT', { type: 'button', 'aria-label': 'Export the current mix as MP3' });
+      expBtn.title = 'Bounces the library recording with the current Mixer settings to a finished MP3 (MIXED tab).';
+      expBtn.style.marginTop = '6px';
+      const syncExp = () => { expBtn.disabled = !libPlayer.mix || mixExporting; expBtn.classList.toggle('on', mixExporting); expBtn.textContent = mixExporting ? 'EXPORTING...' : 'EXPORT'; };
+      studio.syncExport = syncExp;
+      expBtn.addEventListener('click', async () => {
+        if (!libPlayer.mix || mixExporting) return;
+        const pending = exportMix(); syncExp();
+        const res = await pending; syncExp();
+        if (res.ok) { studio.libOpen?.(true); studio.libShowTab?.('mix'); } else { expBtn.textContent = 'FAILED'; setTimeout(syncExp, 1500); }
+      });
+      section.appendChild(expBtn);
+      const offRow = h('div', 'offrow');
+      offRow.title = 'Mic delay compensation: how many ms the mic layer was recorded late. Measured automatically at REC time; fine-tune by ear (raise it if the voice still trails the music).';
+      const offIn = h('input', 'txt offin', null, { type: 'number', min: '-500', max: '500', step: '5', 'aria-label': 'Mic delay compensation in milliseconds' });
+      for (const k of ['keydown', 'keyup', 'keypress']) offIn.addEventListener(k, (ev) => ev.stopPropagation());
+      offRow.append(h('span', 'offlbl', 'MIC SHIFT'), offIn, h('span', 'offlbl', 'ms'));
+      studio.syncOffset = () => { offIn.value = String(libPlayer.micOffsetMs || 0); offIn.disabled = !libPlayer.mix || !libPlayer.mix.keys.some(isMicLayer); };
+      offIn.addEventListener('change', () => {
+        const v = Math.max(-500, Math.min(500, Math.round(Number(offIn.value) || 0)));
+        libPlayer.micOffsetMs = v; offIn.value = String(v);
+        if (libPlayer.id) ipcRenderer.invoke('poc:rec-set-offset', libPlayer.id, v).then(() => recRefresh()).catch(() => {});
+        if (libPlayer.playing) libStartAt(libPos()); // re-time the running mix
+      });
+      section.appendChild(offRow);
+      studio.syncOffset();
+      syncExp();
       const eqSection = studioMakeSection('Equalizer');
       eqSection.classList.add('eq');
       const outSection = studioMakeSection('Output');
       const sessSection = studioMakeSection('Session');
       sessSection.classList.add('session');
+      const tuneSection = studioMakeSection('Key & Tempo');
+      tuneSection.classList.add('tune');
       const status = h('div', 'status');
       const clock = h('span', 'clock', '--:--:--');
       status.append(h('span'), h('span'), h('span'), clock);
       const tick = () => { const d = new Date(), p = (n) => String(n).padStart(2, '0'); clock.textContent = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; };
       tick(); setInterval(tick, 500); // local time, to match skips heard against the UTC logs (+3 h here)
-      const micSection = studioMakeSection('Mic');
-      micSection.classList.add('fx', 'mic');
-      const labSection = studioMakeSection('Vocal Lab');
-      labSection.classList.add('fx');
+      const chainSection = studioMakeSection('Vocal Chain');
+      chainSection.classList.add('chain');
       const enhSection = studioMakeSection('Enhancer');
       enhSection.classList.add('fx', 'enh');
-      consoleEl.append(sessSection, micSection, section, eqSection, labSection, enhSection, outSection, status);
+      consoleEl.append(sessSection, tuneSection, section, eqSection, enhSection, outSection, chainSection, status);
       drawer.append(h('div', 'wood'), consoleEl, h('div', 'wood'));
       ui.append(drawer, h('button', 'tab', 'STUDIO \u25B2', { type: 'button', 'aria-label': 'Toggle studio drawer' }));
       studioBuildLibrary(ui);
+      studioBuildLyrics(ui);
+      studioBuildNowPlaying(ui);
       root.append(style, ui);
       studio.host = host; studio.root = root;
       studio.statusEls = [...root.querySelectorAll('.status span')];
@@ -1184,8 +2133,9 @@ if (isPcmBridgePage()) {
       studioBuildEq(eqSection);
       studioBuildOutput(outSection);
       studioBuildSession(sessSection);
-      studioBuildMic(micSection);
-      studioBuildVocalLab(labSection);
+      studioBuildTune(tuneSection);
+      setAppMode(appMode); // shows the LISTEN controls from the start
+      studioBuildChain(chainSection);
       studioBuildEnhancer(enhSection);
       applyOutput();
       document.documentElement.appendChild(host);
@@ -1443,14 +2393,19 @@ if (isPcmBridgePage()) {
   const fxState = (() => {
     const fresh = {
       enh: { on: false, drive: 0, warmth: 0, air: 0, width: 0.5 }, // width 0.5 = 100% (neutral), 0 = mono, 1 = 200%
-      voc: { on: false, comp: 0, deess: 0, pres: 0, rev: 0, decay: 0.4, dly: 0, time: 0.4 },
+      voc: {
+        on: false,
+        gOn: false, gate: 0.3, cutOn: true, cut: 0.4, eqOn: true, low: 0.5, mud: 0.5, cpOn: true, comp: 0, esOn: true, deess: 0, prOn: true, pres: 0,
+        saOn: false, drive: 0, smix: 0.5, dbOn: false, dbl: 0, dspr: 0.5, hrOn: false, hint: 0.5, hlvl: 0.4, rvOn: true, rev: 0, decay: 0.4, dlOn: true, dly: 0, time: 0.4,
+      },
+      at: { on: false, key: 0, scale: 1, speed: 0.7, amount: 1 }, // auto-tune; key 0..11, scale 0..4 (index), speed/amount 0..1
     };
     try {
       const saved = JSON.parse(localStorage.getItem(FX_KEY) || 'null');
       for (const group of Object.keys(fresh)) for (const k of Object.keys(fresh[group])) {
         const v = saved?.[group]?.[k];
-        if (typeof fresh[group][k] === 'boolean') fresh[group][k] = v === true;
-        else if (Number.isFinite(v)) fresh[group][k] = Math.min(1, Math.max(0, v));
+        if (typeof fresh[group][k] === 'boolean') fresh[group][k] = typeof v === 'boolean' ? v : fresh[group][k]; // new switches keep their default until saved
+        else if (Number.isFinite(v)) fresh[group][k] = Math.min(group === 'at' && k === 'key' ? 11 : group === 'at' && k === 'scale' ? 4 : 1, Math.max(0, v));
       }
     } catch {}
     return fresh;
@@ -1532,23 +2487,94 @@ if (isPcmBridgePage()) {
     return buf;
   }
 
-  // One vocal effects chain: [LR4 split: highs -> de-esser] -> compressor -> presence/air -> out, plus reverb and delay sends.
+  // Noise gate (ScriptProcessor, 512 frames = ~12 ms): envelope follower with hysteresis, hold and smoothed attack/release. Only in the signal path while switched on.
+  function buildGate(context) {
+    const input = fxGain(context), output = fxGain(context);
+    const proc = context.createScriptProcessor(512, 2, 2);
+    proc.channelCount = 2; proc.channelCountMode = 'explicit'; proc.channelInterpretation = 'speakers';
+    input.connect(proc); proc.connect(output);
+    const g = { input, output, proc, thr: 0.003, floor: 0.02, gain: 1, env: 0, open: false, hold: 0 };
+    const sr = context.sampleRate;
+    const envRel = Math.exp(-1 / (0.03 * sr)), atk = 1 - Math.exp(-1 / (0.003 * sr)), rel = 1 - Math.exp(-1 / (0.09 * sr)), holdS = Math.round(0.06 * sr);
+    proc.onaudioprocess = (e) => {
+      const iL = e.inputBuffer.getChannelData(0), iR = e.inputBuffer.getChannelData(1), oL = e.outputBuffer.getChannelData(0), oR = e.outputBuffer.getChannelData(1);
+      for (let i = 0; i < iL.length; i += 1) {
+        const a = Math.max(Math.abs(iL[i]), Math.abs(iR[i]));
+        g.env = a > g.env ? a : g.env * envRel;
+        if (g.env > g.thr) { g.open = true; g.hold = holdS; } else if (g.hold > 0) g.hold -= 1; else if (g.env < g.thr * 0.7) g.open = false;
+        const target = g.open ? 1 : g.floor;
+        g.gain += (target - g.gain) * (target > g.gain ? atk : rel);
+        oL[i] = iL[i] * g.gain; oR[i] = iR[i] * g.gain;
+      }
+    };
+    return g;
+  }
+
+  // Harmonizer: a pitch-shifted copy of the voice (WSOLA, same shifter as the music key change), blended in as a second voice.
+  const HARM_INTERVALS = [[-12, 'OCTAVE DOWN'], [3, 'THIRD +3'], [4, 'THIRD +4'], [7, 'FIFTH +7'], [12, 'OCTAVE UP']];
+  function buildHarmonizer(context) {
+    const input = fxGain(context), output = fxGain(context);
+    const proc = context.createScriptProcessor(1024, 2, 2);
+    proc.channelCount = 2; proc.channelCountMode = 'explicit'; proc.channelInterpretation = 'speakers';
+    input.connect(proc); proc.connect(output);
+    const ps = new PairShifter();
+    const h2 = { input, output, proc, active: false, factor: 1.26 };
+    proc.onaudioprocess = (e) => {
+      const iL = e.inputBuffer.getChannelData(0), iR = e.inputBuffer.getChannelData(1), oL = e.outputBuffer.getChannelData(0), oR = e.outputBuffer.getChannelData(1);
+      if (!h2.active) { oL.fill(0); oR.fill(0); return; }
+      ps.setFactor(h2.factor);
+      ps.process(iL, iR, oL, oR, iL.length);
+    };
+    return h2;
+  }
+
+  // One vocal effects chain, in recording-studio order:
+  //   [gate] -> low cut -> EQ (low shelf, mud cut) -> compressor -> de-esser (LR4 split) -> presence/air -> saturation -> out
+  // with parallel sends from out: reverb, delay, doubler (two detuned/modulated short delays, panned) and harmonizer. Every module has its own on/off.
   function buildVocalFx(context, destination, source) {
     const input = fxGain(context), sum = fxGain(context), out = fxGain(context);
+    const gate = buildGate(context), harm = buildHarmonizer(context);
+    const hpf = fxBiquad(context, 'highpass', 20, 0.707); // low cut
+    const eqLow = fxBiquad(context, 'lowshelf', 120), eqMud = fxBiquad(context, 'peaking', 300, 1.0);
+    const comp = context.createDynamicsCompressor(); setChannelFormat(comp);
+    const makeup = fxGain(context);
     const lp = [fxBiquad(context, 'lowpass', 6500, 0.707), fxBiquad(context, 'lowpass', 6500, 0.707)];
     const hp = [fxBiquad(context, 'highpass', 6500, 0.707), fxBiquad(context, 'highpass', 6500, 0.707)];
     const ess = context.createDynamicsCompressor(); setChannelFormat(ess);
-    input.connect(lp[0]); lp[0].connect(lp[1]); lp[1].connect(sum);
-    input.connect(hp[0]); hp[0].connect(hp[1]); hp[1].connect(ess); ess.connect(sum);
-    const comp = context.createDynamicsCompressor(); setChannelFormat(comp);
-    const makeup = fxGain(context), pres = fxBiquad(context, 'peaking', 3200, 0.8), airShelf = fxBiquad(context, 'highshelf', 10000);
-    sum.connect(comp); comp.connect(makeup); makeup.connect(pres); pres.connect(airShelf); airShelf.connect(out);
+    const pres = fxBiquad(context, 'peaking', 3200, 0.8), airShelf = fxBiquad(context, 'highshelf', 10000);
+    hpf.connect(eqLow); eqLow.connect(eqMud); eqMud.connect(comp); comp.connect(makeup);
+    makeup.connect(lp[0]); lp[0].connect(lp[1]); lp[1].connect(sum);
+    makeup.connect(hp[0]); hp[0].connect(hp[1]); hp[1].connect(ess); ess.connect(sum);
+    sum.connect(pres); pres.connect(airShelf);
+    // saturation (parallel tanh shaper: drive in, dry/wet mix)
+    const satPre = fxGain(context), satWet = fxGain(context), satDry = fxGain(context);
+    const shaper = context.createWaveShaper();
+    const curve = new Float32Array(2048);
+    for (let i = 0; i < curve.length; i += 1) curve[i] = Math.tanh(3 * ((i / (curve.length - 1)) * 2 - 1)) / Math.tanh(3);
+    shaper.curve = curve; shaper.oversample = '2x';
+    airShelf.connect(satDry); satDry.connect(out);
+    airShelf.connect(satPre); satPre.connect(shaper); shaper.connect(satWet); satWet.connect(out);
+    // sends
     const revSend = fxGain(context), conv = context.createConvolver(), revOut = fxGain(context);
     out.connect(revSend); revSend.connect(conv); conv.connect(revOut);
     const dlySend = fxGain(context), delay = context.createDelay(2), fb = fxGain(context), fbLp = fxBiquad(context, 'lowpass', 3500, 0.707), dlyOut = fxGain(context);
     fb.gain.value = 0.38;
     out.connect(dlySend); dlySend.connect(delay); delay.connect(fbLp); fbLp.connect(fb); fb.connect(delay); delay.connect(dlyOut);
-    const fx = { outs: [out, revOut, dlyOut], context, input, source, destination, routed: null, ess, comp, makeup, pres, airShelf, revSend, conv, delay, dlySend, irKey: null, irTimer: 0 };
+    const dblSend = fxGain(context), dblOut = fxGain(context), oscs = [];
+    const voices = [[0.018, 0.4], [0.031, 0.55]].map(([t, hz]) => {
+      const dl = context.createDelay(0.1); dl.delayTime.value = t;
+      const lfo = context.createOscillator(); lfo.frequency.value = hz;
+      const depth = context.createGain(); depth.gain.value = 0.0012; // slow pitch wobble: the second take never matches exactly
+      lfo.connect(depth); depth.connect(dl.delayTime); lfo.start(); oscs.push(lfo);
+      const pan = context.createStereoPanner();
+      dblSend.connect(dl); dl.connect(pan); pan.connect(dblOut);
+      return pan;
+    });
+    out.connect(dblSend);
+    const harSend = fxGain(context), harOut = fxGain(context);
+    out.connect(harSend); harSend.connect(harm.input); harm.output.connect(harOut);
+    const fx = { hpf, eqLow, eqMud, satPre, satWet, satDry, voices, dblSend, harSend, gate, harm, oscs, gateRouted: null, outs: [out, revOut, dlyOut, dblOut, harOut], context, input, source, destination, routed: null, ess, comp, makeup, pres, airShelf, revSend, conv, delay, dlySend, irKey: null, irTimer: 0 };
+    routeGate(fx, false);
     vocalFxInstances.push(fx);
     applyVocalFx(fx, true);
     routeVocalFx(fx);
@@ -1558,7 +2584,22 @@ if (isPcmBridgePage()) {
       const seconds = Math.round((0.4 + fxState.voc.decay * 3.6) * 10) / 10;
       fx.irKey = seconds; fx.conv.buffer = makeReverbIR(context, seconds);
     }, 3000);
+    fx.dispose = () => {
+      for (const o of oscs) { try { o.stop(); } catch {} }
+      gate.proc.onaudioprocess = null; harm.proc.onaudioprocess = null;
+      for (const n of [gate.proc, gate.output, harm.proc, harm.output]) { try { n.disconnect(); } catch {} }
+    };
     return fx;
+  }
+
+  // The gate sits in the path only while it is on (its block latency is not paid otherwise).
+  function routeGate(fx, want) {
+    if (fx.gateRouted === want) return;
+    try { fx.input.disconnect(fx.hpf); } catch {}
+    try { fx.input.disconnect(fx.gate.input); } catch {}
+    try { fx.gate.output.disconnect(fx.hpf); } catch {}
+    if (want) { fx.input.connect(fx.gate.input); fx.gate.output.connect(fx.hpf); } else fx.input.connect(fx.hpf);
+    fx.gateRouted = want;
   }
 
   // Vocal Lab off = the source goes straight to the destination; the chain (convolver, compressors, delay loop) gets no signal at all.
@@ -1570,6 +2611,7 @@ if (isPcmBridgePage()) {
     for (const o of fx.outs) { try { o.disconnect(fx.destination); } catch {} }
     if (want) { for (const o of fx.outs) o.connect(fx.destination); fx.source.connect(fx.input); } else fx.source.connect(fx.destination);
     fx.routed = want;
+    if (mic && fx === mic.fx && rec.layerMap) recTapMic();
   }
 
   function applyVocalFx(fx, immediate, deferIR) {
@@ -1577,15 +2619,27 @@ if (isPcmBridgePage()) {
     if (!on && fx.wasOn === false && !immediate) return; // off and already neutral: nothing to update
     fx.wasOn = on;
     const set = (p, v) => (immediate ? (p.value = v) : p.setTargetAtTime(v, t, 0.03));
-    const a = on ? s.comp : 0, d = on ? s.deess : 0;
+    const amt = (flag, v) => (on && s[flag] ? v : 0); // a module that is switched off contributes nothing
+    routeGate(fx, on && s.gOn);
+    fx.gate.thr = 10 ** ((-70 + s.gate * 45) / 20);
+    set(fx.hpf.frequency, on && s.cutOn ? 20 * 12.5 ** s.cut : 20); // 20 Hz (off) .. 250 Hz
+    set(fx.eqLow.gain, amt('eqOn', (s.low - 0.5) * 18)); set(fx.eqMud.gain, amt('eqOn', (s.mud - 0.5) * 18));
+    const a = amt('cpOn', s.comp), d = amt('esOn', s.deess), pr = amt('prOn', s.pres);
     set(fx.comp.threshold, -8 - a * 22); set(fx.comp.ratio, 1 + a * 5);
     if (immediate) { fx.comp.knee.value = 10; fx.comp.attack.value = 0.008; fx.comp.release.value = 0.15; } // static settings: not re-scheduled on every knob move
     set(fx.makeup.gain, 10 ** (a * 5 / 20));
     set(fx.ess.threshold, -20 - d * 20); set(fx.ess.ratio, 1 + d * 9);
     if (immediate) { fx.ess.knee.value = 0; fx.ess.attack.value = 0.001; fx.ess.release.value = 0.04; }
-    set(fx.pres.gain, on ? s.pres * 6 : 0); set(fx.airShelf.gain, on ? s.pres * 3 : 0);
-    set(fx.revSend.gain, on ? s.rev * 0.8 : 0);
-    set(fx.dlySend.gain, on ? s.dly * 0.6 : 0); set(fx.delay.delayTime, 0.12 + s.time * 0.6);
+    set(fx.pres.gain, pr * 6); set(fx.airShelf.gain, pr * 3);
+    const dr = amt('saOn', s.drive);
+    set(fx.satPre.gain, 1 + dr * 9); set(fx.satWet.gain, dr > 0 ? s.smix * 0.7 : 0); set(fx.satDry.gain, dr > 0 ? 1 - s.smix : 1);
+    set(fx.revSend.gain, amt('rvOn', s.rev) * 0.8);
+    set(fx.dlySend.gain, amt('dlOn', s.dly) * 0.6); set(fx.delay.delayTime, 0.12 + s.time * 0.6);
+    set(fx.dblSend.gain, amt('dbOn', s.dbl) * 0.9);
+    fx.voices[0].pan.value = -(0.3 + 0.7 * s.dspr); fx.voices[1].pan.value = 0.3 + 0.7 * s.dspr;
+    fx.harm.active = on && s.hrOn;
+    fx.harm.factor = 2 ** (HARM_INTERVALS[Math.round(s.hint * 4)][0] / 12);
+    set(fx.harSend.gain, amt('hrOn', s.hlvl) * 0.9);
     const seconds = Math.round((0.4 + s.decay * 3.6) * 10) / 10;
     if (on && !deferIR && fx.irKey !== seconds) { // the impulse response is rebuilt only when not mid-drag (heavy on the main thread)
       fx.irKey = seconds;
@@ -1595,6 +2649,61 @@ if (isPcmBridgePage()) {
     }
   }
   function applyVocalFxAll(deferIR) { for (const fx of vocalFxInstances) { routeVocalFx(fx); applyVocalFx(fx, false, deferIR === true); } }
+
+  // ---- Auto-tune (mic): pitch correction runs in a hidden local window and returns over a local WebRTC link; this page plays it into the Vocal Lab chain. ----
+  const AT_KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  const AT_SCALES = ['Chromatic', 'Major', 'Minor', 'Major Pent.', 'Minor Pent.'];
+  let atLink = null; // { pc, audioEl, done, fail }
+  function atParams() { const s = fxState.at; return { key: Math.round(s.key), scale: Math.round(s.scale), speed: s.speed, amount: s.amount }; }
+  function atSend(msg) { try { ipcRenderer.send('poc:at-to-lab', msg); } catch {} }
+  function atSendParams() { if (atLink?.done) atSend({ t: 'params', params: atParams() }); }
+  function atNoteName(n) { return AT_KEYS[((Math.round(n) % 12) + 12) % 12] + (Math.floor(Math.round(n) / 12) - 1); }
+  ipcRenderer.on('poc:at-msg', async (_event, m) => {
+    const link = atLink;
+    if (!link || !m || typeof m !== 'object') return;
+    try {
+      if (m.t === 'offer') {
+        await link.pc.setRemoteDescription({ type: 'offer', sdp: m.sdp });
+        const answer = await link.pc.createAnswer();
+        await link.pc.setLocalDescription(answer);
+        atSend({ t: 'answer', sdp: answer.sdp });
+      } else if (m.t === 'ice') await link.pc.addIceCandidate(m.c || null);
+      else if (m.t === 'status') studio.atStatus?.(m);
+      else if (m.t === 'error') link.fail(new Error(String(m.error || 'autotune')));
+    } catch (error) { link.fail(error); }
+  });
+  function atDisconnect() {
+    const link = atLink;
+    if (!link) return;
+    atLink = null; link.done = false;
+    try { link.pc.close(); } catch {}
+    try { if (link.audioEl) link.audioEl.srcObject = null; } catch {}
+    atSend({ t: 'stop' });
+  }
+  // Resolves with the corrected MediaStream once the hidden window's track arrives.
+  function atConnect(label) {
+    atDisconnect();
+    return new Promise((resolve, reject) => {
+      const pc = new RTCPeerConnection({ iceServers: [] });
+      const link = { pc, audioEl: null, done: false, fail: null };
+      let settled = false;
+      const timer = setTimeout(() => link.fail(new Error('timeout')), 8000);
+      link.fail = (error) => { if (settled) return; settled = true; clearTimeout(timer); if (atLink === link) atDisconnect(); reject(error); };
+      atLink = link;
+      pc.onicecandidate = (e) => { if (e.candidate) atSend({ t: 'ice', c: e.candidate.toJSON() }); };
+      pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed') link.fail(new Error('webrtc failed')); };
+      pc.ontrack = (e) => {
+        if (settled) return;
+        const stream = e.streams[0] || new MediaStream([e.track]);
+        try { e.receiver.jitterBufferTarget = 10; } catch {} // ms: keep the receive buffer as small as the link allows
+        // Chromium only feeds a remote stream into Web Audio while it is also attached to a media element.
+        const el = new Audio(); el.muted = true; el.srcObject = stream; el.play?.().catch(() => {});
+        link.audioEl = el; link.done = true; settled = true; clearTimeout(timer);
+        resolve(stream);
+      };
+      atSend({ t: 'start', label, params: atParams() });
+    });
+  }
 
   // ---- Live microphone (karaoke): mic -> level -> Vocal Lab chain -> master stage (after EQ/Enhancer, before master gain and limiter). ----
   const MIC_KEY = 'ytm-poc-mic-v1';
@@ -1625,30 +2734,67 @@ if (isPcmBridgePage()) {
     const context = activeContext;
     await context.resume();
     getEqInput(context); // makes sure the master stage exists even when capture was never started
-    const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 };
-    if (micState.device) audio.deviceId = { ideal: micState.device };
-    const stream = await navigator.mediaDevices.getUserMedia({ audio });
-    const source = context.createMediaStreamSource(stream);
     const gain = fxGain(context);
+    gain.channelCount = 1; // the mic is one signal: summed to mono here, then fed equally to left and right everywhere downstream
     gain.gain.value = micGainOf(micState.level);
     const an = context.createAnalyser(); an.fftSize = 1024;
-    source.connect(gain); gain.connect(an);
+    gain.connect(an);
     const fx = buildVocalFx(context, masterEq.master, gain);
-    mic = { stream, source, gain, an, fx, context, buf: new Float32Array(1024) };
-    stemDiag('mic_on', { state: 'on' });
+    const m = { stream: null, source: null, atOn: false, gain, an, fx, context, buf: new Float32Array(1024) };
+    mic = m;
+    try { await micAttachSource(m); } catch (error) { if (mic === m) stopMic(); throw error; }
+    stemDiag('mic_on', { state: m.atOn ? 'autotune' : 'on' });
     return true;
+  }
+
+  // (Re)connects the mic's input: the raw microphone, or the auto-tuned stream when fxState.at.on. Falls back to the raw mic if auto-tune cannot start.
+  async function micAttachSource(m) {
+    const wantAt = fxState.at.on;
+    let stream = null, usedAt = false;
+    if (wantAt) {
+      try {
+        let label = '';
+        if (micState.device) {
+          try { label = (await navigator.mediaDevices.enumerateDevices()).find((d) => d.kind === 'audioinput' && d.deviceId === micState.device)?.label || ''; } catch {}
+        }
+        stream = await atConnect(label); usedAt = true;
+      } catch (error) {
+        atDisconnect();
+        stemDiag('autotune_error', { error: String(error?.message || error).slice(0, 80) });
+        studio.atStatus?.({ t: 'error' });
+      }
+    }
+    if (!usedAt) {
+      const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 };
+      if (micState.device) audio.deviceId = { ideal: micState.device };
+      stream = await navigator.mediaDevices.getUserMedia({ audio });
+    }
+    if (mic !== m) { // switched off while connecting
+      if (usedAt) atDisconnect(); else for (const t of stream.getTracks()) t.stop();
+      return;
+    }
+    const source = m.context.createMediaStreamSource(stream);
+    source.connect(m.gain);
+    const old = { source: m.source, stream: m.stream, atOn: m.atOn };
+    m.source = source; m.stream = stream; m.atOn = usedAt;
+    try { old.source?.disconnect(); } catch {}
+    if (old.stream && !old.atOn) for (const t of old.stream.getTracks()) t.stop();
+    if (old.atOn && !usedAt) atDisconnect();
   }
 
   function stopMic() {
     if (!mic) return;
     const m = mic; mic = null;
-    try { m.source.disconnect(); } catch {}
+    try { m.source?.disconnect(); } catch {}
     try { m.gain.disconnect(); } catch {}
     for (const o of m.fx.outs) { try { o.disconnect(); } catch {} }
     clearTimeout(m.fx.irTimer);
+    m.fx.dispose?.();
     const i = vocalFxInstances.indexOf(m.fx);
     if (i >= 0) vocalFxInstances.splice(i, 1);
-    for (const t of m.stream.getTracks()) t.stop();
+    for (const t of m.stream?.getTracks() || []) t.stop();
+    atDisconnect();
+    studio.atStatus?.({ t: 'idle' });
     stemDiag('mic_off', { state: 'off' });
   }
 
@@ -1713,6 +2859,7 @@ if (isPcmBridgePage()) {
     stemBus.gain.value = 0;
     stemNodes = { vocalGain, instGain, drumsGain, bassGain, otherGain, stemBus };
     stemNodes.analysers = {};
+    stemNodes.pitch = buildStemPitch(context, stemNodes);
     for (const key of ["vocalGain", "instGain", "drumsGain", "bassGain", "otherGain"]) {
       const an = context.createAnalyser();
       an.fftSize = 512;
@@ -2026,11 +3173,17 @@ if (isPcmBridgePage()) {
       const node = context.createBufferSource();
       node.buffer = buffer;
       node.playbackRate.value = pr;
-      node.connect(target);
+      const pin = stemNodes.pitch?.ins[gainKey];
+      node.connect(pin || target);
+      if (!pin) { const tap = rec.taps?.[gainKey]; if (tap) node.connect(tap); }
       node.start(startAt);
     }
     p.nextTime = startAt + hop / rate / pr;
     p.chunks += 1;
+    { // how far behind the YouTube Music element the stems are heard (window + processing + jitter buffer + output): the lyrics clock uses it
+      const est = frames / rate * 1000 + 93 + (msg.processingMs || 0) + (startAt - now) * 1000 + (typeof context.outputLatency === 'number' ? context.outputLatency : 0) * 1000;
+      p.delayEstimateMs = p.delayEstimateMs ? p.delayEstimateMs * 0.8 + est * 0.2 : est;
+    }
     if (p.chunks % 5 === 1) {
       const leadMs = (startAt - now) * 1000;
       const outputMs = (typeof context.outputLatency === 'number' ? context.outputLatency : 0) * 1000;
