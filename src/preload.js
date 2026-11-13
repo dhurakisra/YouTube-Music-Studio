@@ -1732,7 +1732,7 @@ if (isAutotunePage()) {
     const rmsDb = (an) => { an.getFloatTimeDomainData(buf); let t = 0; for (let i = 0; i < buf.length; i += 1) t += buf[i] * buf[i]; return t > 0 ? 10 * Math.log10(t / buf.length) : -100; };
     const angleOf = (db) => Math.max(-39, Math.min(39, db <= -18 ? 20 + (db + 18) * 2.95 : 20 + (db + 18) * 1.9));
     const fit = () => { // the meter block shrinks with the window and hides when it would collide with the search field
-      const z = Math.min(1, (window.innerWidth - 250 - 850) / 470);
+      const z = Math.min(1, (window.innerWidth - 215 - 850) / 540);
       box.style.display = z < 0.45 ? 'none' : 'flex'; box.style.zoom = String(Math.max(0.45, z));
     };
     window.addEventListener('resize', fit); fit();
@@ -2017,13 +2017,13 @@ if (isAutotunePage()) {
     .winbtn { width: 24px; height: 18px; padding: 0; border: 1px solid #0009; border-radius: 4px; cursor: pointer; font: 700 11px/1 "Bahnschrift", system-ui, sans-serif; color: var(--brass);
       background: linear-gradient(#3a322a, #1b1816); box-shadow: inset 0 1px 0 #ffffff1a, 0 1px 2px #000a; }
     .winbtn:hover { color: var(--amber); } .winbtn.x:hover { background: #7a2218; color: #fff; }
-    .topvu { -webkit-app-region: no-drag; position: fixed; top: 8px; right: 250px; z-index: 2147483640; display: flex; align-items: center; gap: 14px; }
+    .topvu { -webkit-app-region: no-drag; position: fixed; top: 8px; right: 215px; z-index: 2147483640; display: flex; align-items: center; gap: 14px; }
     .topvu .vuw { padding: 8px; border: 0; box-sizing: content-box; border-image: ${T('sk-logo.png')} 46 / 18px stretch; background: #0a0807; border-style: solid; border-color: transparent; border-width: 14px; padding: 0; background-clip: padding-box; }
     .topvu .vu { width: 112px; height: 64px; box-shadow: inset 0 0 10px #000a; border-radius: 2px; }
     .topvu .knob.big { background-image: ${T('sk-knob.png')}; }
     .topvu .vu .lbl { font-size: 10px; } .topvu .vu .lbl.c { font-size: 12px; }
     .topvu .knob-box { flex-direction: column; font-size: 9px; gap: 1px; }
-    .topvu .knobw { padding: 0; border: 0; background: none; }
+    .topvu .knobw { padding: 0; border: 0; background: none; margin-left: 56px; }
     .topvu .knobw .knob-box { position: relative; width: 88px; height: 112px; box-sizing: border-box; padding-top: 98px; display: block; text-align: center; }
     .topvu .knobw .knob-box::before { content: ""; position: absolute; left: 0; top: 0; width: 88px; height: 94px; background: ${T('sk-ring.png')} center / 100% 100% no-repeat; filter: drop-shadow(0 2px 3px #000a); }
     .topvu .knobw .knob.big { position: absolute; left: 13px; top: 16px; width: 62px; height: 62px; background-image: ${T('sk-kn0.png')}; box-shadow: none; z-index: 1; border-radius: 0; }
@@ -2273,6 +2273,7 @@ if (isAutotunePage()) {
           border-bottom: 2px solid #0a0807 !important; box-shadow: inset 0 -1px 0 #ffffff1a, 0 5px 16px #000c !important; }
         ytmusic-nav-bar #left-content { background: transparent !important; }
         ytmusic-nav-bar ytmusic-logo { visibility: hidden !important; }
+        ytmusic-nav-bar #right-content { position: fixed !important; top: 38px; right: 14px; zoom: 1.5; z-index: 2147483640; display: flex !important; align-items: center; }
         ytmusic-search-box .search-box { background: #0a0807 !important; background-clip: border-box !important; border: 14px solid transparent !important; border-image: ${T('sk-pill.png')} 72 / 28px stretch !important; border-radius: 26px !important; box-shadow: none !important; height: 56px !important; box-sizing: border-box !important; }
         ytmusic-app-layout { --ytmusic-nav-bar-height: 112px !important; }
         ytmusic-nav-bar { height: 112px !important; padding-right: 120px !important; box-sizing: border-box !important; }
