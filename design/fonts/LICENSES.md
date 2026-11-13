@@ -6,3 +6,4 @@ All fonts here are licensed under the SIL Open Font License 1.1 (free for commer
 - Barlow and Barlow Condensed (Jeremy Tribby) - body text, song / playlist names
 
 Files are the Latin and Latin-Extended (Turkish characters) woff2 subsets served by Fontsource.
+- Nixie One (Jovanny Lemonad) - glowing nixie-tube style titles
