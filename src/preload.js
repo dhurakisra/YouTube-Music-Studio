@@ -2314,7 +2314,12 @@ if (isAutotunePage()) {
         /* shelf cards: thin metal frame on a textured plate */
         ytmusic-two-row-item-renderer { box-sizing: border-box !important; padding: 7px 7px 6px !important; border: 7px solid transparent !important; border-image: ${T('sk-thin.png')} 30 / 9px stretch !important;
           background: linear-gradient(#00000040, #00000099), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f !important; background-clip: padding-box !important; border-radius: 0 !important; }
-        ytmusic-two-row-item-renderer:hover { filter: brightness(1.15); }
+        ytmusic-two-row-item-renderer { transition: box-shadow .15s; }
+        ytmusic-two-row-item-renderer:hover { box-shadow: 0 0 16px 3px #ffb34780, 0 0 4px 1px #ffd27acc !important; }
+        /* song-list shelves (Quick picks, Trending songs, Covers & remixes, Long listens ...): the whole shelf sits in one big frame, its small song rows stay unframed */
+        ytmusic-carousel-shelf-renderer:has(ytmusic-responsive-list-item-renderer), ytmusic-shelf-renderer:has(ytmusic-responsive-list-item-renderer) { box-sizing: border-box !important; max-width: 1540px; margin: 0 auto 22px !important; padding: 8px 14px 12px !important; border: 14px solid transparent !important;
+          border-image: ${T('sk-wide.png')} 46 / 14px stretch !important; background: linear-gradient(#0000003a, #0000008c), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f !important; background-clip: padding-box !important; transition: box-shadow .15s; }
+        ytmusic-carousel-shelf-renderer:has(ytmusic-responsive-list-item-renderer:hover), ytmusic-shelf-renderer:has(ytmusic-responsive-list-item-renderer:hover) { box-shadow: 0 0 18px 3px #ffb34775, 0 0 4px 1px #ffd27aaa; }
         /* left guide: framed metal panel with its own textured inner plate */
         ytmusic-app-layout #guide-wrapper { background: ${T('metal.jpg')} 0 0 / 256px 256px, #14110f !important; }
         ytmusic-app-layout, ytmusic-app { --ytmusic-guide-width: 300px !important; }
