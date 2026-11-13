@@ -1782,6 +1782,93 @@ if (isAutotunePage()) {
     }, 40);
   }
 
+  // Chord detection prototype (listens to the full stereo mix). Source: the capture graph's output when it runs, else a passive media.captureStream() tap.
+  // Method: 16384-point spectrum -> peak-picked, tuning-tolerant chroma (12 pitch classes) + a bass chroma for the root -> cosine match with 24 major/minor triads
+  // -> exponential smoothing + hysteresis so the chord only changes when a new one wins for ~0.5 s.
+  function studioBuildChords(ui) {
+    const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    const box = h('div', 'chordbox');
+    const cur = h('div', 'chcur', '\u2014'), lbl = h('div', 'chlbl', 'CHORD'), hist = h('div', 'chhist');
+    box.append(lbl, cur, hist);
+    ui.appendChild(box);
+    const tmpl = []; // [{name, root, v}]
+    for (let r = 0; r < 12; r += 1) {
+      for (const [suffix, third] of [['', 4], ['m', 3]]) {
+        const v = new Float32Array(12); v[r] = 1.1; v[(r + third) % 12] = 0.9; v[(r + 7) % 12] = 0.95;
+        let n = 0; for (let i = 0; i < 12; i += 1) n += v[i] * v[i]; n = Math.sqrt(n); for (let i = 0; i < 12; i += 1) v[i] /= n;
+        tmpl.push({ name: NAMES[r] + suffix, root: r, v });
+      }
+    }
+    const FFT = 16384;
+    let tapCtx = null, tapMedia = null, tapStream = null, tapTrack = '', tapAn = null;
+    const getAnalyser = () => {
+      if (masterEq?.context && masterEq.outNode) { // capture / stems running: tap its output
+        if (!masterEq.chordAn) { const a = masterEq.context.createAnalyser(); a.fftSize = FFT; a.smoothingTimeConstant = 0; masterEq.outNode.connect(a); masterEq.chordAn = a; }
+        return { an: masterEq.chordAn, sr: masterEq.context.sampleRate };
+      }
+      const m = findMedia(); if (!m || typeof m.captureStream !== 'function') return null;
+      try {
+        if (m !== tapMedia) { tapMedia = m; tapStream = m.captureStream(); tapTrack = ''; tapAn = null; }
+        const tr = tapStream.getAudioTracks()[0]; if (!tr) return tapAn ? { an: tapAn, sr: tapCtx.sampleRate } : null;
+        if (tr.id !== tapTrack || !tapAn) {
+          if (!tapCtx || tapCtx.state === 'closed') tapCtx = new AudioContext({ latencyHint: 'playback' });
+          if (tapCtx.state === 'suspended') tapCtx.resume().catch(() => {});
+          const src = tapCtx.createMediaStreamSource(new MediaStream([tr]));
+          const a = tapCtx.createAnalyser(); a.fftSize = FFT; a.smoothingTimeConstant = 0; src.connect(a);
+          tapTrack = tr.id; tapAn = a;
+        }
+        return { an: tapAn, sr: tapCtx.sampleRate };
+      } catch { return null; }
+    };
+    let buf = null, chr = new Float32Array(12), bas = new Float32Array(12);
+    let curIdx = -1, candIdx = -1, candN = 0, songKey = '', log = [];
+    const render = () => {
+      cur.textContent = curIdx >= 0 ? tmpl[curIdx].name : '\u2014';
+      hist.textContent = log.slice(-6).map((e) => fmtTime(e.t) + ' ' + e.name).join('   ');
+    };
+    const step = () => {
+      if (document.hidden) return;
+      const md = navigator.mediaSession?.metadata, key = md ? md.artist + '|' + md.title : '';
+      if (key !== songKey) { songKey = key; log = []; curIdx = -1; chr.fill(0); bas.fill(0); render(); }
+      const src = getAnalyser(); if (!src) return;
+      const an = src.an, sr = src.sr;
+      if (!buf || buf.length !== an.frequencyBinCount) buf = new Float32Array(an.frequencyBinCount);
+      an.getFloatFrequencyData(buf);
+      let mx = -200; for (let k = 4; k < 1200; k += 1) if (buf[k] > mx) mx = buf[k];
+      const c = new Float32Array(12), b = new Float32Array(12);
+      if (mx > -85) {
+        const hz = sr / FFT, kmin = Math.ceil(65 / hz), kmax = Math.min(buf.length - 2, Math.floor(2500 / hz));
+        for (let k = kmin; k <= kmax; k += 1) {
+          const v = buf[k]; if (v < mx - 45 || v < buf[k - 1] || v <= buf[k + 1]) continue; // spectral peaks within 45 dB of the loudest
+          const f = k * hz, midi = 69 + 12 * Math.log2(f / 440), r = Math.round(midi), dev = Math.abs(midi - r);
+          if (dev > 0.4) continue;
+          const mag = Math.sqrt(10 ** (v / 20)) * (1 - dev) / (1 + f / 900), pc = ((r % 12) + 12) % 12;
+          c[pc] += mag; if (f < 260) b[pc] += mag;
+        }
+      }
+      let cs = 0, bs = 0; for (let i = 0; i < 12; i += 1) { cs += c[i]; bs += b[i]; }
+      if (cs > 0) for (let i = 0; i < 12; i += 1) { chr[i] = chr[i] * 0.7 + 0.3 * (c[i] / cs); bas[i] = bas[i] * 0.7 + 0.3 * (bs > 0 ? b[i] / bs : 0); }
+      else for (let i = 0; i < 12; i += 1) { chr[i] *= 0.85; bas[i] *= 0.85; }
+      if (cs <= 0) { if (curIdx !== -1) { curIdx = -1; render(); } return; }
+      let cn = 0; for (let i = 0; i < 12; i += 1) cn += chr[i] * chr[i]; cn = Math.sqrt(cn) || 1;
+      let best = -1, bestScore = -1, curScore = -1;
+      for (let t = 0; t < tmpl.length; t += 1) {
+        let dot = 0; const v = tmpl[t].v; for (let i = 0; i < 12; i += 1) dot += chr[i] * v[i];
+        const score = dot / cn + 0.3 * bas[tmpl[t].root];
+        if (score > bestScore) { bestScore = score; best = t; }
+        if (t === curIdx) curScore = score;
+      }
+      if (best === curIdx) { candN = 0; return; }
+      if (best === candIdx) candN += 1; else { candIdx = best; candN = 1; }
+      if (curIdx < 0 || (candN >= 4 && bestScore - curScore > 0.03)) {
+        curIdx = best; candN = 0;
+        log.push({ t: songPos(findMedia()), name: tmpl[best].name });
+        render();
+      }
+    };
+    setInterval(step, 120);
+  }
+
   // Lyrics panel (right edge, mirror of the recordings panel): artist / album / title on top, synced lines scrolling below.
   // The song heard through the stems runs ~10 s behind the YouTube Music element, so the clock used for the lines subtracts that delay.
   const lyrState = { key: '', data: null, status: '', idx: -2, offset: 0, lines: [], busy: false, retryAt: 0 };
@@ -2044,6 +2131,11 @@ if (isAutotunePage()) {
         .np { position: relative; flex: 1 0 100%; display: flex; align-items: center; gap: 18px; box-sizing: border-box; margin-top: 4px;
       padding: 10px 18px; border: 1px solid #0009; border-radius: 10px; box-shadow: inset 0 0 18px #000a;
       background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; }
+    .chordbox { position: fixed; left: 64px; top: 116px; height: 38px; z-index: 2147483639; display: flex; align-items: center; gap: 12px; padding: 0 14px; max-width: 560px; box-sizing: border-box; overflow: hidden;
+      background: #0d0a08d9; border: 1px solid #5a4630; border-radius: 6px; box-shadow: inset 0 0 8px #000, 0 2px 6px #000a; pointer-events: none; }
+    .chlbl { font: 700 9px "Barlow Condensed", sans-serif; letter-spacing: .2em; color: var(--brass); }
+    .chcur { min-width: 56px; font: 400 28px/1 "Metamorphous", serif; color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99; }
+    .chhist { font: 600 12px "Barlow Condensed", sans-serif; letter-spacing: .06em; color: #cdbfa9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .steam { position: fixed; left: 0; right: 0; top: 112px; height: 46px; z-index: 2147483638; display: flex; align-items: center; pointer-events: none; box-sizing: border-box; padding: 0 14px;
       background: linear-gradient(#0000008c, #00000030 30%, #0000005a), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; border-bottom: 2px solid #0a0807; box-shadow: 0 5px 14px #000c, inset 0 1px 0 #ffffff14; }
     .steam .sp { display: block; height: 44px; flex: none; background-repeat: no-repeat; background-position: center; background-size: 100% 100%; filter: drop-shadow(0 2px 2px #000a); }
@@ -2303,6 +2395,7 @@ if (isAutotunePage()) {
       studioBuildLyrics(ui);
       studioBuildNowPlaying(ui);
       studioBuildTopMeters(ui);
+      studioBuildChords(ui);
       studioBuildWinButtons(ui);
       studioBuildBrand(ui);
       studioBuildSteamPanel(ui);
