@@ -1929,7 +1929,7 @@ if (isAutotunePage()) {
       padding: 10px 18px; border: 1px solid #0009; border-radius: 10px; box-shadow: inset 0 0 18px #000a;
       background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; }
     .np.float { position: fixed; left: 12px; right: 12px; bottom: 10px; z-index: 2147483643; margin: 0; border-radius: 10px; height: 104px; padding: 6px 24px; }
-    .tab.np-up { bottom: 116px; }
+    .tab.np-up { bottom: 114px; }
     .npticks { position: relative; height: 22px; margin-top: 1px; }
     .nptick { position: absolute; top: 0; transform: translateX(-50%); width: 28px; height: 22px; padding: 0; border: 0; background: none; cursor: pointer; color: var(--ink-dim); font: 700 9px "Bahnschrift", system-ui, sans-serif; letter-spacing: .06em; }
     .nptick .tkline { position: absolute; left: 50%; top: 0; width: 1px; height: 5px; background: var(--brass); opacity: .6; }
