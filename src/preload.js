@@ -1631,7 +1631,7 @@ if (isAutotunePage()) {
     const ctl = h('div', 'npctl'); ctl.append(prev, playBtn, next);
     bar.addEventListener('click', (ev) => { const m = findMedia(); if (!m || !Number.isFinite(m.duration)) return; const r = bar.getBoundingClientRect(); try { m.currentTime = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * m.duration; } catch {} });
     win.append(art, info, ctl);
-    ui.appendChild(win);
+    (studio.consoleEl || ui).appendChild(win);
     studio.npEl = win;
     let lastArt = '';
     setInterval(() => {
@@ -1907,10 +1907,10 @@ if (isAutotunePage()) {
       border: 1px solid var(--edge-hi); border-left: 0; border-radius: 0 10px 10px 0; background: linear-gradient(90deg, #2c2622, #1b1816);
       color: var(--brass); font: 700 12px "Bahnschrift", system-ui, sans-serif; letter-spacing: .2em; transition: left .3s cubic-bezier(.2,.8,.2,1); }
     .libtab:hover { color: var(--amber); }
-    .np { position: fixed; left: 50%; bottom: calc(var(--dh) + 44px); transform: translate(-50%, 20px); z-index: 2147483644; display: none; align-items: center; gap: 14px;
-      width: min(560px, 90vw); padding: 10px 14px; border: 1px solid #0009; border-radius: 10px; box-shadow: 0 8px 30px #000c, inset 0 0 18px #000a;
+        .np { flex: 1 0 100%; display: none; align-items: center; gap: 18px; box-sizing: border-box; margin-top: 4px;
+      padding: 10px 18px; border: 1px solid #0009; border-radius: 10px; box-shadow: inset 0 0 18px #000a;
       background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; }
-    .np.open { display: flex; transform: translateX(-50%); }
+    .np.open { display: flex; }
     .npart { width: 64px; height: 64px; flex: none; border-radius: 4px; object-fit: cover; background: #050404; box-shadow: 0 0 0 2px #0a0807, 0 0 0 3px var(--edge); }
     .npinfo { flex: 1; min-width: 0; }
     .nptitle { font-size: 15px; font-weight: 800; color: #f1e6d3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 2px #000; }
