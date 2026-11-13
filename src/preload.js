@@ -424,7 +424,8 @@ if (isAutotunePage()) {
     const tab = studio.root.querySelector('.tab');
     tab.classList.toggle('open', open);
     tab.textContent = open ? 'STUDIO ▼' : 'STUDIO ▲';
-    studio.npEl?.classList.toggle('open', open);
+    if (studio.npEl) { studio.npEl.classList.toggle('float', !open); (open ? studio.consoleEl : studio.root.querySelector('.ui') || studio.uiEl || studio.root).appendChild(studio.npEl); }
+    studio.root.querySelector('.tab').classList.toggle('np-up', !open);
     studio.lyrEl?.classList.toggle('lift', open); studio.libEl?.classList.toggle('lift', open); // side panels end where the drawer begins
     try { localStorage.setItem('ytm-poc-drawer-open', open ? '1' : '0'); } catch {}
     if (open && !studio.raf) studio.raf = requestAnimationFrame(studioTick);
@@ -1622,7 +1623,23 @@ if (isAutotunePage()) {
     const title = h('div', 'nptitle'), artist = h('div', 'npartist');
     const bar = h('div', 'libbar npbar'); const fill = h('div', 'libfill'); bar.appendChild(fill);
     const times = h('div', 'npmeta');
-    info.append(title, artist, bar, times);
+    const ticks = h('div', 'npticks'); let tickDur = 0;
+    const buildTicks = (dur) => {
+      tickDur = dur; ticks.textContent = '';
+      if (!(dur > 20)) return;
+      const major = [60, 120, 300, 600, 900].find((st) => dur / st <= 12) || 1800; // label step chosen from the song length
+      const minor = major === 60 ? 30 : major;
+      for (let t = minor; t < dur - 3; t += minor) {
+        const isMajor = t % major === 0;
+        const tk = h('button', 'nptick' + (isMajor ? ' major' : ''), null, { type: 'button', 'aria-label': 'Jump to ' + fmtTime(t) });
+        tk.style.left = (t / dur * 100) + '%';
+        tk.appendChild(h('i', 'tkline'));
+        if (isMajor) tk.appendChild(h('span', 'tklbl', (t / 60) + ' min'));
+        tk.addEventListener('click', (ev) => { ev.stopPropagation(); const m = findMedia(); if (m) { try { m.currentTime = t; } catch {} } });
+        ticks.appendChild(tk);
+      }
+    };
+    info.append(title, artist, bar, ticks, times);
     const q = (sel) => document.querySelector('ytmusic-player-bar ' + sel);
     const mk = (text, label, fn, cls) => { const b = h('button', 'btn npbtn' + (cls ? ' ' + cls : ''), text, { type: 'button', 'aria-label': label }); b.addEventListener('click', fn); return b; };
     const prev = mk('\u23EE', 'Previous song', () => q('.previous-button')?.click());
@@ -1632,10 +1649,9 @@ if (isAutotunePage()) {
     bar.addEventListener('click', (ev) => { const m = findMedia(); if (!m || !Number.isFinite(m.duration)) return; const r = bar.getBoundingClientRect(); try { m.currentTime = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * m.duration; } catch {} });
     win.append(art, info, ctl);
     (studio.consoleEl || ui).appendChild(win);
-    studio.npEl = win;
+    studio.npEl = win; studio.npHome = studio.consoleEl;
     let lastArt = '';
     setInterval(() => {
-      if (!studio.open) return;
       const md = navigator.mediaSession?.metadata;
       title.textContent = md?.title || '\u2014'; artist.textContent = md?.artist || '';
       const src = md?.artwork?.length ? md.artwork[md.artwork.length - 1].src : '';
@@ -1643,6 +1659,8 @@ if (isAutotunePage()) {
       const m = findMedia();
       const playing = !!m && !m.paused;
       playBtn.textContent = playing ? '\u275A\u275A' : '\u25B6'; playBtn.classList.toggle('on', playing);
+      const dur = m && Number.isFinite(m.duration) ? Math.round(m.duration) : 0;
+      if (dur !== tickDur) buildTicks(dur);
       if (m && Number.isFinite(m.duration) && m.duration > 0) { fill.style.width = (m.currentTime / m.duration * 100) + '%'; times.textContent = fmtTime(m.currentTime) + ' / ' + fmtTime(m.duration); }
       else { fill.style.width = '0%'; times.textContent = ''; }
     }, 500);
@@ -1907,10 +1925,18 @@ if (isAutotunePage()) {
       border: 1px solid var(--edge-hi); border-left: 0; border-radius: 0 10px 10px 0; background: linear-gradient(90deg, #2c2622, #1b1816);
       color: var(--brass); font: 700 12px "Bahnschrift", system-ui, sans-serif; letter-spacing: .2em; transition: left .3s cubic-bezier(.2,.8,.2,1); }
     .libtab:hover { color: var(--amber); }
-        .np { flex: 1 0 100%; display: none; align-items: center; gap: 18px; box-sizing: border-box; margin-top: 4px;
+        .np { flex: 1 0 100%; display: flex; align-items: center; gap: 18px; box-sizing: border-box; margin-top: 4px;
       padding: 10px 18px; border: 1px solid #0009; border-radius: 10px; box-shadow: inset 0 0 18px #000a;
       background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; }
-    .np.open { display: flex; }
+    .np.float { position: fixed; left: 0; right: 0; bottom: 0; z-index: 2147483643; margin: 0; border-radius: 0; border-width: 1px 0 0; height: 104px; padding: 6px 24px; }
+    .tab.np-up { bottom: 104px; }
+    .npticks { position: relative; height: 22px; margin-top: 1px; }
+    .nptick { position: absolute; top: 0; transform: translateX(-50%); width: 28px; height: 22px; padding: 0; border: 0; background: none; cursor: pointer; color: var(--ink-dim); font: 700 9px "Bahnschrift", system-ui, sans-serif; letter-spacing: .06em; }
+    .nptick .tkline { position: absolute; left: 50%; top: 0; width: 1px; height: 5px; background: var(--brass); opacity: .6; }
+    .nptick.major .tkline { height: 8px; opacity: 1; }
+    .nptick .tklbl { position: absolute; left: 50%; top: 9px; transform: translateX(-50%); white-space: nowrap; }
+    .nptick:hover { color: var(--amber); }
+    .nptick:hover .tkline { background: var(--amber); }
     .npart { width: 64px; height: 64px; flex: none; border-radius: 4px; object-fit: cover; background: #050404; box-shadow: 0 0 0 2px #0a0807, 0 0 0 3px var(--edge); }
     .npinfo { flex: 1; min-width: 0; }
     .nptitle { font-size: 15px; font-weight: 800; color: #f1e6d3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 2px #000; }
@@ -2126,6 +2152,7 @@ if (isAutotunePage()) {
       studioBuildLyrics(ui);
       studioBuildNowPlaying(ui);
       root.append(style, ui);
+      try { const gs = document.createElement('style'); gs.textContent = 'ytmusic-player-bar { opacity: 0 !important; pointer-events: none !important; }'; (document.head || document.documentElement).appendChild(gs); } catch {} // our own bar replaces the native one (kept alive: its buttons are still clicked programmatically)
       studio.host = host; studio.root = root;
       studio.statusEls = [...root.querySelectorAll('.status span')];
       root.querySelector('.tab').addEventListener('click', () => studioSetOpen(!studio.open));
