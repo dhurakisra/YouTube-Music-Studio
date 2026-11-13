@@ -2025,7 +2025,7 @@ if (isAutotunePage()) {
     .topvu .knob-box { flex-direction: column; font-size: 9px; gap: 1px; }
     .topvu .knobw { padding: 0; border: 0; background: none; margin-left: 56px; }
     .topvu .knobw .knob-box { position: relative; width: 88px; height: 112px; box-sizing: border-box; padding-top: 98px; display: block; text-align: center; }
-    .topvu .knobw .knob-box::before { content: ""; position: absolute; left: 0; top: 0; width: 88px; height: 94px; background: ${T('sk-ring.png')} center / 100% 100% no-repeat; filter: drop-shadow(0 2px 3px #000a); }
+    .topvu .knobw .knob-box::before { content: none; }
     .topvu .knobw .knob.big { position: absolute; left: 13px; top: 16px; width: 62px; height: 62px; background-image: ${T('sk-kn0.png')}; box-shadow: none; z-index: 1; border-radius: 0; }
     .topvu .knobw .knob.big.f0 { background-image: ${T('sk-kn0.png')}; }
     .topvu .knobw .knob.big.f1 { background-image: ${T('sk-kn1.png')}; }
@@ -2275,7 +2275,7 @@ if (isAutotunePage()) {
         ytmusic-nav-bar ytmusic-logo { visibility: hidden !important; }
         ytmusic-nav-bar #right-content ytmusic-settings-button { zoom: 1.4; }
         ytmusic-nav-bar #right-content ytmusic-settings-button #avatar, ytmusic-nav-bar #right-content ytmusic-settings-button img { border-radius: 50% !important; box-shadow: 0 0 0 2px #0a0807, 0 0 0 3px #8a6a3c; }
-        ytmusic-nav-bar #right-content { position: fixed !important; top: 38px; right: 14px; zoom: 1.5; z-index: 2147483640; display: flex !important; align-items: center; }
+        ytmusic-nav-bar #right-content { position: fixed !important; top: 26px; right: 14px; zoom: 1.5; z-index: 2147483640; display: flex !important; align-items: center; }
         ytmusic-search-box .search-box { background: #0a0807 !important; background-clip: border-box !important; border: 14px solid transparent !important; border-image: ${T('sk-pill.png')} 72 / 28px stretch !important; border-radius: 26px !important; box-shadow: none !important; height: 56px !important; box-sizing: border-box !important; }
         ytmusic-app-layout { --ytmusic-nav-bar-height: 112px !important; }
         ytmusic-nav-bar { height: 112px !important; padding-right: 120px !important; box-sizing: border-box !important; }
