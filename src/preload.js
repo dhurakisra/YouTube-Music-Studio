@@ -2151,8 +2151,19 @@ if (isAutotunePage()) {
       studioBuildLibrary(ui);
       studioBuildLyrics(ui);
       studioBuildNowPlaying(ui);
+      // YTM page skin, step 1: top bar (rust/metal plate with corner screws, inset brass-rimmed search field)
+      const skinCss = `
+        ytmusic-nav-bar, ytmusic-nav-bar #left-content { --ytmusic-nav-bar-background: transparent; }
+        ytmusic-nav-bar { background: ${T('screw.png')} left 8px top 8px / 11px 11px no-repeat, ${T('screw.png')} right 8px top 8px / 11px 11px no-repeat,
+            ${T('screw.png')} left 8px bottom 8px / 11px 11px no-repeat, ${T('screw.png')} right 8px bottom 8px / 11px 11px no-repeat,
+            linear-gradient(#ffffff12, transparent 35%, #0007), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f !important;
+          border-bottom: 2px solid #0a0807 !important; box-shadow: inset 0 -1px 0 #ffffff1a, 0 5px 16px #000c !important; }
+        ytmusic-nav-bar #left-content { background: transparent !important; }
+        ytmusic-search-box #input-box { background: #0a0807 !important; border: 1px solid #6a5636 !important; border-radius: 22px !important; box-shadow: inset 0 2px 7px #000, 0 1px 0 #ffffff14 !important; }
+        ytmusic-search-box input { color: #eadfca !important; }
+      `;
       root.append(style, ui);
-      try { const gs = document.createElement('style'); gs.textContent = 'ytmusic-player-bar { opacity: 0 !important; pointer-events: none !important; }'; (document.head || document.documentElement).appendChild(gs); } catch {} // our own bar replaces the native one (kept alive: its buttons are still clicked programmatically)
+      try { const gs = document.createElement('style'); gs.textContent = 'ytmusic-player-bar { opacity: 0 !important; pointer-events: none !important; }' + skinCss; (document.head || document.documentElement).appendChild(gs); } catch {} // our own bar replaces the native one (kept alive: its buttons are still clicked programmatically)
       studio.host = host; studio.root = root;
       studio.statusEls = [...root.querySelectorAll('.status span')];
       root.querySelector('.tab').addEventListener('click', () => studioSetOpen(!studio.open));
