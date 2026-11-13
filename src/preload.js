@@ -1668,6 +1668,20 @@ if (isAutotunePage()) {
 
   // Top-bar meters: two analog VUs + master volume knob beside the YTM search bar. They show what YouTube Music plays even without capture:
   // if the stem/EQ graph is not running, a passive media.captureStream() tap (analyser only, not connected to any output) feeds them.
+  function studioBuildBrand(ui) {
+    const plate = h('a', 'brand', null, { 'aria-label': 'YouTube Music home', href: 'https://music.youtube.com/' });
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 40 28'); svg.setAttribute('class', 'brandicon');
+    const rect = document.createElementNS(NS, 'rect'); rect.setAttribute('width', '40'); rect.setAttribute('height', '28'); rect.setAttribute('rx', '8'); rect.setAttribute('fill', '#e0221b');
+    const tri = document.createElementNS(NS, 'path'); tri.setAttribute('d', 'M16 8l11 6-11 6z'); tri.setAttribute('fill', '#fff');
+    svg.append(rect, tri);
+    const name = h('div', 'brandname'); name.append(h('span', 'by', 'YouTube'), h('span', 'bm', ' Music'));
+    const sub = h('div', 'brandsub', '/// STUDIO EDITION ///');
+    const txt = h('div', 'brandtxt'); txt.append(name, sub);
+    plate.append(svg, txt);
+    ui.appendChild(plate);
+  }
+
   function studioBuildWinButtons(ui) {
     const wrap = h('div', 'winbtns');
     for (const [cmd, glyph, label] of [['min', '–', 'Minimize'], ['max', '□', 'Maximize or restore'], ['close', '✕', 'Close']]) {
@@ -1694,7 +1708,7 @@ if (isAutotunePage()) {
       try { webFrame.executeJavaScript('(function(){var p=document.getElementById("movie_player");if(p&&p.setVolume)p.setVolume(' + Math.round(v * 100) + ');})()'); } catch {}
     };
     const knob = studioKnob('VOLUME', 'red big', () => volume, (v) => { dragging = true; setVol(v); }, 1, () => { dragging = false; });
-    box.appendChild(knob);
+    const kw = h('div', 'knobw'); kw.appendChild(knob); box.appendChild(kw);
     ui.appendChild(box);
     let tapCtx = null, tapMedia = null, tapStream = null, tapKey = '', tapAn = null;
     const ensureTap = () => {
@@ -1995,12 +2009,20 @@ if (isAutotunePage()) {
       background: linear-gradient(#3a322a, #1b1816); box-shadow: inset 0 1px 0 #ffffff1a, 0 1px 2px #000a; }
     .winbtn:hover { color: var(--amber); } .winbtn.x:hover { background: #7a2218; color: #fff; }
     .topvu { -webkit-app-region: no-drag; position: fixed; top: 8px; right: 250px; z-index: 2147483640; display: flex; align-items: center; gap: 14px; }
-    .topvu .vuw { padding: 8px; border: 0; box-sizing: content-box; border-image: ${T('sk-vuframe.png')} 46 / 18px stretch; background: #0a0807; border-style: solid; border-color: transparent; border-width: 14px; padding: 0; background-clip: padding-box; }
+    .topvu .vuw { padding: 8px; border: 0; box-sizing: content-box; border-image: ${T('sk-logo.png')} 46 / 18px stretch; background: #0a0807; border-style: solid; border-color: transparent; border-width: 14px; padding: 0; background-clip: padding-box; }
     .topvu .vu { width: 112px; height: 64px; box-shadow: inset 0 0 10px #000a; border-radius: 2px; }
     .topvu .knob.big { background-image: ${T('sk-knob.png')}; }
     .topvu .vu .lbl { font-size: 10px; } .topvu .vu .lbl.c { font-size: 12px; }
     .topvu .knob-box { flex-direction: column; font-size: 9px; gap: 1px; }
-    .topvu .knob.big { width: 76px; height: 76px; } .topvu .knob.big::after { top: 12px; height: 20px; width: 4px; margin-left: -2px; transform-origin: 50% 26px; }
+    .topvu .knob.big { width: 60px; height: 60px; }
+    .topvu .knobw { padding: 0 6px; border-style: solid; border-color: transparent; border-width: 14px; border-image: ${T('sk-square.png')} 62 / 18px stretch; background: #0a0807; background-clip: padding-box; }
+    .brand { -webkit-app-region: no-drag; position: fixed; left: 64px; top: 12px; width: 252px; height: 88px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 14px; text-decoration: none; cursor: pointer;
+      border: 16px solid transparent; border-width: 16px 14px; border-image: ${T('sk-logo.png')} 46 / 16px 14px stretch; background: #0a0807; background-clip: padding-box; z-index: 2147483640; }
+    .brandicon { width: 34px; height: 24px; flex: none; filter: drop-shadow(0 1px 2px #000); }
+    .brandtxt { min-width: 0; }
+    .brandname { font: 800 19px/1 "Bahnschrift", system-ui, sans-serif; color: #f1e6d3; white-space: nowrap; text-shadow: 0 1px 2px #000; letter-spacing: -.01em; }
+    .brandname .bm { color: #ff6a3d; }
+    .brandsub { margin-top: 5px; font: italic 700 9px/1 "Bahnschrift", system-ui, sans-serif; letter-spacing: .18em; color: var(--brass); white-space: nowrap; } .topvu .knob.big::after { top: 9px; height: 16px; width: 4px; margin-left: -2px; transform-origin: 50% 21px; }
     @media (max-width: 1450px) { .topvu { display: none; } }
     .np.float { position: fixed; left: 12px; right: 12px; bottom: 10px; z-index: 2147483643; margin: 0; border-radius: 10px; height: 104px; padding: 6px 24px; }
     .tab.np-up { bottom: 114px; }
@@ -2227,6 +2249,7 @@ if (isAutotunePage()) {
       studioBuildNowPlaying(ui);
       studioBuildTopMeters(ui);
       studioBuildWinButtons(ui);
+      studioBuildBrand(ui);
       // YTM page skin, step 1: top bar (rust/metal plate with corner screws, inset brass-rimmed search field)
       const skinCss = `
         ytmusic-nav-bar, ytmusic-nav-bar #left-content { --ytmusic-nav-bar-background: transparent; }
@@ -2235,6 +2258,7 @@ if (isAutotunePage()) {
             linear-gradient(#ffffff12, transparent 35%, #0007), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f !important;
           border-bottom: 2px solid #0a0807 !important; box-shadow: inset 0 -1px 0 #ffffff1a, 0 5px 16px #000c !important; }
         ytmusic-nav-bar #left-content { background: transparent !important; }
+        ytmusic-nav-bar ytmusic-logo { visibility: hidden !important; }
         ytmusic-search-box .search-box { background: #0a0807 !important; background-clip: border-box !important; border: 14px solid transparent !important; border-image: ${T('sk-pill.png')} 72 / 28px stretch !important; border-radius: 26px !important; box-shadow: none !important; height: 56px !important; box-sizing: border-box !important; }
         ytmusic-app-layout { --ytmusic-nav-bar-height: 112px !important; }
         ytmusic-nav-bar { height: 112px !important; -webkit-app-region: drag; padding-right: 120px !important; box-sizing: border-box !important; }
