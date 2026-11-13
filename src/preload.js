@@ -1674,7 +1674,7 @@ if (isAutotunePage()) {
     for (const label of ['L', 'R']) {
       const d = h('div', 'vu');
       d.append(h('span', 'lbl l', label), h('span', 'lbl c', 'VU'), h('i', 'nd'));
-      box.appendChild(d); needles.push(d.querySelector('.nd'));
+      const w = h('div', 'vuw'); w.appendChild(d); box.appendChild(w); needles.push(d.querySelector('.nd'));
     }
     const vol = (() => { const m = findMedia(); return m ? m.volume : 1; })();
     let volume = vol, dragging = false;
@@ -1980,10 +1980,12 @@ if (isAutotunePage()) {
       padding: 10px 18px; border: 1px solid #0009; border-radius: 10px; box-shadow: inset 0 0 18px #000a;
       background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; }
     .topvu { position: fixed; top: 4px; right: 130px; z-index: 2147483640; display: flex; align-items: center; gap: 14px; }
-    .topvu .vu { width: 104px; height: 64px; }
+    .topvu .vuw { padding: 8px; border: 0; box-sizing: content-box; border-image: ${T('sk-vuframe.png')} 46 / 10px stretch; background: #0a0807; border-style: solid; border-color: transparent; border-width: 10px; padding: 0; }
+    .topvu .vu { width: 80px; height: 44px; box-shadow: inset 0 0 10px #000a; border-radius: 2px; }
+    .topvu .knob.big { background-image: ${T('sk-knob.png')}; }
     .topvu .vu .lbl { font-size: 10px; } .topvu .vu .lbl.c { font-size: 12px; }
     .topvu .knob-box { flex-direction: column; font-size: 9px; gap: 1px; }
-    .topvu .knob.big { width: 50px; height: 50px; } .topvu .knob.big::after { top: 9px; height: 14px; transform-origin: 50% 16px; }
+    .topvu .knob.big { width: 54px; height: 54px; } .topvu .knob.big::after { top: 9px; height: 14px; transform-origin: 50% 16px; }
     @media (max-width: 1150px) { .topvu { display: none; } }
     .np.float { position: fixed; left: 12px; right: 12px; bottom: 10px; z-index: 2147483643; margin: 0; border-radius: 10px; height: 104px; padding: 6px 24px; }
     .tab.np-up { bottom: 114px; }
@@ -2217,7 +2219,7 @@ if (isAutotunePage()) {
             linear-gradient(#ffffff12, transparent 35%, #0007), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f !important;
           border-bottom: 2px solid #0a0807 !important; box-shadow: inset 0 -1px 0 #ffffff1a, 0 5px 16px #000c !important; }
         ytmusic-nav-bar #left-content { background: transparent !important; }
-        ytmusic-search-box #input-box { background: #0a0807 !important; border: 1px solid #6a5636 !important; border-radius: 22px !important; box-shadow: inset 0 2px 7px #000, 0 1px 0 #ffffff14 !important; }
+        ytmusic-search-box #input-box { background: #0a0807 !important; border: 9px solid transparent !important; border-image: ${T('sk-wide.png')} 42 / 9px stretch !important; border-radius: 0 !important; box-shadow: none !important; }
         ytmusic-search-box input { color: #eadfca !important; }
       `;
       root.append(style, ui);
