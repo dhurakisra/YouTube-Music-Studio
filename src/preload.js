@@ -1707,6 +1707,32 @@ if (isAutotunePage()) {
   }
 
   // Steampunk strip under the header: caps + stretchy tubes + a centre ornament (gauge, lamps, gears), all pre-cut from one panel image.
+  function studioSparks() {
+    const rnd = (a, b) => a + Math.random() * (b - a);
+    const arm = (sp) => {
+      const side = Math.random() < 0.5 ? 'left' : 'right';
+      sp.style.left = side === 'left' ? rnd(-30, 4) + 'px' : 'auto';
+      sp.style.right = side === 'right' ? rnd(-30, 4) + 'px' : 'auto';
+      sp.style.top = rnd(8, 34) + 'px';
+      sp.style.setProperty('--dx', (side === 'left' ? -1 : 1) * rnd(4, 26) + 'px');
+      sp.style.setProperty('--dy', rnd(22, 52) + 'px');
+      sp.style.animationDuration = rnd(2.5, 9) + 's'; // mostly pause, short burst at the start of each cycle
+    };
+    setInterval(() => {
+      let titles = [];
+      try { titles = document.querySelectorAll('ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title'); } catch { return; }
+      for (const t of titles) {
+        if (t.querySelector(':scope > .poc-spark')) continue;
+        for (let i = 0; i < 3; i += 1) {
+          const sp = document.createElement('i'); sp.className = 'poc-spark';
+          arm(sp); sp.style.animationDelay = rnd(0, 6) + 's';
+          sp.addEventListener('animationiteration', () => arm(sp));
+          t.appendChild(sp);
+        }
+      }
+    }, 1500);
+  }
+
   function studioBuildSteamPanel(ui) {
     const strip = h('div', 'steam');
     strip.append(h('i', 'sp capl'), h('i', 'sp tubel'), h('i', 'sp orn'), h('i', 'sp tuber'), h('i', 'sp capr'));
@@ -2399,6 +2425,7 @@ if (isAutotunePage()) {
       studioBuildWinButtons(ui);
       studioBuildBrand(ui);
       studioBuildSteamPanel(ui);
+      studioSparks();
       // bundled fonts (OFL): Oswald = headings, Barlow Condensed = song/playlist names + studio labels, Barlow = body text
       const LAT = 'U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD';
       const LEX = 'U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF';
@@ -2420,7 +2447,7 @@ if (isAutotunePage()) {
         ytmusic-shelf-renderer .title, ytmusic-shelf-renderer .title *, ytmusic-section-list-renderer .title.ytmusic-carousel-shelf-basic-header-renderer { font-family: 'Cinzel Decorative', 'Oswald', serif !important; font-weight: 700 !important; letter-spacing: .03em; color: #ffc46b !important; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; animation: poc-neon 7s linear infinite; }
         /* shelf titles: a small dark plate with faint filament wires; the lettering burns on the wires and flickers now and then */
         ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title { position: relative; isolation: isolate; overflow: visible !important; display: inline-block !important; box-sizing: border-box; padding: 4px 20px 4px !important; margin: 10px 58px !important; font-size: 28px !important; line-height: 1.25 !important;
-          background: repeating-linear-gradient(0deg, rgba(var(--gw), calc(.17 + var(--gh) * .5)) 0 1px, transparent 1px 6px), repeating-linear-gradient(90deg, rgba(var(--gw), calc(.17 + var(--gh) * .5)) 0 1px, transparent 1px 6px), radial-gradient(ellipse at center, rgba(255, 70, 20, calc(var(--gh) * .22)), transparent 75%), #0d0a08e6; border: 1px solid #6a5636; border-radius: 6px; box-shadow: inset 0 0 12px #000, 0 2px 6px #000a; animation: poc-glow 4.5s linear infinite, poc-heat 7s ease-in-out infinite !important; opacity: 1 !important; }
+          background: repeating-linear-gradient(0deg, rgba(var(--gw), calc(.17 + var(--gh) * .5)) 0 1px, transparent 1px 6px), repeating-linear-gradient(90deg, rgba(var(--gw), calc(.17 + var(--gh) * .5)) 0 1px, transparent 1px 6px), radial-gradient(ellipse at center, rgba(255, 70, 20, calc(var(--gh) * .22)), transparent 75%), #0d0a08e6; border: 1px solid #6a5636; border-radius: 6px; box-shadow: inset 0 0 12px #000, 0 2px 6px #000a, 0 0 calc(var(--gh) * 30px) calc(var(--gh) * 5px) rgba(255, 55, 20, calc(var(--gh) * .3)); animation: poc-glow 4.5s linear infinite, poc-heat 7s ease-in-out infinite !important; opacity: 1 !important; }
         /* current in the wires, irregular: three independent windows (own speed, own period) reveal a dim bright copy of the grid, flaring and jumping about */
         @property --p1 { syntax: '<percentage>'; inherits: false; initial-value: 0%; }
         @property --a1 { syntax: '<number>'; inherits: false; initial-value: 0; }
@@ -2442,6 +2469,8 @@ if (isAutotunePage()) {
         ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title > * { position: relative; }
         @property --gh { syntax: '<number>'; inherits: false; initial-value: 0; }
         @property --gw { syntax: '<number>#'; inherits: false; initial-value: 255, 157, 61; }
+        ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title > i.poc-spark { position: absolute; z-index: 3; width: 2px; height: 2px; border-radius: 50%; pointer-events: none; opacity: 0; background: #fff1c2; box-shadow: 0 0 4px 1px #ffb347, 0 0 9px 2px #ff6a1f88; animation: poc-fall 5s linear infinite; }
+        @keyframes poc-fall { 0% { opacity: 0; transform: translate(0, 0); } 2% { opacity: 1; transform: translate(0, 0) scale(1.6); } 12% { opacity: 1; transform: translate(calc(var(--dx) * .6), calc(var(--dy) * .2)); } 30% { opacity: .75; transform: translate(var(--dx), calc(var(--dy) * .6)); } 44% { opacity: 0; transform: translate(calc(var(--dx) * 1.1), var(--dy)); } 100% { opacity: 0; transform: translate(calc(var(--dx) * 1.1), var(--dy)); } }
         @keyframes poc-heat { 0%, 12% { --gh: 0; --gw: 255, 157, 61; } 32% { --gh: .45; --gw: 255, 120, 45; } 46% { --gh: 1; --gw: 255, 82, 35; } 52% { --gh: .9; --gw: 255, 82, 35; } 76% { --gh: .25; --gw: 255, 130, 50; } 92%, 100% { --gh: 0; --gw: 255, 157, 61; } }
         @keyframes poc-glow { 0% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 58% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 59% { color: #8a5c2e; text-shadow: none; } 60% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 61% { color: #8a5c2e; text-shadow: none; } 62% { color: #d9a45c; text-shadow: 0 0 2px #ffb347, 0 0 5px #ff8a1f66; } 63% { color: #8a5c2e; text-shadow: none; } 64% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 65% { color: #8a5c2e; text-shadow: none; } 67% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 80% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 81% { color: #d9a45c; text-shadow: 0 0 2px #ffb347, 0 0 5px #ff8a1f66; } 82% { color: #8a5c2e; text-shadow: none; } 84% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 85% { color: #8a5c2e; text-shadow: none; } 86% { color: #8a5c2e; text-shadow: none; } 88% { color: #d9a45c; text-shadow: 0 0 2px #ffb347, 0 0 5px #ff8a1f66; } 89% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 100% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } }
         @keyframes poc-wire { 0%, 44%, 48%, 52%, 100% { opacity: .34; } 45% { opacity: .08; } 46% { opacity: .4; } 47% { opacity: .14; } 50% { opacity: .24; } 51% { opacity: .34; } }
