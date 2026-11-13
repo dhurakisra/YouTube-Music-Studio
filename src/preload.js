@@ -1707,32 +1707,6 @@ if (isAutotunePage()) {
   }
 
   // Steampunk strip under the header: caps + stretchy tubes + a centre ornament (gauge, lamps, gears), all pre-cut from one panel image.
-  function studioSteamHeaders() {
-    const sel = 'ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)), ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))';
-    const run = () => {
-      if (document.hidden) return;
-      let shelves = [];
-      try { shelves = document.querySelectorAll(sel); } catch { return; }
-      for (const sh of shelves) {
-        const hg = sh.querySelector('#header-group');
-        if (!hg) continue;
-        const title = hg.querySelector('.title'), btn = hg.querySelector('#button-group') || hg.querySelector('.button-group');
-        const hr = hg.getBoundingClientRect();
-        if (!title || !hr.width) { hg.removeAttribute('data-poc-steam'); continue; }
-        const left = title.getBoundingClientRect().right - hr.left + 24;
-        const bl = btn && btn.getBoundingClientRect().width ? btn.getBoundingClientRect().left - hr.left : hr.width - 100;
-        const w = Math.max(0, bl - left - 16);
-        if (w < 520) { if (hg.hasAttribute('data-poc-steam')) hg.removeAttribute('data-poc-steam'); continue; }
-        const L = Math.round(left) + 'px', W = Math.round(w) + 'px', PH = (w >= 900 ? 84 : w >= 700 ? 66 : 52) + 'px'; // bigger ornament when there is room
-        if (hg.style.getPropertyValue('--poc-ph') !== PH) hg.style.setProperty('--poc-ph', PH);
-        if (hg.style.getPropertyValue('--poc-pl') !== L) hg.style.setProperty('--poc-pl', L);
-        if (hg.style.getPropertyValue('--poc-pw') !== W) hg.style.setProperty('--poc-pw', W);
-        if (!hg.hasAttribute('data-poc-steam')) hg.setAttribute('data-poc-steam', '');
-      }
-    };
-    setInterval(run, 700);
-  }
-
   function studioBuildSteamPanel(ui) {
     const strip = h('div', 'steam');
     strip.append(h('i', 'sp capl'), h('i', 'sp tubel'), h('i', 'sp orn'), h('i', 'sp tuber'), h('i', 'sp capr'));
@@ -2332,7 +2306,6 @@ if (isAutotunePage()) {
       studioBuildWinButtons(ui);
       studioBuildBrand(ui);
       studioBuildSteamPanel(ui);
-      studioSteamHeaders();
       // bundled fonts (OFL): Oswald = headings, Barlow Condensed = song/playlist names + studio labels, Barlow = body text
       const LAT = 'U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD';
       const LEX = 'U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF';
@@ -2355,20 +2328,21 @@ if (isAutotunePage()) {
         ytmusic-two-row-item-renderer .title, ytmusic-two-row-item-renderer .title *, ytmusic-responsive-list-item-renderer .title, ytmusic-responsive-list-item-renderer .title *,
         ytmusic-guide-entry-renderer tp-yt-paper-item, ytmusic-guide-entry-renderer yt-formatted-string, ytmusic-chip-cloud-chip-renderer *, ytmusic-search-box input { font-family: 'Barlow Condensed', 'Barlow', sans-serif !important; font-weight: 600 !important; letter-spacing: .02em; }
         ytmusic-guide-entry-renderer tp-yt-paper-item, ytmusic-guide-entry-renderer yt-formatted-string { font-size: 17px !important; }
-        /* steampunk panel in the header of song-list shelves: fills the space between the title and the Play-all button */
-        #header-group[data-poc-steam] { position: relative; }
-        #header-group[data-poc-steam]::before { content: ""; position: absolute; left: var(--poc-pl); width: var(--poc-pw); top: 50%; height: var(--poc-ph, 54px); transform: translateY(-50%); pointer-events: none; z-index: 0;
-          background: ${T('sk-pan-capl.png')} left center / calc(var(--poc-ph, 54px) * .966) 100% no-repeat, ${T('sk-pan-capr.png')} right center / calc(var(--poc-ph, 54px) * .966) 100% no-repeat, ${T('sk-pan-orn.png')} center / calc(var(--poc-ph, 54px) * 7.87) 100% no-repeat,
-            ${T('sk-pan-tubel.png')} calc(var(--poc-ph, 54px) * .966) center / auto 100% repeat-x; filter: drop-shadow(0 2px 2px #000a); }
-        #header-group[data-poc-steam] > * { position: relative; z-index: 1; }
         /* shelf cards: thin metal frame on a textured plate */
         ytmusic-two-row-item-renderer { box-sizing: border-box !important; padding: 7px 7px 6px !important; border: 7px solid transparent !important; border-image: ${T('sk-thin.png')} 30 / 9px stretch !important;
           background: linear-gradient(#00000040, #00000099), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f !important; background-clip: padding-box !important; border-radius: 0 !important; }
         ytmusic-two-row-item-renderer { transition: box-shadow .15s; }
         ytmusic-two-row-item-renderer:hover { box-shadow: 0 0 16px 3px #ffb34780, 0 0 4px 1px #ffd27acc !important; }
-        /* song-list shelves (Quick picks, Trending songs, Covers & remixes, Long listens ...): the whole shelf sits in one big frame, its small song rows stay unframed */
-        ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)), ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)), ytmusic-immersive-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)) { box-sizing: border-box !important; max-width: 1540px; margin: 0 auto 22px !important; padding: 8px 14px 12px !important; border: 14px solid transparent !important;
-          border-image: ${T('sk-wide.png')} 46 / 14px stretch !important; background: linear-gradient(#0000003a, #0000008c), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f !important; background-clip: padding-box !important; transition: box-shadow .15s; }
+        /* song-list shelves (Quick picks, Trending songs, Covers & remixes, Long listens ...): one steampunk plate per shelf; the small song rows stay unframed */
+        ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)), ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)), ytmusic-immersive-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)) { position: relative; box-sizing: border-box !important; max-width: 1540px; margin: 76px auto 24px !important; padding: 12px 20px 16px !important; border: 26px solid transparent !important;
+          border-image: ${T('sk-shelf-body.png')} 60 fill / 26px stretch !important; background: none !important; transition: box-shadow .15s; }
+        ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))::before, ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))::before, ytmusic-immersive-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))::before { content: ""; position: absolute; left: -26px; right: -26px; top: -94px; height: 72px; pointer-events: none;
+          background: ${T('sk-shelf-bl.png')} left top / calc((100% - 545px) / 2) 100% no-repeat, ${T('sk-shelf-bc.png')} center top / 545px 100% no-repeat, ${T('sk-shelf-br.png')} right top / calc((100% - 545px) / 2) 100% no-repeat; }
+        /* the two glass lamps and the gauge light up (5-step flicker) while the mouse is over the shelf */
+        ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))::after, ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))::after, ytmusic-immersive-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))::after { content: ""; position: absolute; left: calc(50% - 272px); width: 545px; top: -94px; height: 72px; pointer-events: none; opacity: 0; mix-blend-mode: screen;
+          background: radial-gradient(circle at 53px 42px, #ffc15ccc 0, #ff8a1f77 9px, transparent 22px), radial-gradient(circle at 491px 42px, #ffc15ccc 0, #ff8a1f77 9px, transparent 22px), radial-gradient(circle at 270px 50px, #ffe9b077 0, #ffb34744 15px, transparent 31px); }
+        ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)):hover::after, ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)):hover::after, ytmusic-immersive-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)):hover::after { animation: poc-flick 1.25s steps(1, end) infinite; }
+        @keyframes poc-flick { 0% { opacity: .2; } 20% { opacity: 1; } 40% { opacity: .45; } 60% { opacity: .95; } 80% { opacity: .3; } 100% { opacity: .2; } }
         ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)):hover, ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)):hover, ytmusic-immersive-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)):hover { box-shadow: 0 0 18px 3px #ffb34775, 0 0 4px 1px #ffd27aaa; }
         /* left guide: framed metal panel with its own textured inner plate */
         ytmusic-app-layout #guide-wrapper { background: ${T('metal.jpg')} 0 0 / 256px 256px, #14110f !important; }
