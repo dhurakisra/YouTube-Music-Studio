@@ -2220,7 +2220,7 @@ if (isAutotunePage()) {
             linear-gradient(#ffffff12, transparent 35%, #0007), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f !important;
           border-bottom: 2px solid #0a0807 !important; box-shadow: inset 0 -1px 0 #ffffff1a, 0 5px 16px #000c !important; }
         ytmusic-nav-bar #left-content { background: transparent !important; }
-        ytmusic-search-box .search-box { background: #0a0807 !important; background-clip: padding-box !important; border: 14px solid transparent !important; border-image: ${T('sk-pill.png')} 72 / 28px stretch !important; border-radius: 0 !important; box-shadow: none !important; height: 56px !important; box-sizing: border-box !important; }
+        ytmusic-search-box .search-box { background: #0a0807 !important; background-clip: border-box !important; border: 14px solid transparent !important; border-image: ${T('sk-pill.png')} 72 / 28px stretch !important; border-radius: 26px !important; box-shadow: none !important; height: 56px !important; box-sizing: border-box !important; }
         ytmusic-app-layout { --ytmusic-nav-bar-height: 112px !important; }
         ytmusic-nav-bar { height: 112px !important; -webkit-app-region: drag; padding-right: 150px !important; box-sizing: border-box !important; }
         ytmusic-nav-bar * { -webkit-app-region: no-drag; }
