@@ -95,6 +95,10 @@ ipcMain.handle('poc:textures', (event) => {
         if (type) textureCache[name] = 'data:' + type + ';base64,' + fs.readFileSync(path.join(dir, name)).toString('base64');
       }
     } catch (error) { appendLog('capture_error', { state: 'textures_failed', error: String(error.message).slice(0, 120) }); }
+    try { // bundled OFL fonts (design/fonts), as data URIs under 'f:<file name>'
+      const fdir = path.join(__dirname, '..', 'design', 'fonts');
+      for (const name of fs.readdirSync(fdir)) if (name.endsWith('.woff2')) textureCache['f:' + name] = 'data:font/woff2;base64,' + fs.readFileSync(path.join(fdir, name)).toString('base64');
+    } catch (error) { appendLog('capture_error', { state: 'fonts_failed', error: String(error.message).slice(0, 120) }); }
   }
   return textureCache;
 });

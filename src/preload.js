@@ -1934,7 +1934,7 @@ if (isAutotunePage()) {
       font-family: "Bahnschrift", "Segoe UI Condensed", "Arial Narrow", system-ui, sans-serif; color: #e9dfd0; }
     .tab { position: fixed; left: 50%; bottom: 0; transform: translateX(-50%); z-index: 2147483646; padding: 6px 22px 8px;
       border: 1px solid var(--edge-hi); border-bottom: 0; border-radius: 10px 10px 0 0; cursor: pointer;
-      background: linear-gradient(#2c2622, #1b1816); color: var(--brass); font: 700 12px "Bahnschrift", system-ui, sans-serif; letter-spacing: .2em;
+      background: linear-gradient(#2c2622, #1b1816); color: var(--brass); font: 700 12px "Barlow Condensed", "Bahnschrift", system-ui, sans-serif; letter-spacing: .2em;
       transition: bottom .35s cubic-bezier(.2,.8,.2,1); }
     .tab:hover { color: var(--amber); }
     .tab.open { bottom: var(--dh); }
@@ -2008,14 +2008,14 @@ if (isAutotunePage()) {
     .recinfo { margin: 6px 4px 0; font-size: 10px; font-weight: 700; letter-spacing: .1em; color: var(--ink-dim); text-shadow: 0 1px 2px #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .libtab { position: fixed; left: 0; top: 38%; z-index: 2147483644; padding: 12px 6px; writing-mode: vertical-rl; cursor: pointer;
       border: 1px solid var(--edge-hi); border-left: 0; border-radius: 0 10px 10px 0; background: linear-gradient(90deg, #2c2622, #1b1816);
-      color: var(--brass); font: 700 12px "Bahnschrift", system-ui, sans-serif; letter-spacing: .2em; transition: left .3s cubic-bezier(.2,.8,.2,1); }
+      color: var(--brass); font: 700 12px "Barlow Condensed", "Bahnschrift", system-ui, sans-serif; letter-spacing: .2em; transition: left .3s cubic-bezier(.2,.8,.2,1); }
     .libtab:hover { color: var(--amber); }
         .np { position: relative; flex: 1 0 100%; display: flex; align-items: center; gap: 18px; box-sizing: border-box; margin-top: 4px;
       padding: 10px 18px; border: 1px solid #0009; border-radius: 10px; box-shadow: inset 0 0 18px #000a;
       background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; }
     .dragstrip { -webkit-app-region: drag; position: fixed; left: 0; top: 0; right: 130px; height: 10px; z-index: 2147483639; }
     .winbtns { -webkit-app-region: no-drag; position: fixed; top: 6px; right: 8px; z-index: 2147483641; display: flex; gap: 4px; }
-    .winbtn { width: 24px; height: 18px; padding: 0; border: 1px solid #0009; border-radius: 4px; cursor: pointer; font: 700 11px/1 "Bahnschrift", system-ui, sans-serif; color: var(--brass);
+    .winbtn { width: 24px; height: 18px; padding: 0; border: 1px solid #0009; border-radius: 4px; cursor: pointer; font: 700 11px/1 "Barlow Condensed", "Bahnschrift", system-ui, sans-serif; color: var(--brass);
       background: linear-gradient(#3a322a, #1b1816); box-shadow: inset 0 1px 0 #ffffff1a, 0 1px 2px #000a; }
     .winbtn:hover { color: var(--amber); } .winbtn.x:hover { background: #7a2218; color: #fff; }
     .topvu { -webkit-app-region: no-drag; position: fixed; top: 8px; right: 215px; z-index: 2147483640; display: flex; align-items: center; gap: 14px; }
@@ -2036,13 +2036,13 @@ if (isAutotunePage()) {
       border: 16px solid transparent; border-width: 16px 14px; border-image: ${T('sk-logo.png')} 46 / 16px 14px stretch; background: #0a0807; background-clip: padding-box; z-index: 2147483640; }
     .brandicon { width: 34px; height: 24px; flex: none; filter: drop-shadow(0 1px 2px #000); }
     .brandtxt { min-width: 0; }
-    .brandname { font: 800 19px/1 "Bahnschrift", system-ui, sans-serif; color: #f1e6d3; white-space: nowrap; text-shadow: 0 1px 2px #000; letter-spacing: -.01em; }
+    .brandname { font: 700 21px/1 "Oswald", "Barlow Condensed", system-ui, sans-serif; color: #f1e6d3; white-space: nowrap; text-shadow: 0 1px 2px #000; letter-spacing: -.01em; }
     .brandname .bm { color: #ff6a3d; }
-    .brandsub { margin-top: 5px; font: italic 700 9px/1 "Bahnschrift", system-ui, sans-serif; letter-spacing: .18em; color: var(--brass); white-space: nowrap; } .topvu .knob.big::after { top: 9px; height: 16px; width: 4px; margin-left: -2px; transform-origin: 50% 21px; }
+    .brandsub { margin-top: 5px; font: italic 700 9px/1 "Barlow Condensed", "Bahnschrift", system-ui, sans-serif; letter-spacing: .18em; color: var(--brass); white-space: nowrap; } .topvu .knob.big::after { top: 9px; height: 16px; width: 4px; margin-left: -2px; transform-origin: 50% 21px; }
     .np.float { position: fixed; left: 12px; right: 12px; bottom: 10px; z-index: 2147483643; margin: 0; border-radius: 10px; height: 104px; padding: 6px 24px; }
     .tab.np-up { bottom: 114px; }
     .npticks { position: relative; height: 22px; margin-top: 1px; }
-    .nptick { position: absolute; top: 0; transform: translateX(-50%); width: 28px; height: 22px; padding: 0; border: 0; background: none; cursor: pointer; color: var(--ink-dim); font: 700 9px "Bahnschrift", system-ui, sans-serif; letter-spacing: .06em; }
+    .nptick { position: absolute; top: 0; transform: translateX(-50%); width: 28px; height: 22px; padding: 0; border: 0; background: none; cursor: pointer; color: var(--ink-dim); font: 700 9px "Barlow Condensed", "Bahnschrift", system-ui, sans-serif; letter-spacing: .06em; }
     .nptick .tkline { position: absolute; left: 50%; top: 0; width: 1px; height: 5px; background: var(--brass); opacity: .6; }
     .nptick.major .tkline { height: 8px; opacity: 1; }
     .nptick .tklbl { position: absolute; left: 50%; top: 9px; transform: translateX(-50%); white-space: nowrap; }
@@ -2057,10 +2057,10 @@ if (isAutotunePage()) {
     .btn.npbtn { width: 44px; height: 34px; font-size: 14px; }
     .lyrtab { position: fixed; right: 0; top: 38%; z-index: 2147483644; padding: 12px 6px; writing-mode: vertical-rl; cursor: pointer;
       border: 1px solid var(--edge-hi); border-right: 0; border-radius: 10px 0 0 10px; background: linear-gradient(270deg, #2c2622, #1b1816);
-      color: var(--brass); font: 700 12px "Bahnschrift", system-ui, sans-serif; letter-spacing: .2em; transition: right .3s cubic-bezier(.2,.8,.2,1); }
+      color: var(--brass); font: 700 12px "Barlow Condensed", "Bahnschrift", system-ui, sans-serif; letter-spacing: .2em; transition: right .3s cubic-bezier(.2,.8,.2,1); }
     .lyrtab:hover { color: var(--amber); }
     .lyrtab.open { right: 340px; }
-    .lyr { position: fixed; right: 0; top: 64px; bottom: 90px; width: 340px; z-index: 2147483643; display: flex; flex-direction: column; padding: 10px 8px 8px;
+    .lyr { position: fixed; right: 0; top: 120px; bottom: 126px; width: 340px; z-index: 2147483643; display: flex; flex-direction: column; padding: 10px 8px 8px;
       transform: translateX(102%); visibility: hidden; transition: transform .3s cubic-bezier(.2,.8,.2,1), visibility 0s .3s;
       border: 1px solid #0009; border-right: 0; border-radius: 8px 0 0 8px; box-shadow: 0 0 30px #000c, inset 0 0 18px #000a;
       background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; }
@@ -2083,7 +2083,7 @@ if (isAutotunePage()) {
     .lyrline.plain { color: #d6c9b3; }
     .lyrsync { display: flex; justify-content: center; align-items: center; gap: 10px; padding-top: 6px; }
     .libtab.open { left: 320px; }
-    .lib { position: fixed; left: 0; top: 64px; bottom: 90px; width: 320px; z-index: 2147483643; display: flex; flex-direction: column; padding: 10px 8px 8px;
+    .lib { position: fixed; left: 0; top: 120px; bottom: 126px; width: 320px; z-index: 2147483643; display: flex; flex-direction: column; padding: 10px 8px 8px;
       transform: translateX(-102%); visibility: hidden; transition: transform .3s cubic-bezier(.2,.8,.2,1), visibility 0s .3s;
       border: 1px solid #0009; border-left: 0; border-radius: 0 8px 8px 0; box-shadow: 0 0 30px #000c, inset 0 0 18px #000a;
       background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; }
@@ -2133,7 +2133,7 @@ if (isAutotunePage()) {
     .switches { display: flex; gap: 6px; margin: 8px 0 0 4px; flex-wrap: wrap; align-items: center; }
     .switches.fill .btn { flex: 1; width: auto; height: 26px; font-size: 10px; }
     .switches.eqrow .btn { flex: 0 0 46px; }
-    .sel, .txt { height: 24px; min-width: 0; border: 1px solid #000; border-radius: 4px; background: #1b1713; color: #e9dfd0; font: 700 11px "Bahnschrift", system-ui, sans-serif; padding: 0 6px; }
+    .sel, .txt { height: 24px; min-width: 0; border: 1px solid #000; border-radius: 4px; background: #1b1713; color: #e9dfd0; font: 700 11px "Barlow Condensed", "Bahnschrift", system-ui, sans-serif; padding: 0 6px; }
     .sel { flex: 1 1 90px; } .txt { flex: 1 1 80px; width: 80px; }
     .eqinfo-row { display: flex; gap: 8px; align-items: center; margin: 6px 4px 0; font-size: 10px; font-weight: 700; letter-spacing: .1em; color: var(--ink-dim); text-shadow: 0 1px 2px #000; }
     .eqinfo { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2172,7 +2172,7 @@ if (isAutotunePage()) {
     .btns { display: flex; gap: 4px; }
     .btn { --src: ${T('btn-cream.png')}; position: relative; width: 38px; height: 22px; padding: 0; cursor: pointer;
       border: 6px solid transparent; border-image: var(--src) 16 fill / 6px stretch; background: none;
-      font: 800 9px/10px "Bahnschrift", system-ui, sans-serif; letter-spacing: .06em; color: #2a241c; filter: drop-shadow(0 2px 1px #000a); }
+      font: 800 9px/10px "Barlow Condensed", "Bahnschrift", system-ui, sans-serif; letter-spacing: .06em; color: #2a241c; filter: drop-shadow(0 2px 1px #000a); }
     .btn.mute { --src: ${T('btn-red.png')}; color: #ffe9e4; text-shadow: 0 1px 1px #000a; }
     .btn.on, .btn:active { --src: ${T('btn-cream-down.png')}; transform: translateY(1px); filter: drop-shadow(0 1px 0 #000a); }
     .btn.mute.on, .btn.mute:active { --src: ${T('btn-red-down.png')}; }
@@ -2265,8 +2265,14 @@ if (isAutotunePage()) {
       studioBuildTopMeters(ui);
       studioBuildWinButtons(ui);
       studioBuildBrand(ui);
+      // bundled fonts (OFL): Oswald = headings, Barlow Condensed = song/playlist names + studio labels, Barlow = body text
+      const LAT = 'U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD';
+      const LEX = 'U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF';
+      const FACE = (fam, w, file) => ['latin', 'latin-ext'].map((sub) => { const d = tex && tex['f:' + file + '-' + sub + '.woff2']; return d ? `@font-face { font-family: '${fam}'; font-weight: ${w}; font-style: normal; font-display: swap; src: url("${d}") format('woff2'); unicode-range: ${sub === 'latin' ? LAT : LEX}; }` : ''; }).join('\n');
+      const fontCss = [FACE('Oswald', 600, 'oswald-600'), FACE('Oswald', 700, 'oswald-700'), FACE('Barlow Condensed', 500, 'barlow-condensed-500'), FACE('Barlow Condensed', 600, 'barlow-condensed-600'), FACE('Barlow', 400, 'barlow-400'), FACE('Barlow', 600, 'barlow-600')].join('\n');
       // YTM page skin, step 1: top bar (rust/metal plate with corner screws, inset brass-rimmed search field)
       const skinCss = `
+        ${fontCss}
         ytmusic-nav-bar, ytmusic-nav-bar #left-content { --ytmusic-nav-bar-background: transparent; }
         ytmusic-nav-bar { background: ${T('screw.png')} left 8px top 8px / 11px 11px no-repeat, ${T('screw.png')} right 8px top 8px / 11px 11px no-repeat,
             ${T('screw.png')} left 8px bottom 8px / 11px 11px no-repeat, ${T('screw.png')} right 8px bottom 8px / 11px 11px no-repeat,
@@ -2274,6 +2280,13 @@ if (isAutotunePage()) {
           border-bottom: 2px solid #0a0807 !important; box-shadow: inset 0 -1px 0 #ffffff1a, 0 5px 16px #000c !important; }
         ytmusic-nav-bar #left-content { background: transparent !important; }
         ytmusic-nav-bar ytmusic-logo { visibility: hidden !important; }
+        /* fonts: Barlow = body, Barlow Condensed = song / playlist / menu names, Oswald = headings */
+        html, body, ytmusic-app, ytmusic-app tp-yt-paper-item, ytmusic-app yt-formatted-string, ytmusic-app a, ytmusic-app span, ytmusic-app button, ytmusic-app input { font-family: 'Barlow', 'Segoe UI', sans-serif !important; }
+        ytmusic-app h1, ytmusic-app h2, ytmusic-app h3, ytmusic-app h2 *, ytmusic-app h1 *, ytmusic-carousel-shelf-basic-header-renderer .title, ytmusic-carousel-shelf-basic-header-renderer .title *,
+        ytmusic-shelf-renderer .title, ytmusic-shelf-renderer .title *, ytmusic-section-list-renderer .title.ytmusic-carousel-shelf-basic-header-renderer { font-family: 'Oswald', 'Barlow Condensed', sans-serif !important; font-weight: 600 !important; letter-spacing: .02em; }
+        ytmusic-two-row-item-renderer .title, ytmusic-two-row-item-renderer .title *, ytmusic-responsive-list-item-renderer .title, ytmusic-responsive-list-item-renderer .title *,
+        ytmusic-guide-entry-renderer tp-yt-paper-item, ytmusic-guide-entry-renderer yt-formatted-string, ytmusic-chip-cloud-chip-renderer *, ytmusic-search-box input { font-family: 'Barlow Condensed', 'Barlow', sans-serif !important; font-weight: 600 !important; letter-spacing: .02em; }
+        ytmusic-guide-entry-renderer tp-yt-paper-item, ytmusic-guide-entry-renderer yt-formatted-string { font-size: 17px !important; }
         /* left guide: framed metal panel with its own textured inner plate */
         ytmusic-app-layout #guide-wrapper { background: ${T('metal.jpg')} 0 0 / 256px 256px, #14110f !important; }
         ytmusic-app-layout, ytmusic-app { --ytmusic-guide-width: 300px !important; }
