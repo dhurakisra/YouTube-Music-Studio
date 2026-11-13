@@ -1732,6 +1732,41 @@ if (isAutotunePage()) {
     }, 1500);
   }
 
+  // Two chains run down both sides of the page content and move with the scroll; every framed shelf is hooked onto them with brass brackets,
+  // so scrolling looks like the chains haul the plates up.
+  function studioBuildChains(ui) {
+    const l = h('div', 'chain l'), r = h('div', 'chain r');
+    ui.append(l, r);
+    const scroller = () => document.scrollingElement || document.documentElement;
+    let frame = 0;
+    const draw = () => { frame = 0; const y = '0 ' + (-Math.round(scroller().scrollTop)) + 'px'; l.style.backgroundPosition = y; r.style.backgroundPosition = y; };
+    window.addEventListener('scroll', () => { if (!frame) frame = requestAnimationFrame(draw); }, { capture: true, passive: true });
+    const sel = 'ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)), ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))';
+    const place = () => {
+      if (document.hidden) return;
+      const guide = document.getElementById('guide');
+      const gw = guide ? guide.getBoundingClientRect().right : 300;
+      const left = gw + 6, right = window.innerWidth - 26; // chain strip: just right of the left panel, just left of the page scrollbar
+      l.style.left = left + 'px'; r.style.left = (right - 22) + 'px';
+      let shelves = []; try { shelves = document.querySelectorAll(sel); } catch { return; }
+      for (const sh of shelves) {
+        const rc = sh.getBoundingClientRect(); if (!rc.width) continue;
+        let hooks = sh.querySelectorAll(':scope > .poc-hook');
+        if (hooks.length < 4) {
+          for (const x of hooks) x.remove();
+          for (const side of ['l', 'r']) for (const pos of ['t', 'b']) { const k = document.createElement('i'); k.className = 'poc-hook ' + side + ' ' + pos; sh.appendChild(k); }
+          hooks = sh.querySelectorAll(':scope > .poc-hook');
+        }
+        const lw = Math.max(0, rc.left - (left + 11)), rw = Math.max(0, (right - 11) - rc.right);
+        for (const k of hooks) {
+          if (k.classList.contains('l')) { k.style.width = (lw + 36) + 'px'; k.style.left = (-(lw + 10) - 26 + 10) + 'px'; }
+          else { k.style.width = (rw + 36) + 'px'; k.style.right = (-(rw + 10) - 26 + 10) + 'px'; }
+        }
+      }
+    };
+    setInterval(place, 600); window.addEventListener('resize', place); place(); draw();
+  }
+
   function studioBuildSteamPanel(ui) {
     const strip = h('div', 'steam');
     strip.append(h('i', 'sp capl'), h('i', 'sp tubel'), h('i', 'sp orn'), h('i', 'sp tuber'), h('i', 'sp capr'));
@@ -2156,6 +2191,8 @@ if (isAutotunePage()) {
         .np { position: relative; flex: 1 0 100%; display: flex; align-items: center; gap: 18px; box-sizing: border-box; margin-top: 4px;
       padding: 10px 18px; border: 1px solid #0009; border-radius: 10px; box-shadow: inset 0 0 18px #000a;
       background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; }
+    .chain { position: fixed; top: 158px; bottom: 112px; width: 22px; z-index: 2147483637; pointer-events: none; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='64' viewBox='0 0 26 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' x2='1'%3E%3Cstop offset='0' stop-color='%23ffd9a0'/%3E%3Cstop offset='.5' stop-color='%23a8773a'/%3E%3Cstop offset='1' stop-color='%23402a12'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='6' y='0' width='14' height='38' rx='7' fill='none' stroke='url(%23g)' stroke-width='4.5'/%3E%3Crect x='10.5' y='24' width='5' height='34' rx='2.5' fill='url(%23g)'/%3E%3Crect x='6' y='32' width='14' height='32' rx='7' fill='none' stroke='url(%23g)' stroke-width='4.5' opacity='0'/%3E%3C/svg%3E") 0 0 / 22px 54px repeat-y; filter: drop-shadow(1px 0 1px #000c); opacity: .92; }
+    .chain::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 26px; background: linear-gradient(#0d0a08, transparent); }
     .chordbox { position: fixed; left: 64px; top: 116px; height: 38px; z-index: 2147483639; display: flex; align-items: center; gap: 12px; padding: 0 14px; max-width: 560px; box-sizing: border-box; overflow: hidden;
       background: #0d0a08d9; border: 1px solid #5a4630; border-radius: 6px; box-shadow: inset 0 0 8px #000, 0 2px 6px #000a; pointer-events: none; }
     .chlbl { font: 700 9px "Barlow Condensed", sans-serif; letter-spacing: .2em; color: var(--brass); }
@@ -2425,6 +2462,7 @@ if (isAutotunePage()) {
       studioBuildBrand(ui);
       studioBuildSteamPanel(ui);
       studioSparks();
+      studioBuildChains(ui);
       // bundled fonts (OFL): Oswald = headings, Barlow Condensed = song/playlist names + studio labels, Barlow = body text
       const LAT = 'U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD';
       const LEX = 'U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF';
@@ -2468,6 +2506,11 @@ if (isAutotunePage()) {
         ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title > * { position: relative; }
         @property --gh { syntax: '<number>'; inherits: false; initial-value: 0; }
         @property --gw { syntax: '<number>#'; inherits: false; initial-value: 255, 157, 61; }
+        i.poc-hook { position: absolute; height: 30px; pointer-events: none; z-index: 2; border-radius: 4px; border: 1px solid #1a1108;
+          background: linear-gradient(#e0b878, #a8773a 45%, #5a3c1c); box-shadow: inset 0 1px 0 #fff3d066, 0 2px 4px #000c; }
+        i.poc-hook.t { top: 16%; } i.poc-hook.b { bottom: 16%; }
+        i.poc-hook::before, i.poc-hook::after { content: ""; position: absolute; top: 50%; width: 7px; height: 7px; margin-top: -3.5px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #f6dca8, #6a4620 70%); box-shadow: 0 1px 1px #000a; }
+        i.poc-hook.l::before { left: 4px; } i.poc-hook.l::after { right: 10px; } i.poc-hook.r::before { right: 4px; } i.poc-hook.r::after { left: 10px; }
         ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title > i.poc-spark { position: absolute; z-index: 3; width: 1.5px; height: 1.5px; border-radius: 50%; pointer-events: none; opacity: 0; background: #fffbe6; box-shadow: 0 0 2px 1px #ffd27a, 0 0 5px 1px #ff7a1fcc; animation: poc-fall 1.5s linear infinite; }
         @keyframes poc-fall { 0% { opacity: 0; transform: translate(0, 0) scale(1); } 0.3% { opacity: 1; transform: translate(0, 0) scale(1.8); } 2.5% { opacity: 1; transform: translate(calc(var(--dx) * .8), calc(var(--dy) * .8)) scale(1); } 5% { opacity: .7; transform: translate(var(--dx), calc(var(--dy) + 6px)) scale(.7); } 7% { opacity: 0; transform: translate(calc(var(--dx) * 1.1), calc(var(--dy) + 12px)) scale(.4); } 100% { opacity: 0; transform: translate(calc(var(--dx) * 1.1), calc(var(--dy) + 12px)); } }
         @keyframes poc-heat { 0%, 12% { --gh: 0; --gw: 255, 157, 61; } 32% { --gh: .45; --gw: 255, 120, 45; } 46% { --gh: 1; --gw: 255, 82, 35; } 52% { --gh: .9; --gw: 255, 82, 35; } 76% { --gh: .25; --gw: 255, 130, 50; } 92%, 100% { --gh: 0; --gw: 255, 157, 61; } }
