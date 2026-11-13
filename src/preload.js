@@ -1710,22 +1710,21 @@ if (isAutotunePage()) {
   function studioSparks() {
     const rnd = (a, b) => a + Math.random() * (b - a);
     const arm = (sp) => {
-      const side = Math.random() < 0.5 ? 'left' : 'right';
-      sp.style.left = side === 'left' ? rnd(-30, 4) + 'px' : 'auto';
-      sp.style.right = side === 'right' ? rnd(-30, 4) + 'px' : 'auto';
-      sp.style.top = rnd(8, 34) + 'px';
-      sp.style.setProperty('--dx', (side === 'left' ? -1 : 1) * rnd(4, 26) + 'px');
-      sp.style.setProperty('--dy', rnd(22, 52) + 'px');
-      sp.style.animationDuration = rnd(2.5, 9) + 's'; // mostly pause, short burst at the start of each cycle
+      sp.style.left = rnd(4, 96) + '%'; // anywhere along the grid wires
+      sp.style.top = rnd(14, 90) + '%';
+      const dir = Math.random() < 0.5 ? -1 : 1;
+      sp.style.setProperty('--dx', dir * rnd(8, 30) + 'px');
+      sp.style.setProperty('--dy', rnd(-14, 26) + 'px');
+      sp.style.animationDuration = rnd(1.2, 5.5) + 's'; // the burst is the first ~9 % of the cycle (0.1-0.5 s), the rest is the pause
     };
     setInterval(() => {
       let titles = [];
       try { titles = document.querySelectorAll('ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title'); } catch { return; }
       for (const t of titles) {
         if (t.querySelector(':scope > .poc-spark')) continue;
-        for (let i = 0; i < 3; i += 1) {
+        for (let i = 0; i < 5; i += 1) {
           const sp = document.createElement('i'); sp.className = 'poc-spark';
-          arm(sp); sp.style.animationDelay = rnd(0, 6) + 's';
+          arm(sp); sp.style.animationDelay = rnd(0, 4) + 's';
           sp.addEventListener('animationiteration', () => arm(sp));
           t.appendChild(sp);
         }
@@ -2447,7 +2446,7 @@ if (isAutotunePage()) {
         ytmusic-shelf-renderer .title, ytmusic-shelf-renderer .title *, ytmusic-section-list-renderer .title.ytmusic-carousel-shelf-basic-header-renderer { font-family: 'Cinzel Decorative', 'Oswald', serif !important; font-weight: 700 !important; letter-spacing: .03em; color: #ffc46b !important; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; animation: poc-neon 7s linear infinite; }
         /* shelf titles: a small dark plate with faint filament wires; the lettering burns on the wires and flickers now and then */
         ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title { position: relative; isolation: isolate; overflow: visible !important; display: inline-block !important; box-sizing: border-box; padding: 4px 20px 4px !important; margin: 10px 58px !important; font-size: 28px !important; line-height: 1.25 !important;
-          background: repeating-linear-gradient(0deg, rgba(var(--gw), calc(.17 + var(--gh) * .5)) 0 1px, transparent 1px 6px), repeating-linear-gradient(90deg, rgba(var(--gw), calc(.17 + var(--gh) * .5)) 0 1px, transparent 1px 6px), radial-gradient(ellipse at center, rgba(255, 70, 20, calc(var(--gh) * .22)), transparent 75%), #0d0a08e6; border: 1px solid #6a5636; border-radius: 6px; box-shadow: inset 0 0 12px #000, 0 2px 6px #000a, 0 0 calc(var(--gh) * 30px) calc(var(--gh) * 5px) rgba(255, 55, 20, calc(var(--gh) * .3)); animation: poc-glow 4.5s linear infinite, poc-heat 7s ease-in-out infinite !important; opacity: 1 !important; }
+          background: repeating-linear-gradient(0deg, rgba(var(--gw), calc(.17 + var(--gh) * .5)) 0 1px, transparent 1px 6px), repeating-linear-gradient(90deg, rgba(var(--gw), calc(.17 + var(--gh) * .5)) 0 1px, transparent 1px 6px), radial-gradient(ellipse at center, rgba(255, 70, 20, calc(var(--gh) * .22)), transparent 75%), #0d0a08e6; border: 1px solid #6a5636; border-radius: 6px; box-shadow: inset 0 0 12px #000, 0 2px 6px #000a, 0 0 calc(var(--gh) * 38px) calc(var(--gh) * 8px) rgba(255, 55, 20, calc(var(--gh) * .55)); animation: poc-glow 4.5s linear infinite, poc-heat 7s ease-in-out infinite !important; opacity: 1 !important; }
         /* current in the wires, irregular: three independent windows (own speed, own period) reveal a dim bright copy of the grid, flaring and jumping about */
         @property --p1 { syntax: '<percentage>'; inherits: false; initial-value: 0%; }
         @property --a1 { syntax: '<number>'; inherits: false; initial-value: 0; }
@@ -2469,8 +2468,8 @@ if (isAutotunePage()) {
         ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title > * { position: relative; }
         @property --gh { syntax: '<number>'; inherits: false; initial-value: 0; }
         @property --gw { syntax: '<number>#'; inherits: false; initial-value: 255, 157, 61; }
-        ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title > i.poc-spark { position: absolute; z-index: 3; width: 2px; height: 2px; border-radius: 50%; pointer-events: none; opacity: 0; background: #fff1c2; box-shadow: 0 0 4px 1px #ffb347, 0 0 9px 2px #ff6a1f88; animation: poc-fall 5s linear infinite; }
-        @keyframes poc-fall { 0% { opacity: 0; transform: translate(0, 0); } 2% { opacity: 1; transform: translate(0, 0) scale(1.6); } 12% { opacity: 1; transform: translate(calc(var(--dx) * .6), calc(var(--dy) * .2)); } 30% { opacity: .75; transform: translate(var(--dx), calc(var(--dy) * .6)); } 44% { opacity: 0; transform: translate(calc(var(--dx) * 1.1), var(--dy)); } 100% { opacity: 0; transform: translate(calc(var(--dx) * 1.1), var(--dy)); } }
+        ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title > i.poc-spark { position: absolute; z-index: 3; width: 2px; height: 2px; border-radius: 50%; pointer-events: none; opacity: 0; background: #fffbe6; box-shadow: 0 0 3px 1px #ffd27a, 0 0 8px 2px #ff7a1fcc; animation: poc-fall 3s linear infinite; }
+        @keyframes poc-fall { 0% { opacity: 0; transform: translate(0, 0) scale(1); } 0.6% { opacity: 1; transform: translate(0, 0) scale(2); } 3% { opacity: 1; transform: translate(calc(var(--dx) * .55), calc(var(--dy) * .35 - 4px)) scale(1.2); } 6% { opacity: .8; transform: translate(calc(var(--dx) * .85), calc(var(--dy) * .75)) scale(.8); } 9% { opacity: 0; transform: translate(var(--dx), calc(var(--dy) + 10px)) scale(.4); } 100% { opacity: 0; transform: translate(var(--dx), calc(var(--dy) + 10px)); } }
         @keyframes poc-heat { 0%, 12% { --gh: 0; --gw: 255, 157, 61; } 32% { --gh: .45; --gw: 255, 120, 45; } 46% { --gh: 1; --gw: 255, 82, 35; } 52% { --gh: .9; --gw: 255, 82, 35; } 76% { --gh: .25; --gw: 255, 130, 50; } 92%, 100% { --gh: 0; --gw: 255, 157, 61; } }
         @keyframes poc-glow { 0% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 58% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 59% { color: #8a5c2e; text-shadow: none; } 60% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 61% { color: #8a5c2e; text-shadow: none; } 62% { color: #d9a45c; text-shadow: 0 0 2px #ffb347, 0 0 5px #ff8a1f66; } 63% { color: #8a5c2e; text-shadow: none; } 64% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 65% { color: #8a5c2e; text-shadow: none; } 67% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 80% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 81% { color: #d9a45c; text-shadow: 0 0 2px #ffb347, 0 0 5px #ff8a1f66; } 82% { color: #8a5c2e; text-shadow: none; } 84% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 85% { color: #8a5c2e; text-shadow: none; } 86% { color: #8a5c2e; text-shadow: none; } 88% { color: #d9a45c; text-shadow: 0 0 2px #ffb347, 0 0 5px #ff8a1f66; } 89% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 100% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } }
         @keyframes poc-wire { 0%, 44%, 48%, 52%, 100% { opacity: .34; } 45% { opacity: .08; } 46% { opacity: .4; } 47% { opacity: .14; } 50% { opacity: .24; } 51% { opacity: .34; } }
