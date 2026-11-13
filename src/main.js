@@ -496,6 +496,9 @@ function createWindow() {
     height: 800,
     minWidth: 800,
     minHeight: 600,
+    autoHideMenuBar: true,
+    titleBarStyle: 'hidden', // no native title bar: our top bar is the window's header; the native min/max/close buttons stay as an overlay
+    titleBarOverlay: { color: '#14110f', symbolColor: '#d9b26a', height: 44 },
     webPreferences: {
       partition: PARTITION,
       preload: path.join(__dirname, 'preload.js'),

@@ -1,6 +1,6 @@
 'use strict';
 
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webFrame } = require('electron');
 
 const allowedLogEvents = new Set([
   'capture_button_ready', 'capture_start_requested', 'capture_started',
@@ -1678,19 +1678,20 @@ if (isAutotunePage()) {
     }
     const vol = (() => { const m = findMedia(); return m ? m.volume : 1; })();
     let volume = vol, dragging = false;
-    const setVol = (v) => {
-      volume = v; const m = findMedia(); if (m) m.volume = v;
-      const sl = document.querySelector('ytmusic-player-bar #volume-slider');
-      if (sl) { try { sl.value = Math.round(v * 100); sl.dispatchEvent(new Event('change')); } catch {} }
+    let holdUntil = 0;
+    const setVol = (v) => { // YTM keeps its own volume state: set it through the page's player API (main world), and the element directly
+      volume = v; holdUntil = performance.now() + 1500; const m = findMedia(); if (m) m.volume = v;
+      try { webFrame.executeJavaScript('(function(){var p=document.getElementById("movie_player");if(p&&p.setVolume)p.setVolume(' + Math.round(v * 100) + ');})()'); } catch {}
     };
     const knob = studioKnob('VOLUME', 'red big', () => volume, (v) => { dragging = true; setVol(v); }, 1, () => { dragging = false; });
     box.appendChild(knob);
     ui.appendChild(box);
-    let tapCtx = null, tapKey = '', tapAn = null;
+    let tapCtx = null, tapMedia = null, tapStream = null, tapKey = '', tapAn = null;
     const ensureTap = () => {
       const m = findMedia(); if (!m || typeof m.captureStream !== 'function') return null;
       try {
-        const stream = m.captureStream(); const tr = stream.getAudioTracks()[0]; if (!tr) return tapAn;
+        if (m !== tapMedia) { tapMedia = m; tapStream = m.captureStream(); tapKey = ''; tapAn = null; } // ONE stream per element: captureStream() returns fresh tracks every call
+        const tr = tapStream.getAudioTracks()[0]; if (!tr) return tapAn;
         if (tr.id === tapKey && tapAn) return tapAn;
         if (!tapCtx || tapCtx.state === 'closed') tapCtx = new AudioContext({ latencyHint: 'playback' });
         if (tapCtx.state === 'suspended') tapCtx.resume().catch(() => {});
@@ -1713,7 +1714,7 @@ if (isAutotunePage()) {
         angles[i] += (target - angles[i]) * 0.3;
         n.style.transform = 'rotate(' + angles[i].toFixed(1) + 'deg)';
       });
-      if (!dragging) { const m = findMedia(); if (m && Math.abs(m.volume - volume) > 0.01) { volume = m.volume; knob.redraw(); } }
+      if (!dragging && performance.now() > holdUntil) { const m = findMedia(); if (m && Math.abs(m.volume - volume) > 0.01) { volume = m.volume; knob.redraw(); } }
     }, 40);
   }
 
@@ -1979,14 +1980,14 @@ if (isAutotunePage()) {
         .np { position: relative; flex: 1 0 100%; display: flex; align-items: center; gap: 18px; box-sizing: border-box; margin-top: 4px;
       padding: 10px 18px; border: 1px solid #0009; border-radius: 10px; box-shadow: inset 0 0 18px #000a;
       background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; }
-    .topvu { position: fixed; top: 8px; right: 130px; z-index: 2147483640; display: flex; align-items: center; gap: 14px; }
-    .topvu .vuw { padding: 8px; border: 0; box-sizing: content-box; border-image: ${T('sk-vuframe.png')} 46 / 18px stretch; background: #0a0807; border-style: solid; border-color: transparent; border-width: 14px; padding: 0; }
+    .topvu { -webkit-app-region: no-drag; position: fixed; top: 8px; right: 270px; z-index: 2147483640; display: flex; align-items: center; gap: 14px; }
+    .topvu .vuw { padding: 8px; border: 0; box-sizing: content-box; border-image: ${T('sk-vuframe.png')} 46 / 18px stretch; background: #0a0807; border-style: solid; border-color: transparent; border-width: 14px; padding: 0; background-clip: padding-box; }
     .topvu .vu { width: 112px; height: 64px; box-shadow: inset 0 0 10px #000a; border-radius: 2px; }
     .topvu .knob.big { background-image: ${T('sk-knob.png')}; }
     .topvu .vu .lbl { font-size: 10px; } .topvu .vu .lbl.c { font-size: 12px; }
     .topvu .knob-box { flex-direction: column; font-size: 9px; gap: 1px; }
     .topvu .knob.big { width: 76px; height: 76px; } .topvu .knob.big::after { top: 12px; height: 20px; width: 4px; margin-left: -2px; transform-origin: 50% 26px; }
-    @media (max-width: 1150px) { .topvu { display: none; } }
+    @media (max-width: 1450px) { .topvu { display: none; } }
     .np.float { position: fixed; left: 12px; right: 12px; bottom: 10px; z-index: 2147483643; margin: 0; border-radius: 10px; height: 104px; padding: 6px 24px; }
     .tab.np-up { bottom: 114px; }
     .npticks { position: relative; height: 22px; margin-top: 1px; }
@@ -2219,9 +2220,10 @@ if (isAutotunePage()) {
             linear-gradient(#ffffff12, transparent 35%, #0007), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f !important;
           border-bottom: 2px solid #0a0807 !important; box-shadow: inset 0 -1px 0 #ffffff1a, 0 5px 16px #000c !important; }
         ytmusic-nav-bar #left-content { background: transparent !important; }
-        ytmusic-search-box #input-box { background: #0a0807 !important; border: 14px solid transparent !important; border-image: ${T('sk-pill.png')} 72 / 28px stretch !important; border-radius: 0 !important; box-shadow: none !important; height: 56px !important; box-sizing: border-box !important; }
+        ytmusic-search-box .search-box { background: #0a0807 !important; background-clip: padding-box !important; border: 14px solid transparent !important; border-image: ${T('sk-pill.png')} 72 / 28px stretch !important; border-radius: 0 !important; box-shadow: none !important; height: 56px !important; box-sizing: border-box !important; }
         ytmusic-app-layout { --ytmusic-nav-bar-height: 112px !important; }
-        ytmusic-nav-bar { height: 112px !important; }
+        ytmusic-nav-bar { height: 112px !important; -webkit-app-region: drag; padding-right: 150px !important; box-sizing: border-box !important; }
+        ytmusic-nav-bar * { -webkit-app-region: no-drag; }
         ytmusic-nav-bar ytmusic-search-box { margin-top: 0 !important; }
         ytmusic-search-box input { color: #eadfca !important; }
       `;
