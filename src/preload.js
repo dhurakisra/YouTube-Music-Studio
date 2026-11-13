@@ -1634,7 +1634,7 @@ if (isAutotunePage()) {
         const tk = h('button', 'nptick' + (isMajor ? ' major' : ''), null, { type: 'button', 'aria-label': 'Jump to ' + fmtTime(t) });
         tk.style.left = (t / dur * 100) + '%';
         tk.appendChild(h('i', 'tkline'));
-        if (isMajor) tk.appendChild(h('span', 'tklbl', (t / 60) + ' min'));
+        tk.appendChild(h('span', 'tklbl', String(t / 60)));
         tk.addEventListener('click', (ev) => { ev.stopPropagation(); const m = findMedia(); if (m) { try { m.currentTime = t; } catch {} } });
         ticks.appendChild(tk);
       }
@@ -1647,7 +1647,7 @@ if (isAutotunePage()) {
     const next = mk('\u23ED', 'Next song', () => q('.next-button')?.click());
     const ctl = h('div', 'npctl'); ctl.append(prev, playBtn, next);
     bar.addEventListener('click', (ev) => { const m = findMedia(); if (!m || !Number.isFinite(m.duration)) return; const r = bar.getBoundingClientRect(); try { m.currentTime = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * m.duration; } catch {} });
-    win.append(art, info, ctl);
+    win.append(h('i', 'screw tl'), h('i', 'screw tr'), h('i', 'screw bl'), h('i', 'screw br'), art, info, ctl);
     (studio.consoleEl || ui).appendChild(win);
     studio.npEl = win; studio.npHome = studio.consoleEl;
     let lastArt = '';
@@ -1925,7 +1925,7 @@ if (isAutotunePage()) {
       border: 1px solid var(--edge-hi); border-left: 0; border-radius: 0 10px 10px 0; background: linear-gradient(90deg, #2c2622, #1b1816);
       color: var(--brass); font: 700 12px "Bahnschrift", system-ui, sans-serif; letter-spacing: .2em; transition: left .3s cubic-bezier(.2,.8,.2,1); }
     .libtab:hover { color: var(--amber); }
-        .np { flex: 1 0 100%; display: flex; align-items: center; gap: 18px; box-sizing: border-box; margin-top: 4px;
+        .np { position: relative; flex: 1 0 100%; display: flex; align-items: center; gap: 18px; box-sizing: border-box; margin-top: 4px;
       padding: 10px 18px; border: 1px solid #0009; border-radius: 10px; box-shadow: inset 0 0 18px #000a;
       background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; }
     .np.float { position: fixed; left: 0; right: 0; bottom: 0; z-index: 2147483643; margin: 0; border-radius: 0; border-width: 1px 0 0; height: 104px; padding: 6px 24px; }
