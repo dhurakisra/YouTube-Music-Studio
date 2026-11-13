@@ -420,6 +420,7 @@ if (isAutotunePage()) {
 
   function studioSetOpen(open) {
     studio.open = open;
+    try { document.documentElement.classList.toggle('ytmpoc-open', open); } catch {}
     studio.root.querySelector('.drawer').classList.toggle('open', open);
     const tab = studio.root.querySelector('.tab');
     tab.classList.toggle('open', open);
@@ -2275,6 +2276,8 @@ if (isAutotunePage()) {
         ytmusic-nav-bar ytmusic-logo { visibility: hidden !important; }
         /* left guide: framed metal panel with its own textured inner plate */
         ytmusic-app-layout #guide-wrapper { background: ${T('metal.jpg')} 0 0 / 256px 256px, #14110f !important; }
+        ytmusic-app-layout, ytmusic-app { --ytmusic-guide-width: 300px !important; }
+        html.ytmpoc-open ytmusic-guide-renderer { height: max(0px, calc(100vh - 112px - min(660px, 84vh) - 22px)) !important; }
         ytmusic-guide-renderer { box-sizing: border-box !important; margin: 6px 10px 0 !important; width: calc(100% - 20px) !important; height: calc(100vh - 112px - 134px) !important; overflow-y: auto !important; overflow-x: hidden !important;
           border: 14px solid transparent !important; border-image: ${T('sk-square.png')} 62 / 18px stretch !important; background: linear-gradient(#0000003a, #0000008c), ${T('metal.jpg')} 0 0 / 256px 256px, #12100e !important; background-clip: padding-box !important; }
         ytmusic-guide-entry-renderer tp-yt-paper-item { background: transparent !important; border: 1px solid transparent !important; border-radius: 4px !important; color: #e9dcc2 !important; font-weight: 700 !important; letter-spacing: .05em; text-shadow: 0 1px 2px #000; }
