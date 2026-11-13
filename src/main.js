@@ -460,6 +460,13 @@ function createAutotuneWindow() {
   autotuneWindow.loadFile(path.join(__dirname, 'autotune.html'));
 }
 
+ipcMain.on('poc:win', (event, cmd) => {
+  if (!isTrustedYtmSender(event) || !mainWindow || mainWindow.isDestroyed()) return;
+  if (cmd === 'min') mainWindow.minimize();
+  else if (cmd === 'max') { if (mainWindow.isMaximized()) mainWindow.unmaximize(); else mainWindow.maximize(); }
+  else if (cmd === 'close') mainWindow.close();
+});
+
 ipcMain.on('poc:at-to-lab', (event, raw) => {
   if (!isTrustedYtmSender(event)) return;
   const msg = cleanAtMessage(raw);
@@ -498,7 +505,7 @@ function createWindow() {
     minHeight: 600,
     autoHideMenuBar: true,
     titleBarStyle: 'hidden', // no native title bar: our top bar is the window's header; the native min/max/close buttons stay as an overlay
-    titleBarOverlay: { color: '#14110f', symbolColor: '#d9b26a', height: 44 },
+    // window buttons are drawn by the page (small, in the top bar) and sent here
     webPreferences: {
       partition: PARTITION,
       preload: path.join(__dirname, 'preload.js'),

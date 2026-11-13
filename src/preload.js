@@ -1668,6 +1668,16 @@ if (isAutotunePage()) {
 
   // Top-bar meters: two analog VUs + master volume knob beside the YTM search bar. They show what YouTube Music plays even without capture:
   // if the stem/EQ graph is not running, a passive media.captureStream() tap (analyser only, not connected to any output) feeds them.
+  function studioBuildWinButtons(ui) {
+    const wrap = h('div', 'winbtns');
+    for (const [cmd, glyph, label] of [['min', '–', 'Minimize'], ['max', '□', 'Maximize or restore'], ['close', '✕', 'Close']]) {
+      const b = h('button', 'winbtn' + (cmd === 'close' ? ' x' : ''), glyph, { type: 'button', 'aria-label': label });
+      b.addEventListener('click', () => ipcRenderer.send('poc:win', cmd));
+      wrap.appendChild(b);
+    }
+    ui.appendChild(wrap);
+  }
+
   function studioBuildTopMeters(ui) {
     const box = h('div', 'topvu');
     const needles = [];
@@ -1980,7 +1990,11 @@ if (isAutotunePage()) {
         .np { position: relative; flex: 1 0 100%; display: flex; align-items: center; gap: 18px; box-sizing: border-box; margin-top: 4px;
       padding: 10px 18px; border: 1px solid #0009; border-radius: 10px; box-shadow: inset 0 0 18px #000a;
       background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; }
-    .topvu { -webkit-app-region: no-drag; position: fixed; top: 8px; right: 270px; z-index: 2147483640; display: flex; align-items: center; gap: 14px; }
+    .winbtns { -webkit-app-region: no-drag; position: fixed; top: 6px; right: 8px; z-index: 2147483641; display: flex; gap: 4px; }
+    .winbtn { width: 24px; height: 18px; padding: 0; border: 1px solid #0009; border-radius: 4px; cursor: pointer; font: 700 11px/1 "Bahnschrift", system-ui, sans-serif; color: var(--brass);
+      background: linear-gradient(#3a322a, #1b1816); box-shadow: inset 0 1px 0 #ffffff1a, 0 1px 2px #000a; }
+    .winbtn:hover { color: var(--amber); } .winbtn.x:hover { background: #7a2218; color: #fff; }
+    .topvu { -webkit-app-region: no-drag; position: fixed; top: 8px; right: 250px; z-index: 2147483640; display: flex; align-items: center; gap: 14px; }
     .topvu .vuw { padding: 8px; border: 0; box-sizing: content-box; border-image: ${T('sk-vuframe.png')} 46 / 18px stretch; background: #0a0807; border-style: solid; border-color: transparent; border-width: 14px; padding: 0; background-clip: padding-box; }
     .topvu .vu { width: 112px; height: 64px; box-shadow: inset 0 0 10px #000a; border-radius: 2px; }
     .topvu .knob.big { background-image: ${T('sk-knob.png')}; }
@@ -2212,6 +2226,7 @@ if (isAutotunePage()) {
       studioBuildLyrics(ui);
       studioBuildNowPlaying(ui);
       studioBuildTopMeters(ui);
+      studioBuildWinButtons(ui);
       // YTM page skin, step 1: top bar (rust/metal plate with corner screws, inset brass-rimmed search field)
       const skinCss = `
         ytmusic-nav-bar, ytmusic-nav-bar #left-content { --ytmusic-nav-bar-background: transparent; }
@@ -2222,7 +2237,7 @@ if (isAutotunePage()) {
         ytmusic-nav-bar #left-content { background: transparent !important; }
         ytmusic-search-box .search-box { background: #0a0807 !important; background-clip: border-box !important; border: 14px solid transparent !important; border-image: ${T('sk-pill.png')} 72 / 28px stretch !important; border-radius: 26px !important; box-shadow: none !important; height: 56px !important; box-sizing: border-box !important; }
         ytmusic-app-layout { --ytmusic-nav-bar-height: 112px !important; }
-        ytmusic-nav-bar { height: 112px !important; -webkit-app-region: drag; padding-right: 150px !important; box-sizing: border-box !important; }
+        ytmusic-nav-bar { height: 112px !important; -webkit-app-region: drag; padding-right: 120px !important; box-sizing: border-box !important; }
         ytmusic-nav-bar * { -webkit-app-region: no-drag; }
         ytmusic-nav-bar ytmusic-search-box { margin-top: 0 !important; }
         ytmusic-search-box input { color: #eadfca !important; }
