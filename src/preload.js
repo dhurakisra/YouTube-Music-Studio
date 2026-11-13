@@ -122,6 +122,28 @@ if (isAutotunePage()) {
 
   function findMedia() { return document.querySelector('video, audio'); }
 
+  // Song clock. YTM can keep the same media element (and its buffer) across consecutive songs, so element.currentTime / .duration then
+  // run on from the previous song (a 3:00 song followed by a 5:00 one reports 8:00). The page's own player API knows the real position and
+  // length: it is polled from the main world, and the element time is corrected by the measured offset between the two.
+  const ytmClock = { dur: 0, delta: 0 };
+  setInterval(() => {
+    try {
+      webFrame.executeJavaScript('(function(){var p=document.getElementById("movie_player");return p&&p.getDuration?[p.getCurrentTime(),p.getDuration()]:null})()').then((r) => {
+        const m = findMedia();
+        if (Array.isArray(r) && r[1] > 0 && m) { ytmClock.dur = r[1]; ytmClock.delta = m.currentTime - r[0]; } else ytmClock.dur = 0;
+      }).catch(() => { ytmClock.dur = 0; });
+    } catch { ytmClock.dur = 0; }
+  }, 400);
+  function songDur(m) { return ytmClock.dur > 0 ? ytmClock.dur : (m && Number.isFinite(m.duration) ? m.duration : 0); }
+  function songPos(m) { return m ? Math.max(0, m.currentTime - (ytmClock.dur > 0 ? ytmClock.delta : 0)) : 0; }
+  function songSeek(t) {
+    const m = findMedia();
+    if (ytmClock.dur > 0) {
+      try { webFrame.executeJavaScript('(function(){var p=document.getElementById("movie_player");if(p&&p.seekTo)p.seekTo(' + Number(t) + ',true)})()'); return; } catch {}
+    }
+    if (m) { try { m.currentTime = t; } catch {} }
+  }
+
   function installControls() {
     if (!document.documentElement) return;
     if (overlay) { installStudioDrawer(); return; }
@@ -1636,7 +1658,7 @@ if (isAutotunePage()) {
         tk.style.left = (t / dur * 100) + '%';
         tk.appendChild(h('i', 'tkline'));
         tk.appendChild(h('span', 'tklbl', Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0')));
-        tk.addEventListener('click', (ev) => { ev.stopPropagation(); const m = findMedia(); if (m) { try { m.currentTime = t; } catch {} } });
+        tk.addEventListener('click', (ev) => { ev.stopPropagation(); songSeek(t); });
         ticks.appendChild(tk);
       }
     };
@@ -1647,7 +1669,7 @@ if (isAutotunePage()) {
     const playBtn = mk('\u25B6', 'Play or pause', () => { const pb = q('.play-pause-button'); if (pb) pb.click(); else { const m = findMedia(); if (m) { if (m.paused) m.play()?.catch?.(() => {}); else m.pause(); } } }, 'solo');
     const next = mk('\u23ED', 'Next song', () => q('.next-button')?.click());
     const ctl = h('div', 'npctl'); ctl.append(prev, playBtn, next);
-    bar.addEventListener('click', (ev) => { const m = findMedia(); if (!m || !Number.isFinite(m.duration)) return; const r = bar.getBoundingClientRect(); try { m.currentTime = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * m.duration; } catch {} });
+    bar.addEventListener('click', (ev) => { const d = songDur(findMedia()); if (!(d > 0)) return; const r = bar.getBoundingClientRect(); songSeek(Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * d); });
     win.append(h('i', 'screw tl'), h('i', 'screw tr'), h('i', 'screw bl'), h('i', 'screw br'), art, info, ctl);
     (studio.consoleEl || ui).appendChild(win);
     studio.npEl = win; studio.npHome = studio.consoleEl;
@@ -1660,9 +1682,10 @@ if (isAutotunePage()) {
       const m = findMedia();
       const playing = !!m && !m.paused;
       playBtn.textContent = playing ? '\u275A\u275A' : '\u25B6'; playBtn.classList.toggle('on', playing);
-      const dur = m && Number.isFinite(m.duration) ? Math.round(m.duration) : 0;
+      const sd = songDur(m), sp = Math.min(songPos(m), sd || 0);
+      const dur = sd > 0 ? Math.round(sd) : 0;
       if (dur !== tickDur) buildTicks(dur);
-      if (m && Number.isFinite(m.duration) && m.duration > 0) { fill.style.width = (m.currentTime / m.duration * 100) + '%'; times.textContent = fmtTime(m.currentTime) + ' / ' + fmtTime(m.duration); }
+      if (sd > 0) { fill.style.width = (sp / sd * 100) + '%'; times.textContent = fmtTime(sp) + ' / ' + fmtTime(sd); }
       else { fill.style.width = '0%'; times.textContent = ''; }
     }, 500);
   }
@@ -1792,7 +1815,7 @@ if (isAutotunePage()) {
     const load = async (md, media) => {
       lyrState.busy = true; lyrState.status = 'Searching lyrics...'; lyrState.data = null; renderLines();
       let res = null;
-      try { res = await ipcRenderer.invoke('poc:lyrics', { artist: md.artist, title: md.title, album: md.album, duration: media?.duration }); } catch {}
+      try { res = await ipcRenderer.invoke('poc:lyrics', { artist: md.artist, title: md.title, album: md.album, duration: songDur(media) }); } catch {}
       lyrState.busy = false;
       if (lyrState.key !== [md.artist, md.title].join('|')) return; // the song changed meanwhile
       if (!res || res.error) { lyrState.status = 'Could not reach the lyrics service.'; lyrState.retryAt = Date.now() + 30000; lyrState.data = { error: true }; }
@@ -1817,7 +1840,7 @@ if (isAutotunePage()) {
       const stems = modeSelect?.value === 'stems' && stemPlayer;
       const bufS = stems ? (stemPlayer.delayEstimateMs || 10000) / 1000 : 0; // the measured stem buffer: lyrics follow what is heard
       if (Math.abs(bufS - (lyrState.bufS || 0)) > 0.05) { lyrState.bufS = bufS; showOff(); }
-      const now = media.currentTime - bufS * (media.playbackRate || 1) + lyrState.offset; // the buffer is real seconds; the lyric clock runs in song seconds, which pass at the tempo rate
+      const now = songPos(media) - bufS * (media.playbackRate || 1) + lyrState.offset; // the buffer is real seconds; the lyric clock runs in song seconds, which pass at the tempo rate
       let idx = -1;
       for (let i = 0; i < lyrState.lines.length && lyrState.lines[i].t <= now; i += 1) idx = i;
       if (idx === lyrState.idx) return;
@@ -1879,7 +1902,7 @@ if (isAutotunePage()) {
       // Take from the top of the song: mute the stems, restart the song, and open them again exactly when the fresh audio reaches the output (the stems run ~10 s behind) -- recording starts at that moment.
       for (const g of bus()) g.stemBus.gain.setTargetAtTime(0, activeContext.currentTime, 0.02);
       const media = findMedia();
-      if (media) { try { media.currentTime = 0; } catch {} if (media.paused) { try { media.play()?.catch?.(() => {}); } catch {} } }
+      if (media) { songSeek(0); if (media.paused) { try { media.play()?.catch?.(() => {}); } catch {} } }
       const tEnd = Date.now() + Math.max(3000, Math.round(stemPlayer.delayEstimateMs || 10000));
       for (;;) {
         const left = Math.ceil((tEnd - Date.now()) / 1000);
