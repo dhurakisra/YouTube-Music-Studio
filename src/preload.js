@@ -1666,6 +1666,57 @@ if (isAutotunePage()) {
     }, 500);
   }
 
+  // Top-bar meters: two analog VUs + master volume knob beside the YTM search bar. They show what YouTube Music plays even without capture:
+  // if the stem/EQ graph is not running, a passive media.captureStream() tap (analyser only, not connected to any output) feeds them.
+  function studioBuildTopMeters(ui) {
+    const box = h('div', 'topvu');
+    const needles = [];
+    for (const label of ['L', 'R']) {
+      const d = h('div', 'vu');
+      d.append(h('span', 'lbl l', label), h('span', 'lbl c', 'VU'), h('i', 'nd'));
+      box.appendChild(d); needles.push(d.querySelector('.nd'));
+    }
+    const vol = (() => { const m = findMedia(); return m ? m.volume : 1; })();
+    let volume = vol, dragging = false;
+    const setVol = (v) => {
+      volume = v; const m = findMedia(); if (m) m.volume = v;
+      const sl = document.querySelector('ytmusic-player-bar #volume-slider');
+      if (sl) { try { sl.value = Math.round(v * 100); sl.dispatchEvent(new Event('change')); } catch {} }
+    };
+    const knob = studioKnob('VOLUME', 'red big', () => volume, (v) => { dragging = true; setVol(v); }, 1, () => { dragging = false; });
+    box.appendChild(knob);
+    ui.appendChild(box);
+    let tapCtx = null, tapKey = '', tapAn = null;
+    const ensureTap = () => {
+      const m = findMedia(); if (!m || typeof m.captureStream !== 'function') return null;
+      try {
+        const stream = m.captureStream(); const tr = stream.getAudioTracks()[0]; if (!tr) return tapAn;
+        if (tr.id === tapKey && tapAn) return tapAn;
+        if (!tapCtx || tapCtx.state === 'closed') tapCtx = new AudioContext({ latencyHint: 'playback' });
+        if (tapCtx.state === 'suspended') tapCtx.resume().catch(() => {});
+        const src = tapCtx.createMediaStreamSource(new MediaStream([tr]));
+        const sp = tapCtx.createChannelSplitter(2), a = [tapCtx.createAnalyser(), tapCtx.createAnalyser()];
+        a[0].fftSize = a[1].fftSize = 2048; src.connect(sp); sp.connect(a[0], 0); sp.connect(a[1], 1);
+        tapKey = tr.id; tapAn = a; return a;
+      } catch { return null; }
+    };
+    const buf = new Float32Array(2048), angles = [-39, -39];
+    const rmsDb = (an) => { an.getFloatTimeDomainData(buf); let t = 0; for (let i = 0; i < buf.length; i += 1) t += buf[i] * buf[i]; return t > 0 ? 10 * Math.log10(t / buf.length) : -100; };
+    const angleOf = (db) => Math.max(-39, Math.min(39, db <= -18 ? 20 + (db + 18) * 2.95 : 20 + (db + 18) * 1.9));
+    let lastTapCheck = 0;
+    setInterval(() => {
+      if (document.hidden) return;
+      let ans = masterEq?.anL ? [masterEq.anL, masterEq.anR] : null;
+      if (!ans) { const now = performance.now(); if (!tapAn || now - lastTapCheck > 1500) { lastTapCheck = now; ensureTap(); } ans = tapAn; }
+      needles.forEach((n, i) => {
+        const target = ans ? angleOf(rmsDb(ans[i])) : -39;
+        angles[i] += (target - angles[i]) * 0.3;
+        n.style.transform = 'rotate(' + angles[i].toFixed(1) + 'deg)';
+      });
+      if (!dragging) { const m = findMedia(); if (m && Math.abs(m.volume - volume) > 0.01) { volume = m.volume; knob.redraw(); } }
+    }, 40);
+  }
+
   // Lyrics panel (right edge, mirror of the recordings panel): artist / album / title on top, synced lines scrolling below.
   // The song heard through the stems runs ~10 s behind the YouTube Music element, so the clock used for the lines subtracts that delay.
   const lyrState = { key: '', data: null, status: '', idx: -2, offset: 0, lines: [], busy: false, retryAt: 0 };
@@ -1928,6 +1979,12 @@ if (isAutotunePage()) {
         .np { position: relative; flex: 1 0 100%; display: flex; align-items: center; gap: 18px; box-sizing: border-box; margin-top: 4px;
       padding: 10px 18px; border: 1px solid #0009; border-radius: 10px; box-shadow: inset 0 0 18px #000a;
       background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; }
+    .topvu { position: fixed; top: 4px; right: 130px; z-index: 2147483640; display: flex; align-items: center; gap: 14px; }
+    .topvu .vu { width: 104px; height: 64px; }
+    .topvu .vu .lbl { font-size: 10px; } .topvu .vu .lbl.c { font-size: 12px; }
+    .topvu .knob-box { flex-direction: column; font-size: 9px; gap: 1px; }
+    .topvu .knob.big { width: 50px; height: 50px; } .topvu .knob.big::after { top: 9px; height: 14px; transform-origin: 50% 16px; }
+    @media (max-width: 1150px) { .topvu { display: none; } }
     .np.float { position: fixed; left: 12px; right: 12px; bottom: 10px; z-index: 2147483643; margin: 0; border-radius: 10px; height: 104px; padding: 6px 24px; }
     .tab.np-up { bottom: 114px; }
     .npticks { position: relative; height: 22px; margin-top: 1px; }
@@ -2151,6 +2208,7 @@ if (isAutotunePage()) {
       studioBuildLibrary(ui);
       studioBuildLyrics(ui);
       studioBuildNowPlaying(ui);
+      studioBuildTopMeters(ui);
       // YTM page skin, step 1: top bar (rust/metal plate with corner screws, inset brass-rimmed search field)
       const skinCss = `
         ytmusic-nav-bar, ytmusic-nav-bar #left-content { --ytmusic-nav-bar-background: transparent; }
