@@ -1758,7 +1758,7 @@ if (isAutotunePage()) {
           hooks = sh.querySelectorAll(':scope > .poc-hook');
         }
         const cs = getComputedStyle(sh), bl = parseFloat(cs.borderLeftWidth) || 0, br = parseFloat(cs.borderRightWidth) || 0;
-        const cl = left + 19, cr = right - 19, HW = 34; // chain centres; a clamp is centred on its chain and reaches in to just inside the shelf frame
+        const cl = left + 19, cr = right - 19, HW = 44; // chain centres; a clamp is centred on its chain and reaches in to just inside the shelf frame
         const lx0 = cl - HW, lx1 = Math.max(cl + HW, rc.left + 14), rx1 = cr + HW, rx0 = Math.min(cr - HW, rc.right - 14);
         for (const k of hooks) {
           if (k.classList.contains('l')) { k.style.width = (lx1 - lx0) + 'px'; k.style.left = (lx0 - rc.left - bl) + 'px'; k.style.right = ''; }
@@ -2474,9 +2474,16 @@ if (isAutotunePage()) {
       const skinCss = `
         ${fontCss}
         ytmusic-nav-bar, ytmusic-nav-bar #left-content { --ytmusic-nav-bar-background: transparent; }
-        ytmusic-nav-bar { background: ${T('screw.png')} left 8px top 8px / 11px 11px no-repeat, ${T('screw.png')} right 8px top 8px / 11px 11px no-repeat,
-            ${T('screw.png')} left 8px bottom 8px / 11px 11px no-repeat, ${T('screw.png')} right 8px bottom 8px / 11px 11px no-repeat,
-            linear-gradient(#ffffff12, transparent 35%, #0007), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f !important;
+        ytmusic-nav-bar { background:
+            ${T('screw.png')} left 8px top 8px / 11px 11px no-repeat, ${T('screw.png')} right 8px top 8px / 11px 11px no-repeat,
+            ${T('sk-brkt.png')} left 0 bottom 6px / 64px auto no-repeat, ${T('sk-brkt.png')} right 0 bottom 6px / 64px auto no-repeat,
+            ${T('sk-rod.png')} center bottom 0 / 100% 14px no-repeat,
+            ${T('sk-lamp.png')} left 338px top 14px / auto 78px no-repeat,
+            ${T('sk-gear.png')} left 372px top 30px / 70px auto no-repeat,
+            ${T('sk-gear.png')} left 408px top -26px / 56px auto no-repeat,
+            linear-gradient(90deg, #0b0806f2 0, #0b080699 22%, #0b080666 60%, #0b0806cc 100%),
+            ${T('sk-city.jpg')} center 40% / cover,
+            #14110f !important;
           border-bottom: 2px solid #0a0807 !important; box-shadow: inset 0 -1px 0 #ffffff1a, 0 5px 16px #000c !important; }
         ytmusic-nav-bar #left-content { background: transparent !important; }
         ytmusic-nav-bar ytmusic-logo { visibility: hidden !important; }
@@ -2508,7 +2515,7 @@ if (isAutotunePage()) {
         ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title > * { position: relative; }
         @property --gh { syntax: '<number>'; inherits: false; initial-value: 0; }
         @property --gw { syntax: '<number>#'; inherits: false; initial-value: 255, 157, 61; }
-        i.poc-hook { position: absolute; height: 36px; pointer-events: none; z-index: 2; box-sizing: border-box; border: solid transparent; border-width: 0 24px; border-image: ${T('sk-hook.png')} 0 60 fill / 0 24px / 0 stretch; filter: drop-shadow(0 2px 3px #000c); }
+        i.poc-hook { position: absolute; height: 46px; pointer-events: none; z-index: 2; box-sizing: border-box; border: solid transparent; border-width: 0 24px; border-image: ${T('sk-hook.png')} 0 60 fill / 0 24px / 0 stretch; filter: drop-shadow(0 2px 3px #000c); }
         i.poc-hook.t { top: 16%; } i.poc-hook.b { bottom: 16%; }
         ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title > i.poc-spark { position: absolute; z-index: 3; width: 1.5px; height: 1.5px; border-radius: 50%; pointer-events: none; opacity: 0; background: #fffbe6; box-shadow: 0 0 2px 1px #ffd27a, 0 0 5px 1px #ff7a1fcc; animation: poc-fall 1.5s linear infinite; }
         @keyframes poc-fall { 0% { opacity: 0; transform: translate(0, 0) scale(1); } 0.3% { opacity: 1; transform: translate(0, 0) scale(1.8); } 2.5% { opacity: 1; transform: translate(calc(var(--dx) * .8), calc(var(--dy) * .8)) scale(1); } 5% { opacity: .7; transform: translate(var(--dx), calc(var(--dy) + 6px)) scale(.7); } 7% { opacity: 0; transform: translate(calc(var(--dx) * 1.1), calc(var(--dy) + 12px)) scale(.4); } 100% { opacity: 0; transform: translate(calc(var(--dx) * 1.1), calc(var(--dy) + 12px)); } }
