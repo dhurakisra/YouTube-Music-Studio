@@ -2327,7 +2327,7 @@ if (isAutotunePage()) {
     .brandname .bm { color: #ff6a3d; }
     .brandsub { margin-top: 5px; font: italic 700 9px/1 "Barlow Condensed", "Bahnschrift", system-ui, sans-serif; letter-spacing: .18em; color: var(--brass); white-space: nowrap; } .topvu .knob.big::after { top: 9px; height: 16px; width: 4px; margin-left: -2px; transform-origin: 50% 21px; }
     .np.float { position: fixed; left: 12px; right: 12px; bottom: 10px; z-index: 2147483643; margin: 0; border-radius: 10px; height: 104px; padding: 6px 24px; }
-    .tab.np-up { bottom: 112px; }
+    .tab.np-up { bottom: 124px; }
     /* header: rounded brass logo plate (same pill frame as the search box), spaced STUDIO line, two glass lamps hanging over the pipe strip */
     .brand { display: none !important; }
     .brand { top: 16px; height: 76px; border-width: 20px 26px; border-image: ${T('sk-pill.png')} 72 / 20px 26px stretch; border-radius: 38px; padding: 0 4px; box-shadow: 0 4px 12px #000b; }
@@ -2351,8 +2351,8 @@ if (isAutotunePage()) {
     .npctl { display: flex; gap: 6px; flex: none; }
     .btn.npbtn { width: 44px; height: 34px; font-size: 14px; }
     /* steampunk player bar: dark plate under a copper rod, glowing waveform as the progress track, round brass transport buttons */
-    .np.float { left: 0; right: 0; bottom: 0; height: 112px; border-radius: 0; padding: 16px 22px 4px; border: 0; gap: 20px;
-      background: ${T('sk-rod.png')} center top / 100% 12px no-repeat, linear-gradient(#0000, #0000 12px, #1a120b 13px, #0b0806 60%, #050302), #0b0806;
+    .np.float { left: 0; right: 0; bottom: 0; height: 124px; border-radius: 0; padding: 14px 30px 18px; border: 0; gap: 20px;
+      background: #0b0806; border-image: ${T('sk-topplate.png')} 64 fill / 22px round;
       box-shadow: 0 -6px 18px #000c, inset 0 -1px 0 #ffffff12; }
     .np.float .npart { width: 62px; height: 62px; box-shadow: 0 0 0 2px #0a0807, 0 0 0 4px #9a6a2c, 0 0 10px #ff9a3a55; }
     .np.float .nptitle { font: 700 19px/1.15 "Barlow Condensed", "Barlow", sans-serif; letter-spacing: .02em; }
