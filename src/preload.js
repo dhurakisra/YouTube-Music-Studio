@@ -1788,7 +1788,7 @@ if (isAutotunePage()) {
       sp.appendChild(mk('valve', 1618, 675, 72, 72));
       sp.appendChild(mk('gauge', 278, 817, 60, 60));
       const ndl = mk('needle', 307, 829, 2, 19); sp.appendChild(ndl); sp.appendChild(mk('hub', 305, 844, 6, 6));
-      for (let i = 0; i < 7; i += 1) sp.appendChild(mk('puff', 1722, 532, 36, 36, { animationDelay: (-i * 0.9) + 's' }));
+      for (let i = 0; i < 16; i += 1) sp.appendChild(mk('puff' + (i % 2 ? ' b' : ''), 1720 + (i % 3) * 2, 530, 40, 40, { animationDelay: (-i * 0.29 - Math.random() * 0.2) + 's', animationDuration: (4.2 + (i % 4) * 0.35) + 's' }));
       document.body.appendChild(box);
       const fit = () => { const vw = document.documentElement.clientWidth, vh = window.innerHeight; const sc = Math.max(vw / IW, vh / IH); sp.style.transform = 'translate(' + (vw - IW * sc) / 2 + 'px,' + (vh - IH * sc) / 2 + 'px) scale(' + sc + ')'; };
       fit(); window.addEventListener('resize', fit);
@@ -2725,8 +2725,10 @@ if (isAutotunePage()) {
         #poc-bgfx .needle { background: linear-gradient(#1a0f08, #2a1a0e); border-radius: 1px 1px 0 0; transform-origin: 50% 100%; box-shadow: 0 0 1px #000; animation: poc-needle 9s ease-in-out infinite; }
         @keyframes poc-needle { 0% { transform: rotate(-55deg); } 12% { transform: rotate(-20deg); } 15% { transform: rotate(-27deg); } 30% { transform: rotate(35deg); } 33% { transform: rotate(28deg); } 36% { transform: rotate(40deg); } 52% { transform: rotate(-5deg); } 55% { transform: rotate(4deg); } 70% { transform: rotate(60deg); } 73% { transform: rotate(52deg); } 88% { transform: rotate(-35deg); } 92% { transform: rotate(-42deg); } 100% { transform: rotate(-55deg); } }
         #poc-bgfx .hub { border-radius: 50%; background: radial-gradient(circle at 35% 35%, #f0c070, #6a4010); }
-        #poc-bgfx .puff { border-radius: 50%; background: radial-gradient(circle, #f2eee8cc 0, #d8d2caa0 30%, #c8c0b840 55%, transparent 72%); filter: blur(3px); opacity: 0; animation: poc-steam 6.3s linear infinite; }
-        @keyframes poc-steam { 0% { opacity: 0; transform: translate(0, 0) scale(.35); } 8% { opacity: .75; } 45% { opacity: .55; transform: translate(42px, -70px) scale(1.4); } 100% { opacity: 0; transform: translate(96px, -175px) scale(2.6); } }
+        #poc-bgfx .puff { border-radius: 50%; background: radial-gradient(circle, #f6f3eeee 0, #e2ddd6c0 30%, #cfc8c060 55%, transparent 72%); filter: blur(3px); opacity: 0; animation: poc-steam 4.4s cubic-bezier(.25,.6,.4,1) infinite; }
+        #poc-bgfx .puff.b { animation-name: poc-steam2; }
+        @keyframes poc-steam { 0% { opacity: 0; transform: translate(0, 0) scale(.4); } 5% { opacity: .95; } 40% { opacity: .75; transform: translate(34px, -78px) scale(1.6); } 70% { opacity: .45; transform: translate(70px, -150px) scale(2.4); } 100% { opacity: 0; transform: translate(112px, -225px) scale(3.3); } }
+        @keyframes poc-steam2 { 0% { opacity: 0; transform: translate(0, 0) scale(.35); } 5% { opacity: .9; } 40% { opacity: .7; transform: translate(52px, -66px) scale(1.5); } 70% { opacity: .4; transform: translate(84px, -140px) scale(2.2); } 100% { opacity: 0; transform: translate(130px, -205px) scale(3.1); } }
         #poc-brand { position: fixed; left: 112px; top: 30px; z-index: 2147483640; text-decoration: none; -webkit-app-region: no-drag; }
         #poc-brand .poc-ntitle { margin: 0 !important; padding: 8px 26px !important; font-size: 0 !important; line-height: 1 !important; }
         #poc-brand .poc-logo { display: flex !important; align-items: center; gap: 10px; text-shadow: none; animation: poc-logo-glow 4.5s linear infinite; }
