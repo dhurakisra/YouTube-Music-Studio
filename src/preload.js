@@ -2179,7 +2179,8 @@ if (isAutotunePage()) {
         for (const l of d.synced) {
           const e = h('div', 'lyrline sync', l.text || '\u266A', { role: 'button', tabindex: '0', title: 'Jump the song to this line' });
           // click = jump the song to this line (lyric time minus the user's SYNC offset is the song position)
-          const go = () => { songSeek(Math.max(0, l.t - lyrState.offset)); lyrState.idx = -2; };
+          // the clicked line stays lit until the lyric clock reaches it (with stems the heard audio arrives one buffer later)
+          const go = () => { songSeek(Math.max(0, l.t - lyrState.offset)); lyrState.hold = { idx: lineEls.indexOf(e), t: l.t, until: Date.now() + 20000 }; lyrState.idx = -2; };
           e.addEventListener('click', go); e.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go(); } });
           list.appendChild(e); lineEls.push(e);
         }
@@ -2212,12 +2213,14 @@ if (isAutotunePage()) {
         return;
       }
       if (!open || !media || !lyrState.lines.length) return;
-      const stems = modeSelect?.value === 'stems' && stemPlayer;
+      const stems = captureActive && modeSelect?.value === 'stems' && stemPlayer; // only while stems are really playing; plain listening = no buffer
       const bufS = stems ? (stemPlayer.delayEstimateMs || 10000) / 1000 : 0; // the measured stem buffer: lyrics follow what is heard
       if (Math.abs(bufS - (lyrState.bufS || 0)) > 0.05) { lyrState.bufS = bufS; showOff(); }
       const now = songPos(media) - bufS * (media.playbackRate || 1) + lyrState.offset; // the buffer is real seconds; the lyric clock runs in song seconds, which pass at the tempo rate
       let idx = -1;
       for (let i = 0; i < lyrState.lines.length && lyrState.lines[i].t <= now; i += 1) idx = i;
+      const hd = lyrState.hold;
+      if (hd) { if (now >= hd.t - 0.05 || Date.now() > hd.until || now < hd.t - 30) lyrState.hold = null; else idx = hd.idx; }
       if (idx === lyrState.idx) return;
       lyrState.idx = idx;
       lineEls.forEach((e, i) => { e.classList.toggle('cur', i === idx); e.classList.toggle('past', i < idx); });
@@ -3512,7 +3515,7 @@ if (isAutotunePage()) {
 
   // Vocal Lab off = the source goes straight to the destination; the chain (convolver, compressors, delay loop) gets no signal at all.
   function routeVocalFx(fx) {
-    const want = fxState.voc.on;
+    const want = fxState.voc.on && !fx.stemBypass;
     if (fx.routed === want) return;
     try { fx.source.disconnect(fx.input); } catch {}
     try { fx.source.disconnect(fx.destination); } catch {}
@@ -3523,7 +3526,7 @@ if (isAutotunePage()) {
   }
 
   function applyVocalFx(fx, immediate, deferIR) {
-    const s = fxState.voc, on = s.on, t = fx.context.currentTime;
+    const s = fxState.voc, on = s.on && !fx.stemBypass, t = fx.context.currentTime;
     if (!on && fx.wasOn === false && !immediate) return; // off and already neutral: nothing to update
     fx.wasOn = on;
     const set = (p, v) => (immediate ? (p.value = v) : p.setTargetAtTime(v, t, 0.03));
@@ -3762,7 +3765,7 @@ if (isAutotunePage()) {
     stemLimiter.threshold.value = -6; stemLimiter.ratio.value = 20; stemLimiter.attack.value = 0; stemLimiter.release.value = 0.1; stemLimiter.knee.value = 6;
     for (const node of [vocalGain, instGain, drumsGain, bassGain, otherGain, stemBus, stemLimiter]) setChannelFormat(node);
     for (const node of [instGain, drumsGain, bassGain, otherGain]) node.connect(stemLimiter);
-    buildVocalFx(context, stemLimiter, vocalGain); // Vocal Lab sits after the vocal fader, so mute/solo also silence its reverb tail
+    { const vfx = buildVocalFx(context, stemLimiter, vocalGain); vfx.stemBypass = true; routeVocalFx(vfx); applyVocalFx(vfx, true); } // the song's vocal stem: never processed (the Vocal Chain is for the singer's mic only)
     stemLimiter.connect(stemBus); stemBus.connect(eqInput);
     stemBus.gain.value = 0;
     stemNodes = { vocalGain, instGain, drumsGain, bassGain, otherGain, stemBus };
