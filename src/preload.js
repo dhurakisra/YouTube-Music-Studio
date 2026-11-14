@@ -1672,6 +1672,46 @@ if (isAutotunePage()) {
     const rpt = mk('', 'Repeat', () => q('.repeat')?.click(), 'rpt');
     const ctl = h('div', 'npctl'); ctl.append(shuf, prev, playBtn, next, rpt);
     try { new ResizeObserver(() => { fill.style.backgroundSize = bar.clientWidth + 'px 100%'; }).observe(bar); } catch {}
+    // Live spectrum over the waveform track: log-spaced frequency columns (40 Hz left .. 16 kHz right), mirrored around the centre line,
+    // orange glow with a white-hot core; the played part burns brighter. Fed by the same analysers as the top VU meters.
+    const cv = document.createElement('canvas'); cv.className = 'npviz'; bar.appendChild(cv);
+    const g2 = cv.getContext('2d'); let fbuf = null, lv = null;
+    const draw = () => {
+      requestAnimationFrame(draw);
+      if (document.hidden) return;
+      const W = bar.clientWidth, H = bar.clientHeight + 24; if (!W) return;
+      const dpr = window.devicePixelRatio || 1;
+      if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+      const ans = studio.vuAns, m = findMedia(), live = !!(ans && m && !m.paused);
+      const step = 4, n = Math.floor(W / step);
+      if (!lv || lv.length !== n) lv = new Float32Array(n);
+      if (live) {
+        const an = ans[0]; if (!fbuf || fbuf.length !== an.frequencyBinCount) fbuf = new Uint8Array(an.frequencyBinCount);
+        const nyq = (an.context.sampleRate || 48000) / 2, bins = an.frequencyBinCount, tmp = new Uint8Array(bins);
+        an.getByteFrequencyData(fbuf); if (ans[1]) { ans[1].getByteFrequencyData(tmp); for (let i = 0; i < bins; i += 1) fbuf[i] = Math.max(fbuf[i], tmp[i]); }
+        for (let i = 0; i < n; i += 1) {
+          const f0 = 40 * Math.pow(400, i / n), f1 = 40 * Math.pow(400, (i + 1) / n);
+          let b0 = Math.floor(f0 / nyq * bins), b1 = Math.max(b0 + 1, Math.ceil(f1 / nyq * bins)), mx = 0;
+          for (let b = b0; b < b1 && b < bins; b += 1) if (fbuf[b] > mx) mx = fbuf[b];
+          const tilt = 0.6 + 0.9 * i / n; // lift the highs so the right side moves too
+          const v = Math.min(0.95, Math.pow(mx / 255, 2.6) * tilt * 1.1);
+          lv[i] = v > lv[i] ? v : lv[i] * 0.86; // fast attack, slow fall
+        }
+      } else for (let i = 0; i < n; i += 1) lv[i] *= 0.9;
+      g2.setTransform(dpr, 0, 0, dpr, 0, 0); g2.clearRect(0, 0, W, H);
+      const cy = H / 2, half = H / 2 - 2, played = (parseFloat(fill.style.width) || 0) / 100 * W;
+      g2.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < n; i += 1) {
+        const v = lv[i]; if (v < 0.02) continue;
+        const x = i * step + 1.5, hh = Math.max(1, v * half), hot = x <= played ? 1 : 0.55;
+        g2.fillStyle = 'rgba(255,110,20,' + (0.35 * hot) + ')'; g2.fillRect(x - 2, cy - hh * 1.08, 5, hh * 2.16);
+        g2.fillStyle = 'rgba(255,170,60,' + (0.85 * hot) + ')'; g2.fillRect(x - 0.75, cy - hh, 2, hh * 2);
+        if (v > 0.35) { g2.fillStyle = 'rgba(255,240,200,' + (0.9 * hot * (v - 0.3)) + ')'; g2.fillRect(x - 0.5, cy - hh * 0.6, 1.2, hh * 1.2); }
+      }
+      g2.fillStyle = 'rgba(255,200,120,' + (live ? 0.55 : 0.25) + ')'; g2.fillRect(0, cy - 0.5, played, 1);
+      g2.globalCompositeOperation = 'source-over';
+    };
+    requestAnimationFrame(draw);
     bar.addEventListener('click', (ev) => { const d = songDur(findMedia()); if (!(d > 0)) return; const r = bar.getBoundingClientRect(); songSeek(Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * d); });
     win.append(h('i', 'screw tl'), h('i', 'screw tr'), h('i', 'screw bl'), h('i', 'screw br'), art, info, ctl);
     (studio.consoleEl || ui).appendChild(win);
@@ -1874,6 +1914,8 @@ if (isAutotunePage()) {
       if (document.hidden) return;
       let ans = masterEq?.anL ? [masterEq.anL, masterEq.anR] : null;
       if (!ans) { const now = performance.now(); if (!tapAn || now - lastTapCheck > 1500) { lastTapCheck = now; ensureTap(); } ans = tapAn; }
+      if (tapCtx && tapCtx.state === 'suspended') tapCtx.resume().catch(() => {});
+      studio.vuAns = ans; // shared with the player-bar spectrum
       needles.forEach((n, i) => {
         const target = ans ? angleOf(rmsDb(ans[i])) : -39;
         angles[i] += (target - angles[i]) * 0.3;
@@ -2310,6 +2352,7 @@ if (isAutotunePage()) {
     .npbar.libbar { position: relative; height: 30px; margin-top: 4px; border: 0; border-radius: 0; cursor: pointer; overflow: visible;
       background: linear-gradient(#0503027a, #0503027a), ${T('sk-wave.png')} 0 0 / 100% 100% no-repeat !important; box-shadow: none; }
     .npbar .libfill { position: relative; height: 100%; background: ${T('sk-wave.png')} 0 0 / 600px 100% no-repeat !important; box-shadow: none; filter: drop-shadow(0 0 4px #ff8a1f88); }
+    .npbar .npviz { position: absolute; left: 0; top: -12px; width: 100%; height: calc(100% + 24px); pointer-events: none; z-index: 1; }
     .npbar .libfill::after { content: ""; position: absolute; right: -1px; top: 2px; bottom: 2px; width: 2px; background: #ffe2a8; box-shadow: 0 0 6px 2px #ffb347; }
     .np.float .npticks { height: 16px; margin-top: 0; } .np.float .nptick .tklbl { top: 6px; } .np.float .nptick .tkline { height: 3px; } .np.float .nptick.major .tkline { height: 5px; }
     .npctl { align-items: center; gap: 10px; }
