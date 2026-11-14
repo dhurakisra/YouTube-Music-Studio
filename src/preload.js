@@ -259,7 +259,7 @@ if (isAutotunePage()) {
           const m = findMedia(); if (m && !m.paused) { try { m.pause(); } catch {} } // nothing plays until START KARAOKE
           setAppMode('karaoke'); info.textContent = 'PRESS START KARAOKE WHEN READY';
         }
-      } catch (error) { info.textContent = 'ERROR: ' + String(error?.name || error).slice(0, 30); } finally { busy = false; }
+      } catch (error) { info.textContent = 'ERROR: ' + String(error?.message || error).slice(0, 60); stemDiag('ui_error', { error: String(error?.stack || error).slice(0, 400) }); } finally { busy = false; }
     };
     let stemPrep = false;
     stemBtn.addEventListener('click', async () => {
@@ -280,9 +280,9 @@ if (isAutotunePage()) {
           await sleepMs(200);
         }
         if (captureActive) info.textContent = '';
-      } catch (error) { info.textContent = 'ERROR: ' + String(error?.name || error).slice(0, 30); } finally { stemPrep = false; }
+      } catch (error) { info.textContent = 'ERROR: ' + String(error?.message || error).slice(0, 60); stemDiag('ui_error', { error: String(error?.stack || error).slice(0, 400) }); } finally { stemPrep = false; }
     });
-    startBtn.addEventListener('click', () => { if (appMode === 'karaoke' && !busy) takeToggle(info).catch((error) => { info.textContent = 'ERROR: ' + String(error?.name || error).slice(0, 30); }); });
+    startBtn.addEventListener('click', () => { if (appMode === 'karaoke' && !busy) takeToggle(info).catch((error) => { info.textContent = 'ERROR: ' + String(error?.message || error).slice(0, 60); stemDiag('ui_error', { error: String(error?.stack || error).slice(0, 400) }); }); });
     listenBtn.addEventListener('click', () => enter('listen'));
     karaokeBtn.addEventListener('click', () => enter('karaoke'));
     setInterval(() => {
@@ -3420,6 +3420,7 @@ if (isAutotunePage()) {
       g.gain = want;
     };
     const timer = setInterval(tick, 5);
+    g.dispose = () => { clearInterval(timer); for (const n of [input, delay, vca, an]) { try { n.disconnect(); } catch {} } };
     return g;
   }
 
@@ -3497,8 +3498,8 @@ if (isAutotunePage()) {
     }, 3000);
     fx.dispose = () => {
       for (const o of oscs) { try { o.stop(); } catch {} }
-      gate.proc.onaudioprocess = null; harm.proc.onaudioprocess = null;
-      for (const n of [gate.proc, gate.output, harm.proc, harm.output]) { try { n.disconnect(); } catch {} }
+      if (gate.proc) gate.proc.onaudioprocess = null; harm.proc.onaudioprocess = null; gate.dispose?.();
+      for (const n of [gate.proc, gate.output, harm.proc, harm.output].filter(Boolean)) { try { n.disconnect(); } catch {} }
     };
     return fx;
   }
