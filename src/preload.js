@@ -1877,49 +1877,76 @@ if (isAutotunePage()) {
     ui.append(h('div', 'dragstrip'), wrap);
   }
 
-  // Graphic EQ strip in the header (between search and VU meters): power, 10 faders (drag / wheel / double-click = 0), preset stepper.
+  // Graphic EQ: a compact strip in the header (between search and VU meters) and, under it, a fold-down full-size panel of the same
+  // width. Both views drive the same geqState. Faders: drag / mouse wheel (1 dB) / double-click = 0 dB.
   function studioBuildGeq(ui) {
     const LBL = ['32', '63', '125', '250', '500', '1K', '2K', '4K', '8K', '16K'];
-    const box = h('div', 'geq');
-    const pw = h('button', 'geqpw', null, { type: 'button', 'aria-label': 'Graphic EQ on / off' });
-    const bands = h('div', 'geqbands');
-    const caps = [], fills = [], trks = [];
+    const views = []; // { caps, fills, trks, capH }
     let changed = () => {};
-    GEQ_FREQS.forEach((fq, i) => {
-      const col = h('div', 'geqcol'), tr = h('div', 'geqtrk'), fl = h('i', 'geqfill'), cp = h('i', 'geqcap');
-      tr.append(fl, cp); col.append(h('span', 'geqlbl', LBL[i]), tr); bands.appendChild(col);
-      caps.push(cp); fills.push(fl); trks.push(tr);
-      const set = (v) => { geqState.gains[i] = Math.max(-12, Math.min(12, Math.round(v))); geqState.preset = ''; changed(); };
-      const fromY = (y) => { const r = tr.getBoundingClientRect(); const cap = 14; set((1 - (y - r.top - cap / 2) / Math.max(1, r.height - cap)) * 24 - 12); };
-      tr.addEventListener('pointerdown', (e) => {
-        e.preventDefault(); try { tr.setPointerCapture(e.pointerId); } catch {}
-        fromY(e.clientY);
-        const mv = (ev) => fromY(ev.clientY);
-        const up = () => { tr.removeEventListener('pointermove', mv); tr.removeEventListener('pointerup', up); tr.removeEventListener('pointercancel', up); };
-        tr.addEventListener('pointermove', mv); tr.addEventListener('pointerup', up); tr.addEventListener('pointercancel', up);
+    const set = (i, v) => { geqState.gains[i] = Math.max(-12, Math.min(12, Math.round(v))); geqState.preset = ''; changed(); };
+    const buildBands = (parent, capH, cls) => {
+      const v = { caps: [], fills: [], trks: [], capH };
+      GEQ_FREQS.forEach((fq, i) => {
+        const col = h('div', 'geqcol ' + cls), tr = h('div', 'geqtrk'), fl = h('i', 'geqfill'), cp = h('i', 'geqcap');
+        tr.append(fl, cp); col.append(h('span', 'geqlbl', LBL[i]), tr); parent.appendChild(col);
+        v.caps.push(cp); v.fills.push(fl); v.trks.push(tr);
+        const fromY = (y) => { const r = tr.getBoundingClientRect(); set(i, (1 - (y - r.top - capH / 2) / Math.max(1, r.height - capH)) * 24 - 12); };
+        tr.addEventListener('pointerdown', (e) => {
+          e.preventDefault(); try { tr.setPointerCapture(e.pointerId); } catch {}
+          fromY(e.clientY);
+          const mv = (ev) => fromY(ev.clientY);
+          const up = () => { tr.removeEventListener('pointermove', mv); tr.removeEventListener('pointerup', up); tr.removeEventListener('pointercancel', up); };
+          tr.addEventListener('pointermove', mv); tr.addEventListener('pointerup', up); tr.addEventListener('pointercancel', up);
+        });
+        tr.addEventListener('dblclick', () => set(i, 0));
+        tr.addEventListener('wheel', (e) => { e.preventDefault(); set(i, geqState.gains[i] + (e.deltaY < 0 ? 1 : -1)); }, { passive: false });
       });
-      tr.addEventListener('dblclick', () => set(0));
-      tr.addEventListener('wheel', (e) => { e.preventDefault(); set(geqState.gains[i] + (e.deltaY < 0 ? 1 : -1)); }, { passive: false });
-    });
+      views.push(v);
+    };
     const names = Object.keys(GEQ_PRESETS);
-    const pl = h('button', 'geqarr', '\u25C0', { type: 'button', 'aria-label': 'Previous EQ preset' });
-    const pr = h('button', 'geqarr', '\u25B6', { type: 'button', 'aria-label': 'Next EQ preset' });
-    const pn = h('div', 'geqname');
-    const pre = h('div', 'geqpre'); pre.append(pl, pn, pr);
     const step = (d) => { let k = names.indexOf(geqState.preset); k = k < 0 ? (d > 0 ? 0 : names.length - 1) : (k + d + names.length) % names.length; geqState.preset = names[k]; geqState.gains = GEQ_PRESETS[names[k]].slice(); changed(); };
-    pl.addEventListener('click', () => step(-1)); pr.addEventListener('click', () => step(1));
-    pw.addEventListener('click', () => { geqState.on = !geqState.on; changed(); });
-    const lock = h('div', 'geqlock', 'STUDIO EQ ACTIVE');
-    box.append(pw, bands, pre, lock); ui.appendChild(box);
+    const nameEls = [], pwEls = [];
+    const buildPreset = () => {
+      const pl = h('button', 'geqarr', '\u25C0', { type: 'button', 'aria-label': 'Previous EQ preset' });
+      const pr = h('button', 'geqarr', '\u25B6', { type: 'button', 'aria-label': 'Next EQ preset' });
+      const pn = h('div', 'geqname'); nameEls.push(pn);
+      pl.addEventListener('click', () => step(-1)); pr.addEventListener('click', () => step(1));
+      const pre = h('div', 'geqpre'); pre.append(pl, pn, pr); return pre;
+    };
+    const buildPower = (cls) => {
+      const pw = h('button', 'geqpw ' + (cls || ''), null, { type: 'button', 'aria-label': 'Graphic EQ on / off' });
+      pw.addEventListener('click', () => { geqState.on = !geqState.on; changed(); }); pwEls.push(pw); return pw;
+    };
+    // compact strip
+    const box = h('div', 'geq');
+    const bands = h('div', 'geqbands');
+    buildBands(bands, 14, 'sm');
+    const tab = h('button', 'geqtab', 'EQ \u25BC', { type: 'button', 'aria-label': 'Open the graphic equalizer panel' });
+    box.append(buildPower(), bands, buildPreset(), tab, h('div', 'geqlock', 'STUDIO EQ ACTIVE'));
+    // fold-down panel
+    const pan = h('div', 'geqpan');
+    const scr = h('div', 'geqscr'), grid = h('div', 'geqgrid'), pbands = h('div', 'geqbands big');
+    for (const side of ['l', 'r']) { const sc = h('div', 'geqscale ' + side); for (const t of ['+12', '+6', '0', '\u22126', '\u221212']) sc.appendChild(h('span', null, t)); scr.appendChild(sc); }
+    scr.append(grid, pbands, h('span', 'geqhz', 'Hz'));
+    buildBands(pbands, 26, 'lg');
+    const reset = h('button', 'geqreset', null, { type: 'button', 'aria-label': 'Reset all bands to 0 dB' });
+    reset.addEventListener('click', () => { geqState.gains = GEQ_PRESETS.Flat.slice(); geqState.preset = 'Flat'; changed(); });
+    const foot = h('div', 'geqfoot'); foot.append(buildPower('big'), buildPreset(), reset);
+    pan.append(h('i', 'geqtitle'), h('i', 'geqlamp l'), h('i', 'geqlamp r'), scr, foot, h('div', 'geqlock', 'STUDIO EQ ACTIVE'));
+    ui.append(box, pan);
+    const setOpen = (o) => { pan.classList.toggle('open', o); tab.textContent = o ? 'EQ \u25B2' : 'EQ \u25BC'; tab.setAttribute('aria-label', o ? 'Close the graphic equalizer panel' : 'Open the graphic equalizer panel'); };
+    tab.addEventListener('click', () => setOpen(!pan.classList.contains('open')));
+    window.addEventListener('pointerdown', (e) => { if (pan.classList.contains('open') && !e.composedPath().some((n) => n === pan || n === box)) setOpen(false); }, true);
+    window.addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
     const draw = () => {
-      box.classList.toggle('off', !geqState.on); box.classList.toggle('locked', captureActive);
-      pw.setAttribute('aria-pressed', String(geqState.on));
-      pn.textContent = geqState.preset || 'Custom';
-      geqState.gains.forEach((g, i) => {
+      for (const el of [box, pan]) { el.classList.toggle('off', !geqState.on); el.classList.toggle('locked', captureActive); }
+      for (const pw of pwEls) pw.setAttribute('aria-pressed', String(geqState.on));
+      for (const pn of nameEls) pn.textContent = geqState.preset || 'Custom';
+      for (const v of views) geqState.gains.forEach((g, i) => {
         const p = (g + 12) / 24;
-        caps[i].style.bottom = 'calc(' + p + ' * (100% - 14px))';
-        fills[i].style.height = 'calc(' + p + ' * (100% - 14px) + 7px)';
-        trks[i].title = LBL[i] + ' Hz: ' + (g > 0 ? '+' : '') + g + ' dB';
+        v.caps[i].style.bottom = 'calc(' + p + ' * (100% - ' + v.capH + 'px))';
+        v.fills[i].style.height = 'calc(' + p + ' * (100% - ' + v.capH + 'px) + ' + v.capH / 2 + 'px)';
+        v.trks[i].title = LBL[i] + ' Hz: ' + (g > 0 ? '+' : '') + g + ' dB';
       });
     };
     changed = () => { applyGeq(); saveGeq(); draw(); ensurePassiveGraph(); };
@@ -1929,9 +1956,10 @@ if (isAutotunePage()) {
       const vu = box.parentNode && box.parentNode.querySelector('.topvu');
       const l = (sb ? sb.getBoundingClientRect().right : 700) + 20;
       const r = vu && vu.style.display !== 'none' ? vu.getBoundingClientRect().left - 20 : window.innerWidth - 220;
-      const w = Math.min(600, r - l);
-      box.style.display = w < 430 ? 'none' : 'flex';
-      box.style.left = l + 'px'; box.style.width = w + 'px';
+      const w = Math.min(640, r - l), show = w >= 430;
+      box.style.display = show ? 'flex' : 'none'; box.style.left = l + 'px'; box.style.width = w + 'px';
+      pan.style.left = l + 'px'; pan.style.width = Math.max(w, 560) + 'px'; pan.style.height = Math.round(Math.max(w, 560) * 0.5) + 'px';
+      if (!show) setOpen(false);
     };
     window.addEventListener('resize', place); setInterval(place, 1000); place(); draw();
   }
@@ -2400,13 +2428,13 @@ if (isAutotunePage()) {
     .np.float { position: fixed; left: 12px; right: 12px; bottom: 10px; z-index: 2147483643; margin: 0; border-radius: 10px; height: 104px; padding: 6px 24px; }
     .tab.np-up { bottom: 124px; }
     .geq { -webkit-app-region: no-drag; position: fixed; top: 12px; height: 88px; z-index: 2147483640; display: flex; align-items: center; gap: 12px; box-sizing: border-box; padding: 4px 12px;
-      border: 12px solid transparent; border-image: ${T('sk-geq-frame.png')} 70 / 12px stretch; background: radial-gradient(ellipse at 50% 0, #ff8a1f14, transparent 70%), #0d0907eb; background-clip: padding-box; box-shadow: 0 3px 8px #000a; }
+      border: 12px solid transparent; border-image: ${T('sk-geq-frame.png')} 46 / 12px stretch; background: radial-gradient(ellipse at 50% 0, #ff8a1f14, transparent 70%), #0d0907eb; background-clip: padding-box; box-shadow: 0 3px 8px #000a; }
     .geqpw { width: 42px; height: 42px; flex: none; padding: 0; border: 0; border-radius: 50%; cursor: pointer; background: ${T('sk-geq-pwr.png')} center / contain no-repeat; filter: drop-shadow(0 0 6px #ff9a3a99); transition: filter .15s; }
     .geq.off .geqpw { filter: grayscale(.9) brightness(.5); }
     .geqbands { flex: 1; min-width: 0; height: 100%; display: flex; justify-content: space-between; }
-    .geqcol { width: 24px; display: flex; flex-direction: column; align-items: center; }
+    .geqcol { width: 22px; display: flex; flex-direction: column; align-items: center; }
     .geqlbl { font: 600 9px/11px "Oswald", "Barlow Condensed", sans-serif; color: #f0d9a8; letter-spacing: .02em; text-shadow: 0 1px 1px #000; }
-    .geqtrk { position: relative; flex: 1; width: 24px; margin-top: 1px; cursor: ns-resize; touch-action: none; }
+    .geqtrk { position: relative; flex: 1; width: 22px; margin-top: 1px; cursor: ns-resize; touch-action: none; }
     .geqtrk::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 7px; margin-left: -3.5px; border-radius: 4px; background: #050302; box-shadow: inset 0 1px 2px #000, 0 0 0 1px #6a4a26, 0 0 0 2px #140c06; }
     .geqfill { position: absolute; left: 50%; bottom: 0; width: 3px; margin-left: -1.5px; border-radius: 2px; background: linear-gradient(#ffd27a, #ff8a1f); box-shadow: 0 0 5px #ff8a1fcc; pointer-events: none; }
     .geqcap { position: absolute; left: 50%; width: 22px; height: 14px; margin-left: -11px; border-radius: 3px; background: ${T('sk-geq-cap.png')} center / 100% 100%; box-shadow: 0 2px 3px #000c; pointer-events: none; }
@@ -2418,6 +2446,41 @@ if (isAutotunePage()) {
     .geq.locked .geqbands, .geq.locked .geqpw, .geq.locked .geqpre { opacity: .3; pointer-events: none; filter: grayscale(.7); }
     .geqlock { display: none; position: absolute; inset: 0; align-items: center; justify-content: center; pointer-events: none; font: 700 11px "Oswald", sans-serif; letter-spacing: .24em; color: #ffb347; text-shadow: 0 0 6px #ff8a1f, 0 1px 2px #000; }
     .geq.locked .geqlock { display: flex; }
+    .geqtab { flex: none; height: 26px; padding: 0 9px; border: 0; border-radius: 13px; cursor: pointer; font: 700 10px "Oswald", sans-serif; letter-spacing: .12em; color: #ffd9a0;
+      background: linear-gradient(#5a3a1c, #2a1a0c); box-shadow: inset 0 1px 0 #ffcf8a55, 0 0 0 1px #8a5a26, 0 2px 3px #000a; text-shadow: 0 1px 1px #000; }
+    .geqtab:hover { color: #fff1d0; box-shadow: inset 0 1px 0 #ffcf8a88, 0 0 0 1px #c08a44, 0 0 8px #ff9a3a88; }
+    .geq.locked .geqtab { opacity: 1; pointer-events: auto; filter: none; }
+    /* fold-down full-size panel (same look as the reference artwork) */
+    .geqpan { -webkit-app-region: no-drag; position: fixed; top: 104px; z-index: 2147483641; box-sizing: border-box; display: none;
+      border: 18px solid transparent; border-image: ${T('sk-geq-frame.png')} 46 / 18px stretch; background: radial-gradient(ellipse at 50% 20%, #ff8a1f1a, transparent 65%), #0d0907f2; background-clip: padding-box; box-shadow: 0 10px 28px #000e; }
+    .geqpan.open { display: block; animation: geqdrop .18s ease-out; }
+    @keyframes geqdrop { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: none; } }
+    .geqtitle { position: absolute; left: 50%; top: -22px; width: 54%; aspect-ratio: 770 / 96; transform: translateX(-50%); background: ${T('sk-geq-title.png')} center / 100% 100% no-repeat; filter: drop-shadow(0 3px 4px #000c); }
+    .geqlamp { position: absolute; top: 16%; width: 9%; height: 58%; background: center / contain no-repeat; animation: poc-lamp 4.7s linear infinite; filter: drop-shadow(0 0 10px #ff9a3a88); }
+    .geqlamp.l { left: -4px; background-image: ${T('sk-geq-lamp-l.png')}; } .geqlamp.r { right: -4px; background-image: ${T('sk-geq-lamp-r.png')}; animation-delay: -1.9s; }
+    @keyframes poc-lamp { 0%, 40%, 44%, 100% { opacity: 1; } 41% { opacity: .55; } 42% { opacity: .95; } 43% { opacity: .7; } }
+    .geqscr { position: absolute; left: 11%; right: 11%; top: 13%; bottom: 25%; border-radius: 8px; background: linear-gradient(#ffffff06, #00000040); box-shadow: inset 0 0 14px #000, 0 0 0 1px #6a4a26, 0 0 0 3px #1a0f08; }
+    .geqgrid { position: absolute; left: 34px; right: 34px; top: calc(22px + 13px); bottom: 21px; pointer-events: none;
+      background: linear-gradient(#c8954a40, #c8954a40) 0 0 / 100% 1px no-repeat, linear-gradient(#c8954a40, #c8954a40) 0 25% / 100% 1px no-repeat, linear-gradient(#e0b06a66, #e0b06a66) 0 50% / 100% 1px no-repeat, linear-gradient(#c8954a40, #c8954a40) 0 75% / 100% 1px no-repeat, linear-gradient(#c8954a40, #c8954a40) 0 100% / 100% 1px no-repeat; }
+    .geqscale { position: absolute; top: calc(22px + 13px); bottom: 21px; width: 30px; display: flex; flex-direction: column; justify-content: space-between; font: 600 11px/0 "Oswald", sans-serif; color: #f0d9a8; text-shadow: 0 1px 1px #000; }
+    .geqscale.l { left: 4px; text-align: right; } .geqscale.r { right: 2px; text-align: left; }
+    .geqscale span { display: block; height: 0; }
+    .geqhz { position: absolute; right: 8px; top: 6px; font: 600 11px "Oswald", sans-serif; color: #f0d9a8; }
+    .geqbands.big { position: absolute; left: 38px; right: 38px; top: 6px; bottom: 8px; height: auto; }
+    .geqcol.lg { width: 40px; } .geqcol.lg .geqlbl { font-size: 13px; line-height: 16px; }
+    .geqcol.lg .geqtrk { width: 40px; margin-top: 4px; }
+    .geqcol.lg .geqtrk::before { width: 13px; margin-left: -6.5px; border-radius: 7px; box-shadow: inset 0 2px 4px #000, 0 0 0 1px #8a6030, 0 0 0 3px #140c06; }
+    .geqcol.lg .geqfill { width: 5px; margin-left: -2.5px; border-radius: 3px; box-shadow: 0 0 8px #ff8a1f; }
+    .geqcol.lg .geqcap { width: 38px; height: 26px; margin-left: -19px; border-radius: 4px; box-shadow: 0 3px 5px #000d; }
+    .geqfoot { position: absolute; left: 11%; right: 11%; bottom: 3%; height: 17%; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .geqpw.big { width: 54px; height: 54px; }
+    .geqfoot .geqpre { flex: 1; height: 38px; max-width: 300px; justify-content: space-between; border-radius: 8px; }
+    .geqfoot .geqname { font-size: 18px; } .geqfoot .geqarr { font-size: 15px; padding: 0 12px; }
+    .geqreset { width: 46px; height: 46px; flex: none; padding: 0; border: 0; border-radius: 50%; cursor: pointer; background: ${T('sk-geq-reset.png')} center / contain no-repeat; filter: drop-shadow(0 2px 3px #000c); }
+    .geqreset:hover { filter: drop-shadow(0 0 6px #ffb347aa) brightness(1.15); }
+    .geqpan.off .geqfill { opacity: .25; box-shadow: none; } .geqpan.off .geqpw { filter: grayscale(.9) brightness(.5); }
+    .geqpan.locked .geqscr, .geqpan.locked .geqfoot { opacity: .3; pointer-events: none; filter: grayscale(.7); }
+    .geqpan.locked .geqlock { display: flex; font-size: 16px; }
     /* header: rounded brass logo plate (same pill frame as the search box), spaced STUDIO line, two glass lamps hanging over the pipe strip */
     .brand { display: none !important; }
     .brand { top: 16px; height: 76px; border-width: 20px 26px; border-image: ${T('sk-pill.png')} 72 / 20px 26px stretch; border-radius: 38px; padding: 0 4px; box-shadow: 0 4px 12px #000b; }
