@@ -2395,10 +2395,10 @@ if (isAutotunePage()) {
         .np { position: relative; flex: 1 0 100%; display: flex; align-items: center; gap: 18px; box-sizing: border-box; margin-top: 4px;
       padding: 10px 18px; border: 1px solid #0009; border-radius: 10px; box-shadow: inset 0 0 18px #000a;
       background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; }
-    .chain { position: fixed; top: 144px; bottom: 124px; width: 38px; z-index: 2147483637; pointer-events: none; background: ${T('sk-chain.png')} 0 0 / 38px 74px repeat-y; filter: drop-shadow(1px 0 1px #000c); opacity: .95; }
+    .chain.l, .chain.r { position: fixed; top: 144px; bottom: 124px; width: 38px; z-index: 2147483637; pointer-events: none; background: ${T('sk-chain.png')} 0 0 / 38px 74px repeat-y; filter: drop-shadow(1px 0 1px #000c); opacity: .95; }
     .chgear { position: fixed; top: 82px; width: 124px; height: 124px; z-index: 2147483638; pointer-events: none; background: ${T('sk-gear.png')} center / contain no-repeat; filter: drop-shadow(0 3px 5px #000c); animation: chg 60s linear infinite; }
     .chgear.r { animation-direction: reverse; } @keyframes chg { to { transform: rotate(360deg); } }
-    .chain::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 26px; background: linear-gradient(#0d0a08, transparent); }
+    .chain.l::after, .chain.r::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 26px; background: linear-gradient(#0d0a08, transparent); }
     .chordbox { display: none !important; } /* chord detection keeps running (experimental); the box is hidden until it gets a new home */
     .chordbox { position: fixed; left: 64px; top: 116px; height: 38px; z-index: 2147483639; display: flex; align-items: center; gap: 12px; padding: 0 14px; max-width: 560px; box-sizing: border-box; overflow: hidden;
       background: #0d0a08d9; border: 1px solid #5a4630; border-radius: 6px; box-shadow: inset 0 0 8px #000, 0 2px 6px #000a; pointer-events: none; }
@@ -3329,6 +3329,7 @@ if (isAutotunePage()) {
 
   // Noise gate (ScriptProcessor, 512 frames = ~12 ms): envelope follower with hysteresis, hold and smoothed attack/release. Only in the signal path while switched on.
   function buildGate(context) {
+    if (!(typeof OfflineAudioContext === 'function' && context instanceof OfflineAudioContext)) return buildLiveGate(context);
     const input = fxGain(context), output = fxGain(context);
     const proc = context.createScriptProcessor(512, 2, 2);
     proc.channelCount = 2; proc.channelCountMode = 'explicit'; proc.channelInterpretation = 'speakers';
@@ -3352,6 +3353,34 @@ if (isAutotunePage()) {
 
   // Harmonizer: a pitch-shifted copy of the voice (WSOLA, same shifter as the music key change), blended in as a second voice.
   const HARM_INTERVALS = [[-12, 'OCTAVE DOWN'], [3, 'THIRD +3'], [4, 'THIRD +4'], [7, 'FIFTH +7'], [12, 'OCTAVE UP']];
+  // Live gate without a ScriptProcessor: the audio itself only flows through native nodes (10 ms delay -> gain), so a busy main thread
+  // can never punch holes into the voice (the 512-frame ScriptProcessor gate crackled whenever the page stalled for > 12 ms).
+  // An analyser on the undelayed signal is read every ~5 ms; the computed gain is scheduled ahead with setTargetAtTime, so the
+  // 10 ms delay acts as look-ahead and a late timer only delays the next decision.
+  function buildLiveGate(context) {
+    const input = fxGain(context), output = fxGain(context);
+    const delay = context.createDelay(0.05); delay.delayTime.value = 0.01;
+    const vca = fxGain(context);
+    const an = context.createAnalyser(); an.fftSize = 512; an.smoothingTimeConstant = 0;
+    input.connect(delay); delay.connect(vca); vca.connect(output); input.connect(an);
+    const buf = new Float32Array(an.fftSize);
+    const g = { input, output, proc: null, thr: 0.003, floor: 0.02, gain: 1, env: 0, open: false, holdUntil: 0, live: true };
+    let target = 1;
+    const tick = () => {
+      if (context.state === 'closed') { clearInterval(timer); return; }
+      an.getFloatTimeDomainData(buf);
+      let peak = 0; for (let i = 0; i < buf.length; i += 1) { const a = Math.abs(buf[i]); if (a > peak) peak = a; }
+      const now = context.currentTime;
+      g.env = Math.max(peak, g.env * 0.7);
+      if (g.env > g.thr) { g.open = true; g.holdUntil = now + 0.06; } else if (now > g.holdUntil && g.env < g.thr * 0.7) g.open = false;
+      const want = g.open ? 1 : g.floor;
+      if (want !== target) { target = want; vca.gain.cancelScheduledValues(now); vca.gain.setTargetAtTime(want, now, want > g.gain ? 0.003 : 0.09); }
+      g.gain = want;
+    };
+    const timer = setInterval(tick, 5);
+    return g;
+  }
+
   function buildHarmonizer(context) {
     const input = fxGain(context), output = fxGain(context);
     const proc = context.createScriptProcessor(1024, 2, 2);
