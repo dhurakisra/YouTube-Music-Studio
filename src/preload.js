@@ -900,6 +900,7 @@ if (isAutotunePage()) {
     studio.syncVocalLab = labBtn.syncFn;
     const mOut = mod('OUTPUT');
     const takeBtn = h('button', 'btn solo recbig takebtn', 'REC', { type: 'button', 'aria-label': 'Record a take' });
+    takeBtn.classList.add('st-rec');
     takeBtn.title = 'Records every layer (music stems, mic dry and with effects). Press again to finish and save.';
     const takeInfo = h('span', 'eqinfo', '');
     studio.infoEls?.push(takeInfo);
@@ -2882,7 +2883,7 @@ if (isAutotunePage()) {
     .skin .st-chain-module .st-select-label { font-size:.59cqw; }
     .skin .st-chain-module .st-modtitle { font-size:.76cqw; font-weight:700; letter-spacing:.02em; }
     .skin .st-chain-module .knob-box { font:700 .65cqw/1 'Barlow Condensed','Oswald',sans-serif; letter-spacing:.01em; text-shadow:0 1px 2px #000; overflow:visible; }
-    .skin .st-chain-module .knob-box .st-knob-label { position:absolute; left:-8%; right:-8%; bottom:0; display:block; text-align:center; white-space:nowrap; line-height:1; }
+    .skin .st-chain-module .knob-box .st-knob-label { position:absolute; left:-8%; right:-8%; bottom:calc(100% - (92 / 4344 * 100cqw) - (15 / 4344 * 100cqw) - .65cqw); display:block; text-align:center; white-space:nowrap; line-height:1; }
     .skin .st-chain-module .st-module-content > .sel { left:10%; right:10%; bottom:4%; height:calc(55 / 4344 * 100cqw); font-size:.59cqw; }
     .skin .st-chain-module.st-chain-m0 .st-module-content > .st-select-wrap { left:8%; right:8%; top:18%; bottom:auto; height:13%; }
     .skin .st-chain-module.st-chain-m0 .st-module-content > .modbody { left:8%; right:8%; top:34%; height:34%; }
@@ -2907,6 +2908,14 @@ if (isAutotunePage()) {
     .skin .st-button-label.st-stems::after { content:''; width:.78em; height:.32em; margin-left:-1.06em; margin-right:.28em; background:linear-gradient(to right,currentColor 0 .16em,transparent .16em calc(100% - .16em),currentColor calc(100% - .16em)); border-radius:.05em; }
     .skin .st-button-label.st-karaoke::before { content:''; width:.55em; height:.55em; border-radius:50%; background:#bd1f0e; box-shadow:inset 0 0 0 .08em #65120a,0 0 1px #000; margin-right:.42em; }
     .skin .status > span { font-size:.95cqw; }
+    .skin .status > span.clock { justify-content:center; text-align:center; font:700 .7cqw/1 'Oswald',sans-serif; letter-spacing:.02em; }
+    .skin .strip .name { font:700 .82cqw/1 'Barlow Condensed','Oswald',sans-serif; letter-spacing:.02em; white-space:nowrap; }
+    .skin .st-chain-module .st-module-content .btn.fxon, .skin .st-chain-module .st-module-content .btn.takebtn { box-sizing:border-box; border:0; border-image:none; background:${T('sk-st-cream.png')} center/100% 100% no-repeat; }
+    .skin .st-chain-module .st-module-content .btn.fxon.on { background-image:${T('sk-st-amber.png')}; }
+    .skin:not(.m-karaoke):not(.mixview):not(.practice) .st-chainrow .st-chain-module .btn.fxon,
+    .skin:not(.m-karaoke):not(.mixview):not(.practice) .st-chainrow .st-chain-module .btn.takebtn { filter:brightness(1.65); }
+    .skin .st-chain-module.st-chain-m10 .st-module-content > .st-select-wrap:nth-child(2) { left:10%; right:10%; top:18%; bottom:auto; width:auto; height:calc(55 / 4344 * 100cqw); }
+    .skin .st-button-label.st-rec::before { content:''; width:.55em; height:.55em; border-radius:50%; background:#bd1f0e; box-shadow:inset 0 0 0 .08em #65120a,0 0 1px #000; margin-right:.42em; }
     .skin .btn:not(.mute):not(.modled):active { transform:translateY(1px); }  `;
 
   async function installStudioDrawer() {
@@ -3194,7 +3203,7 @@ if (isAutotunePage()) {
       const vus=q(outSection,'.vus'); qa(vus,'.vu').forEach((el,i)=>stPlace(el,...(i===0?[3368,172,3648,365]:[3675,172,3952,365])));
       const outKnobs=qa(outSection,'.knob-box'); outKnobs.forEach((el,i)=>stPlace(el,...(i===0?[3443,366,3651,574]:[3734,423,3826,515])));
       stPlace(q(outSection,'.limiter'),3553,655,3743,715);
-      const chainRow=q(chainSection,'.st-chainrow'); qa(chainRow,'.st-mod').forEach((el,i)=>{el.style.flex='0 1 calc('+[450,450,175,175,270,175,175,175,270,270,175,270,270,260][i]+' / 4344 * 100cqw)';});
+      const chainRow=q(chainSection,'.st-chainrow'); qa(chainRow,'.st-mod').forEach((el,i)=>{el.style.flex='0 1 calc('+[450,450,175,175,270,175,175,175,270,270,260,270,270,260][i]+' / 4344 * 100cqw)';});
       const chainbar=q(chainSection,'.st-chainbar'); stPlace(chainbar,973,845,2320,902); chainbar.classList.add('st-placed');
       const modules=qa(chainRow,'.st-mod'); modules.forEach((el,i)=>{
         const content=h('div','st-module-content'); while(el.firstChild) content.appendChild(el.firstChild); el.appendChild(content);
@@ -3232,7 +3241,8 @@ if (isAutotunePage()) {
           const br=button.getBoundingClientRect(), sr=consoleEl.getBoundingClientRect(), cs=getComputedStyle(button);
           if(label.textContent!==source.textContent) label.textContent=source.textContent; label.style.left=(br.left-sr.left)+'px'; label.style.top=(br.top-sr.top)+'px'; label.style.width=br.width+'px'; label.style.height=br.height+'px';
           const amber=button.classList.contains('on')&&!button.classList.contains('bigbtn')&&!button.classList.contains('takebtn')&&(button.classList.contains('fxon')||button.classList.contains('limiter')||!!button.closest('.section.eq')||!!button.closest('.section.enh'));
-          label.style.display=br.width&&br.height&&cs.display!=='none'?'flex':'none'; label.style.font=`700 ${Math.max(8,Math.min(32,br.height*(button.matches('.bigbtn,.startk')?.49:.52)))}px 'Barlow Condensed','Oswald',sans-serif`; label.style.color=button.classList.contains('mute')?'#f1d6bd':amber?'#8a1a0a':'#2a1a0c'; label.style.textShadow='0 1px 1px #fff4'; label.style.letterSpacing='.04em';
+          const chainButton=!!button.closest('.st-chain-module')&&(button.classList.contains('fxon')||button.classList.contains('takebtn'));
+          label.style.display=br.width&&br.height&&cs.display!=='none'?'flex':'none'; label.style.font=`700 ${Math.max(8,Math.min(32,br.height*(button.matches('.bigbtn,.startk')?.49:.52)))}px 'Barlow Condensed','Oswald',sans-serif`; label.style.color=button.classList.contains('mute')?'#f1d6bd':amber?'#8a1a0a':chainButton?'#f1d6bd':'#2a1a0c'; label.style.textShadow=chainButton?'0 1px 2px #120b05':'0 1px 1px #fff4'; label.style.letterSpacing='.04em';
           let opacity=1; for(let node=button;node&&node!==consoleEl;node=node.parentElement) opacity*=Number(getComputedStyle(node).opacity)||1; label.style.opacity=String(opacity);
         };
         new MutationObserver(sync).observe(button,{childList:true,subtree:true,characterData:true});
