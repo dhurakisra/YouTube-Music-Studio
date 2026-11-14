@@ -1668,7 +1668,10 @@ if (isAutotunePage()) {
     const prev = mk('\u23EE', 'Previous song', () => q('.previous-button')?.click());
     const playBtn = mk('\u25B6', 'Play or pause', () => { const pb = q('.play-pause-button'); if (pb) pb.click(); else { const m = findMedia(); if (m) { if (m.paused) m.play()?.catch?.(() => {}); else m.pause(); } } }, 'solo');
     const next = mk('\u23ED', 'Next song', () => q('.next-button')?.click());
-    const ctl = h('div', 'npctl'); ctl.append(prev, playBtn, next);
+    const shuf = mk('', 'Shuffle', () => q('.shuffle')?.click(), 'shuf');
+    const rpt = mk('', 'Repeat', () => q('.repeat')?.click(), 'rpt');
+    const ctl = h('div', 'npctl'); ctl.append(shuf, prev, playBtn, next, rpt);
+    try { new ResizeObserver(() => { fill.style.backgroundSize = bar.clientWidth + 'px 100%'; }).observe(bar); } catch {}
     bar.addEventListener('click', (ev) => { const d = songDur(findMedia()); if (!(d > 0)) return; const r = bar.getBoundingClientRect(); songSeek(Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * d); });
     win.append(h('i', 'screw tl'), h('i', 'screw tr'), h('i', 'screw bl'), h('i', 'screw br'), art, info, ctl);
     (studio.consoleEl || ui).appendChild(win);
@@ -2239,7 +2242,7 @@ if (isAutotunePage()) {
     .brandname .bm { color: #ff6a3d; }
     .brandsub { margin-top: 5px; font: italic 700 9px/1 "Barlow Condensed", "Bahnschrift", system-ui, sans-serif; letter-spacing: .18em; color: var(--brass); white-space: nowrap; } .topvu .knob.big::after { top: 9px; height: 16px; width: 4px; margin-left: -2px; transform-origin: 50% 21px; }
     .np.float { position: fixed; left: 12px; right: 12px; bottom: 10px; z-index: 2147483643; margin: 0; border-radius: 10px; height: 104px; padding: 6px 24px; }
-    .tab.np-up { bottom: 114px; }
+    .tab.np-up { bottom: 112px; }
     .npticks { position: relative; height: 22px; margin-top: 1px; }
     .nptick { position: absolute; top: 0; transform: translateX(-50%); width: 28px; height: 22px; padding: 0; border: 0; background: none; cursor: pointer; color: var(--ink-dim); font: 700 9px "Barlow Condensed", "Bahnschrift", system-ui, sans-serif; letter-spacing: .06em; }
     .nptick .tkline { position: absolute; left: 50%; top: 0; width: 1px; height: 5px; background: var(--brass); opacity: .6; }
@@ -2254,6 +2257,27 @@ if (isAutotunePage()) {
     .npmeta { font-size: 10px; letter-spacing: .08em; color: var(--ink-dim); margin-top: 4px; }
     .npctl { display: flex; gap: 6px; flex: none; }
     .btn.npbtn { width: 44px; height: 34px; font-size: 14px; }
+    /* steampunk player bar: dark plate under a copper rod, glowing waveform as the progress track, round brass transport buttons */
+    .np.float { left: 0; right: 0; bottom: 0; height: 112px; border-radius: 0; padding: 16px 22px 4px; border: 0; gap: 20px;
+      background: ${T('sk-rod.png')} center top / 100% 12px no-repeat, linear-gradient(#0000, #0000 12px, #1a120b 13px, #0b0806 60%, #050302), #0b0806;
+      box-shadow: 0 -6px 18px #000c, inset 0 -1px 0 #ffffff12; }
+    .np.float .npart { width: 62px; height: 62px; box-shadow: 0 0 0 2px #0a0807, 0 0 0 4px #9a6a2c, 0 0 10px #ff9a3a55; }
+    .np.float .nptitle { font: 700 19px/1.15 "Barlow Condensed", "Barlow", sans-serif; letter-spacing: .02em; }
+    .np.float .npartist { font: 600 14px "Barlow Condensed", "Barlow", sans-serif; letter-spacing: .04em; color: #cdbfa9; }
+    .npbar.libbar { position: relative; height: 30px; margin-top: 4px; border: 0; border-radius: 0; cursor: pointer; overflow: visible;
+      background: linear-gradient(#0503027a, #0503027a), ${T('sk-wave.png')} 0 0 / 100% 100% no-repeat !important; box-shadow: none; }
+    .npbar .libfill { position: relative; height: 100%; background: ${T('sk-wave.png')} 0 0 / 600px 100% no-repeat !important; box-shadow: none; filter: drop-shadow(0 0 4px #ff8a1f88); }
+    .npbar .libfill::after { content: ""; position: absolute; right: -1px; top: 2px; bottom: 2px; width: 2px; background: #ffe2a8; box-shadow: 0 0 6px 2px #ffb347; }
+    .np.float .npticks { height: 16px; margin-top: 0; } .np.float .nptick .tklbl { top: 6px; } .np.float .nptick .tkline { height: 3px; } .np.float .nptick.major .tkline { height: 5px; }
+    .npctl { align-items: center; gap: 10px; }
+    .btn.npbtn { width: 42px; height: 42px; padding: 0; border: 0 !important; border-radius: 50%; font-size: 0 !important; color: transparent !important; background: center / contain no-repeat !important; box-shadow: none !important; filter: drop-shadow(0 2px 3px #000c); transition: filter .15s; }
+    .btn.npbtn:hover { filter: drop-shadow(0 0 6px #ffb347aa) brightness(1.15); }
+    .btn.npbtn.shuf { background-image: ${T('sk-t-shuf.png')} !important; }
+    .btn.npbtn.rpt { background-image: ${T('sk-t-rep.png')} !important; }
+    .npctl .btn.npbtn:nth-child(2) { background-image: ${T('sk-t-prev.png')} !important; }
+    .npctl .btn.npbtn:nth-child(4) { background-image: ${T('sk-t-next.png')} !important; }
+    .btn.npbtn.solo { width: 58px; height: 58px; background-image: ${T('sk-t-play.png')} !important; }
+    .btn.npbtn.solo.on { background-image: ${T('sk-t-pause.png')} !important; filter: drop-shadow(0 0 8px #ff9a3acc); }
     .lyrtab { position: fixed; right: 0; top: 38%; z-index: 2147483644; padding: 12px 6px; writing-mode: vertical-rl; cursor: pointer;
       border: 1px solid var(--edge-hi); border-right: 0; border-radius: 10px 0 0 10px; background: linear-gradient(270deg, #2c2622, #1b1816);
       color: var(--brass); font: 700 12px "Barlow Condensed", "Bahnschrift", system-ui, sans-serif; letter-spacing: .2em; transition: right .3s cubic-bezier(.2,.8,.2,1); }
@@ -2478,6 +2502,7 @@ if (isAutotunePage()) {
         ${fontCss}
         .background-gradient { background: none !important; } ytmusic-fullbleed-thumbnail-renderer { display: none !important; }
         html, body { background: ${T('sk-bg.jpg')} center / cover no-repeat fixed, #0b0806 !important; }
+        html { overflow-x: hidden !important; }
         ytmusic-app, ytmusic-app-layout, ytmusic-browse-response, ytmusic-tabbed-search-results-renderer, #main-panel, #content { --ytmusic-general-background-c: transparent; background: transparent !important; }
         ytmusic-nav-bar, ytmusic-nav-bar #left-content { --ytmusic-nav-bar-background: transparent; }
         ytmusic-nav-bar { background:
