@@ -1683,9 +1683,11 @@ if (isAutotunePage()) {
     // orange glow with a white-hot core; the played part burns brighter. Fed by the same analysers as the top VU meters.
     const cv = document.createElement('canvas'); cv.className = 'npviz'; bar.appendChild(cv);
     const g2 = cv.getContext('2d'); let fbuf = null, lv = null, raw = null, peak = 0.2;
-    const draw = () => {
+    let lastDraw = 0;
+    const draw = (ts) => {
       requestAnimationFrame(draw);
-      if (document.hidden) return;
+      if (document.hidden || ts - lastDraw < 31) return; // 30 fps is plenty for the bars and halves the main-thread cost
+      lastDraw = ts;
       const W = bar.clientWidth, H = bar.clientHeight + 24; if (!W) return;
       const dpr = window.devicePixelRatio || 1;
       if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
@@ -2861,8 +2863,8 @@ if (isAutotunePage()) {
         ytmusic-carousel-shelf-renderer #previous-items-button[disabled], ytmusic-carousel-shelf-renderer #next-items-button[disabled] { opacity: .35; }
         #poc-bgfx { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
         #poc-bgfx .fxspace { position: absolute; left: 0; top: 0; width: 1920px; height: 1081px; transform-origin: 0 0; }
-        #poc-bgfx .fx { position: absolute; display: block; }
-        #poc-bgfx .lamp { border-radius: 50%; background: radial-gradient(ellipse at center, #ffd88aaa 0, #ffa03a66 22%, #ff7a1a22 48%, transparent 70%); mix-blend-mode: screen; animation: poc-lampfx 3s linear infinite; }
+        #poc-bgfx .fx { position: absolute; display: block; will-change: transform, opacity; }
+        #poc-bgfx .lamp { border-radius: 50%; background: radial-gradient(ellipse at center, #ffd88aaa 0, #ffa03a66 22%, #ff7a1a22 48%, transparent 70%); will-change: opacity; animation: poc-lampfx 3s linear infinite; }
         @keyframes poc-lampfx { 0%, 100% { opacity: .55; } 7% { opacity: .9; } 9% { opacity: .35; } 11% { opacity: .85; } 30% { opacity: .7; } 46% { opacity: 1; } 48% { opacity: .2; } 50% { opacity: .95; } 53% { opacity: .5; } 70% { opacity: .8; } 83% { opacity: .4; } 86% { opacity: .9; } }
         #poc-bgfx .valvebg { background: ${T('sk-fx-valvebg.png')} center / 100% 100%; }
         #poc-bgfx .valve { background: ${T('sk-fx-valve.png')} center / 100% 100%; animation: poc-spin 26s linear infinite; }
@@ -2882,8 +2884,8 @@ if (isAutotunePage()) {
         @keyframes poc-steam2 { 0% { opacity: 0; transform: translate(0, 0) scale(.35); } 5% { opacity: .9; } 40% { opacity: .7; transform: translate(52px, -66px) scale(1.5); } 70% { opacity: .4; transform: translate(84px, -140px) scale(2.2); } 100% { opacity: 0; transform: translate(130px, -205px) scale(3.1); } }
         #poc-brand { position: fixed; left: 112px; top: 30px; z-index: 2147483640; text-decoration: none; -webkit-app-region: no-drag; }
         #poc-brand .poc-ntitle { margin: 0 !important; padding: 8px 26px !important; font-size: 0 !important; line-height: 1 !important; }
-        #poc-brand .poc-logo { display: flex !important; align-items: center; gap: 10px; text-shadow: none; animation: poc-logo-glow 4.5s linear infinite; }
-        @keyframes poc-logo-glow { 0% { filter: brightness(1) drop-shadow(0 0 3px #ffb34799) drop-shadow(0 0 8px #ff8a1f55); } 58% { filter: brightness(1) drop-shadow(0 0 3px #ffb34799) drop-shadow(0 0 8px #ff8a1f55); } 59% { filter: brightness(.42) drop-shadow(0 0 0 #0000) drop-shadow(0 0 0 #0000); } 60% { filter: brightness(1) drop-shadow(0 0 3px #ffb34799) drop-shadow(0 0 8px #ff8a1f55); } 61% { filter: brightness(.42) drop-shadow(0 0 0 #0000) drop-shadow(0 0 0 #0000); } 62% { filter: brightness(.75) drop-shadow(0 0 2px #ffb34766) drop-shadow(0 0 4px #ff8a1f33); } 63% { filter: brightness(.42) drop-shadow(0 0 0 #0000) drop-shadow(0 0 0 #0000); } 64% { filter: brightness(1) drop-shadow(0 0 3px #ffb34799) drop-shadow(0 0 8px #ff8a1f55); } 65% { filter: brightness(.42) drop-shadow(0 0 0 #0000) drop-shadow(0 0 0 #0000); } 67% { filter: brightness(1) drop-shadow(0 0 3px #ffb34799) drop-shadow(0 0 8px #ff8a1f55); } 80% { filter: brightness(1) drop-shadow(0 0 3px #ffb34799) drop-shadow(0 0 8px #ff8a1f55); } 81% { filter: brightness(.75) drop-shadow(0 0 2px #ffb34766) drop-shadow(0 0 4px #ff8a1f33); } 82% { filter: brightness(.42) drop-shadow(0 0 0 #0000) drop-shadow(0 0 0 #0000); } 84% { filter: brightness(1) drop-shadow(0 0 3px #ffb34799) drop-shadow(0 0 8px #ff8a1f55); } 85% { filter: brightness(.42) drop-shadow(0 0 0 #0000) drop-shadow(0 0 0 #0000); } 86% { filter: brightness(.42) drop-shadow(0 0 0 #0000) drop-shadow(0 0 0 #0000); } 88% { filter: brightness(.75) drop-shadow(0 0 2px #ffb34766) drop-shadow(0 0 4px #ff8a1f33); } 89% { filter: brightness(1) drop-shadow(0 0 3px #ffb34799) drop-shadow(0 0 8px #ff8a1f55); } 100% { filter: brightness(1) drop-shadow(0 0 3px #ffb34799) drop-shadow(0 0 8px #ff8a1f55); } }
+        #poc-brand .poc-logo { display: flex !important; align-items: center; gap: 10px; text-shadow: none; filter: drop-shadow(0 0 3px #ffb34799) drop-shadow(0 0 8px #ff8a1f55); will-change: opacity; animation: poc-logo-glow 4.5s linear infinite; }
+        @keyframes poc-logo-glow { 0% { opacity: 1; } 58% { opacity: 1; } 59% { opacity: 0.42; } 60% { opacity: 1; } 61% { opacity: 0.42; } 62% { opacity: 0.75; } 63% { opacity: 0.42; } 64% { opacity: 1; } 65% { opacity: 0.42; } 67% { opacity: 1; } 80% { opacity: 1; } 81% { opacity: 0.75; } 82% { opacity: 0.42; } 84% { opacity: 1; } 85% { opacity: 0.42; } 86% { opacity: 0.42; } 88% { opacity: 0.75; } 89% { opacity: 1; } 100% { opacity: 1; } } /* opacity only: runs on the compositor (an animated filter repainted every frame on the main thread) */
         #poc-brand .brandicon { width: 34px; height: 24px; flex: none; filter: drop-shadow(0 1px 2px #000); }
         #poc-brand .brandname, #poc-brand .brandname * { font: 700 22px/1 'Oswald', 'Barlow Condensed', sans-serif !important; color: #f1e6d3 !important; white-space: nowrap; text-shadow: 0 1px 2px #000 !important; letter-spacing: -.01em; }
         #poc-brand .brandname .bm { color: #ff6a3d !important; }
@@ -3766,7 +3768,9 @@ if (isAutotunePage()) {
       dest.channelCount = 2; dest.channelCountMode = 'explicit';
       graph.source.connect(dest);
       const track = dest.stream.getAudioTracks()[0];
-      const reader = new MediaStreamTrackProcessor({ track }).readable.getReader();
+      // maxBufferSize: the default queue is only a few ~10 ms frames, so any main-thread stall over ~100 ms silently dropped audio
+      // (input fell to ~75 % of real time and the stems underran). 500 frames = ~5 s of slack: a stall now only delays blocks.
+      const reader = new MediaStreamTrackProcessor({ track, maxBufferSize: 500 }).readable.getReader();
       graph.mstp = { dest, track, reader, stopped: false };
       graph.setMstpActive(true);
       log('pcm_capture_mode', { transport: 'media-stream-track-processor' });
