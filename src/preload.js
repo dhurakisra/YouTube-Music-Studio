@@ -1747,7 +1747,7 @@ if (isAutotunePage()) {
       const guide = document.getElementById('guide');
       const gw = guide ? guide.getBoundingClientRect().right : 300;
       const left = gw + 6, right = window.innerWidth - 26; // chain strip: just right of the left panel, just left of the page scrollbar
-      l.style.left = left + 'px'; r.style.left = (right - 22) + 'px';
+      l.style.left = left + 'px'; r.style.left = (right - 50) + 'px';
       let shelves = []; try { shelves = document.querySelectorAll(sel); } catch { return; }
       for (const sh of shelves) {
         const rc = sh.getBoundingClientRect(); if (!rc.width) continue;
@@ -1757,10 +1757,10 @@ if (isAutotunePage()) {
           for (const side of ['l', 'r']) for (const pos of ['t', 'b']) { const k = document.createElement('i'); k.className = 'poc-hook ' + side + ' ' + pos; sh.appendChild(k); }
           hooks = sh.querySelectorAll(':scope > .poc-hook');
         }
-        const lw = Math.max(0, rc.left - (left + 11)), rw = Math.max(0, (right - 11) - rc.right);
+        const lw = Math.max(0, rc.left - (left + 25)), rw = Math.max(0, (right - 25) - rc.right);
         for (const k of hooks) {
-          if (k.classList.contains('l')) { k.style.width = (lw + 36) + 'px'; k.style.left = (-(lw + 10) - 26 + 10) + 'px'; }
-          else { k.style.width = (rw + 36) + 'px'; k.style.right = (-(rw + 10) - 26 + 10) + 'px'; }
+          if (k.classList.contains('l')) { k.style.width = (lw + 24) + 'px'; k.style.left = (-(lw + 14)) + 'px'; }
+          else { k.style.width = (rw + 24) + 'px'; k.style.right = (-(rw + 14)) + 'px'; }
         }
       }
     };
@@ -2191,7 +2191,7 @@ if (isAutotunePage()) {
         .np { position: relative; flex: 1 0 100%; display: flex; align-items: center; gap: 18px; box-sizing: border-box; margin-top: 4px;
       padding: 10px 18px; border: 1px solid #0009; border-radius: 10px; box-shadow: inset 0 0 18px #000a;
       background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; }
-    .chain { position: fixed; top: 158px; bottom: 112px; width: 22px; z-index: 2147483637; pointer-events: none; background: ${T('sk-chain.png')} 0 0 / 22px 35px repeat-y; filter: drop-shadow(1px 0 1px #000c); opacity: .95; }
+    .chain { position: fixed; top: 158px; bottom: 112px; width: 50px; z-index: 2147483637; pointer-events: none; background: ${T('sk-chain.png')} 0 0 / 50px 63px repeat-y; filter: drop-shadow(1px 0 1px #000c); opacity: .95; }
     .chain::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 26px; background: linear-gradient(#0d0a08, transparent); }
     .chordbox { position: fixed; left: 64px; top: 116px; height: 38px; z-index: 2147483639; display: flex; align-items: center; gap: 12px; padding: 0 14px; max-width: 560px; box-sizing: border-box; overflow: hidden;
       background: #0d0a08d9; border: 1px solid #5a4630; border-radius: 6px; box-shadow: inset 0 0 8px #000, 0 2px 6px #000a; pointer-events: none; }
@@ -2507,7 +2507,7 @@ if (isAutotunePage()) {
         @property --gh { syntax: '<number>'; inherits: false; initial-value: 0; }
         @property --gw { syntax: '<number>#'; inherits: false; initial-value: 255, 157, 61; }
         i.poc-hook { position: absolute; height: 30px; pointer-events: none; z-index: 2; box-sizing: border-box; border: solid transparent; border-width: 0 24px; border-image: ${T('sk-hook.png')} 0 60 fill / 0 24px / 0 stretch; filter: drop-shadow(0 2px 3px #000c); }
-        i.poc-hook.t { top: 16%; } i.poc-hook.b { bottom: 16%; }
+        i.poc-hook.t { top: 16%; } i.poc-hook.b { bottom: 16%; }
         ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title > i.poc-spark { position: absolute; z-index: 3; width: 1.5px; height: 1.5px; border-radius: 50%; pointer-events: none; opacity: 0; background: #fffbe6; box-shadow: 0 0 2px 1px #ffd27a, 0 0 5px 1px #ff7a1fcc; animation: poc-fall 1.5s linear infinite; }
         @keyframes poc-fall { 0% { opacity: 0; transform: translate(0, 0) scale(1); } 0.3% { opacity: 1; transform: translate(0, 0) scale(1.8); } 2.5% { opacity: 1; transform: translate(calc(var(--dx) * .8), calc(var(--dy) * .8)) scale(1); } 5% { opacity: .7; transform: translate(var(--dx), calc(var(--dy) + 6px)) scale(.7); } 7% { opacity: 0; transform: translate(calc(var(--dx) * 1.1), calc(var(--dy) + 12px)) scale(.4); } 100% { opacity: 0; transform: translate(calc(var(--dx) * 1.1), calc(var(--dy) + 12px)); } }
         @keyframes poc-heat { 0%, 12% { --gh: 0; --gw: 255, 157, 61; } 32% { --gh: .45; --gw: 255, 120, 45; } 46% { --gh: 1; --gw: 255, 82, 35; } 52% { --gh: .9; --gw: 255, 82, 35; } 76% { --gh: .25; --gw: 255, 130, 50; } 92%, 100% { --gh: 0; --gw: 255, 157, 61; } }
@@ -2523,7 +2523,7 @@ if (isAutotunePage()) {
         ytmusic-two-row-item-renderer { transition: box-shadow .15s; }
         ytmusic-two-row-item-renderer:hover { box-shadow: 0 0 16px 3px #ffb34780, 0 0 4px 1px #ffd27acc !important; }
         /* song-list shelves (Quick picks, Trending songs, Covers & remixes, Long listens ...): one steampunk plate per shelf; the small song rows stay unframed */
-        ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)), ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)), ytmusic-immersive-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)) { position: relative; box-sizing: border-box !important; max-width: 1540px; margin: 76px auto 24px !important; padding: 12px 20px 16px !important; border: 26px solid transparent !important;
+        ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)), ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)), ytmusic-immersive-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)) { position: relative; box-sizing: border-box !important; width: calc(100% + 28px) !important; max-width: none; margin: 76px auto 24px !important; padding: 12px 20px 16px !important; border: 26px solid transparent !important;
           border-image: ${T('sk-shelf-body.png')} 120 fill / 26px stretch !important; background: none !important; transition: box-shadow .15s; }
         ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))::before, ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))::before, ytmusic-immersive-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))::before { content: ""; position: absolute; left: -26px; right: -26px; top: -94px; height: 72px; pointer-events: none;
           background: ${T('sk-shelf-bl.png')} left top / calc((100% - 545px) / 2) 100% no-repeat, ${T('sk-shelf-bc.png')} center top / 545px 100% no-repeat, ${T('sk-shelf-br.png')} right top / calc((100% - 545px) / 2) 100% no-repeat; }
