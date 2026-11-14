@@ -2191,7 +2191,7 @@ if (isAutotunePage()) {
         .np { position: relative; flex: 1 0 100%; display: flex; align-items: center; gap: 18px; box-sizing: border-box; margin-top: 4px;
       padding: 10px 18px; border: 1px solid #0009; border-radius: 10px; box-shadow: inset 0 0 18px #000a;
       background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; }
-    .chain { position: fixed; top: 158px; bottom: 112px; width: 50px; z-index: 2147483637; pointer-events: none; background: ${T('sk-chain.png')} 0 0 / 50px 63px repeat-y; filter: drop-shadow(1px 0 1px #000c); opacity: .95; }
+    .chain { position: fixed; top: 158px; bottom: 112px; width: 50px; z-index: 2147483637; pointer-events: none; background: ${T('sk-chain.png')} 0 0 / 50px 97px repeat-y; filter: drop-shadow(1px 0 1px #000c); opacity: .95; }
     .chain::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 26px; background: linear-gradient(#0d0a08, transparent); }
     .chordbox { position: fixed; left: 64px; top: 116px; height: 38px; z-index: 2147483639; display: flex; align-items: center; gap: 12px; padding: 0 14px; max-width: 560px; box-sizing: border-box; overflow: hidden;
       background: #0d0a08d9; border: 1px solid #5a4630; border-radius: 6px; box-shadow: inset 0 0 8px #000, 0 2px 6px #000a; pointer-events: none; }
