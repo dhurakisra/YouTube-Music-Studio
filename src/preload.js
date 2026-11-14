@@ -2804,7 +2804,12 @@ if (isAutotunePage()) {
     .skin:not(.m-karaoke):not(.mixview):not(.practice) .st-chainrow { opacity:.55; filter:grayscale(.35); pointer-events:none; }
     .skin .st-chainrow .modarrow { display:none; }
     .np.st-lift { position:fixed; left:0; right:0; bottom:var(--dh); height:104px; margin:0; z-index:2147483644; }
-    .skin .status { position:absolute; inset:0; display:block; padding:0; font:600 .68cqw 'Barlow Condensed',sans-serif; color:#ead9b2; letter-spacing:.08em; text-shadow:0 1px 2px #000; }
+    /* Full-artboard layout layers must not swallow clicks: only real controls take pointer events. */
+    .skin .section, .skin .section .switches, .skin .section .fxknobs, .skin .section .vus, .skin .section .master, .skin .section .master .row,
+      .skin .st-chainrow, .skin .st-chain-module, .skin .st-module-content, .skin .st-select-label, .skin .status { pointer-events:none; }
+    .skin .section :is(button, select, input, textarea, canvas, .knob, .track, [role=slider], .lyrline) { pointer-events:auto; }
+    .skin:not(.m-karaoke):not(.mixview):not(.practice) .st-chainrow * { pointer-events:none !important; }
+    .skin .status { position:absolute; inset:0; pointer-events:none; display:block; padding:0; font:600 .68cqw 'Barlow Condensed',sans-serif; color:#ead9b2; letter-spacing:.08em; text-shadow:0 1px 2px #000; }
     .skin .status > span { position:absolute; display:flex; align-items:center; overflow:hidden; white-space:nowrap; }
     .skin .clock { justify-content:center; font:600 .78cqw 'Oswald',sans-serif; color:#ead9b2; }
     .skin .status > span:first-child { color:#ead9b2; }
