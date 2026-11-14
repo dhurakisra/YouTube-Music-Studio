@@ -2591,7 +2591,8 @@ if (isAutotunePage()) {
       studioBuildLyrics(ui);
       studioBuildNowPlaying(ui);
       studioBuildTopMeters(ui);
-      studioBuildChords(ui);
+      const CHORDS_ENABLED = false; // experimental chord detection: code kept intact, switched off (no box, no analysis, no audio tap); set true to bring it back
+      if (CHORDS_ENABLED) studioBuildChords(ui);
       studioBuildWinButtons(ui);
       studioBuildBrand(ui); studioBgFx();
       studioBuildSteamPanel(ui);
