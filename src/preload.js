@@ -1707,6 +1707,15 @@ if (isAutotunePage()) {
     const txt = h('div', 'brandtxt'); txt.append(name, sub);
     plate.append(svg, txt);
     ui.appendChild(plate);
+    // The visible logo is a light-DOM copy of the shelf-title neon plate (same wires, current, flicker, heat, cables, sparks: one CSS system in skinCss).
+    const mount = () => {
+      if (!document.body) { setTimeout(mount, 300); return; }
+      if (document.getElementById('poc-brand')) return;
+      const a = document.createElement('a'); a.id = 'poc-brand'; a.href = 'https://music.youtube.com/'; a.setAttribute('aria-label', 'YouTube Music home');
+      const t = document.createElement('span'); t.className = 'poc-ntitle'; t.textContent = 'YouTube Music Studio';
+      a.appendChild(t); document.body.appendChild(a);
+    };
+    mount();
   }
 
   // Steampunk strip under the header: caps + stretchy tubes + a centre ornament (gauge, lamps, gears), all pre-cut from one panel image.
@@ -1722,7 +1731,7 @@ if (isAutotunePage()) {
     };
     setInterval(() => {
       let titles = [];
-      try { titles = document.querySelectorAll('ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title'); } catch { return; }
+      try { titles = document.querySelectorAll(':is(ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title, .poc-ntitle)'); } catch { return; }
       for (const t of titles) {
         if (t.querySelector(':scope > .poc-spark')) continue;
         for (let i = 0; i < 8; i += 1) {
@@ -2244,6 +2253,7 @@ if (isAutotunePage()) {
     .np.float { position: fixed; left: 12px; right: 12px; bottom: 10px; z-index: 2147483643; margin: 0; border-radius: 10px; height: 104px; padding: 6px 24px; }
     .tab.np-up { bottom: 112px; }
     /* header: rounded brass logo plate (same pill frame as the search box), spaced STUDIO line, two glass lamps hanging over the pipe strip */
+    .brand { display: none !important; }
     .brand { top: 16px; height: 76px; border-width: 20px 26px; border-image: ${T('sk-pill.png')} 72 / 20px 26px stretch; border-radius: 38px; padding: 0 4px; box-shadow: 0 4px 12px #000b; }
     .brandname { font-size: 24px; }
     .brandsub { margin-top: 6px; font: 600 11px/1 "Oswald", "Barlow Condensed", sans-serif; letter-spacing: .62em; color: #e6d3ad; text-align: center; padding-left: .62em; }
@@ -2522,7 +2532,7 @@ if (isAutotunePage()) {
         ytmusic-app h1, ytmusic-app h2, ytmusic-app h3, ytmusic-app h2 *, ytmusic-app h1 *, ytmusic-carousel-shelf-basic-header-renderer .title, ytmusic-carousel-shelf-basic-header-renderer .title *,
         ytmusic-shelf-renderer .title, ytmusic-shelf-renderer .title *, ytmusic-section-list-renderer .title.ytmusic-carousel-shelf-basic-header-renderer { font-family: 'Cinzel Decorative', 'Oswald', serif !important; font-weight: 700 !important; letter-spacing: .03em; color: #ffc46b !important; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; animation: poc-neon 7s linear infinite; }
         /* shelf titles: a small dark plate with faint filament wires; the lettering burns on the wires and flickers now and then */
-        ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title { position: relative; isolation: isolate; overflow: visible !important; display: inline-block !important; box-sizing: border-box; padding: 4px 20px 4px !important; margin: 10px 58px !important; font-size: 28px !important; line-height: 1.25 !important;
+        :is(ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title, .poc-ntitle) { position: relative; isolation: isolate; overflow: visible !important; display: inline-block !important; box-sizing: border-box; padding: 4px 20px 4px !important; margin: 10px 58px !important; font-size: 28px !important; line-height: 1.25 !important;
           background: repeating-linear-gradient(0deg, rgba(var(--gw), calc(.17 + var(--gh) * .5)) 0 1px, transparent 1px 6px), repeating-linear-gradient(90deg, rgba(var(--gw), calc(.17 + var(--gh) * .5)) 0 1px, transparent 1px 6px), radial-gradient(ellipse at center, rgba(255, 70, 20, calc(var(--gh) * .22)), transparent 75%), #0d0a08e6; border: 1px solid #6a5636; border-radius: 6px; box-shadow: inset 0 0 12px #000, 0 2px 6px #000a, 0 0 calc(var(--gh) * 38px) calc(var(--gh) * 8px) rgba(255, 55, 20, calc(var(--gh) * .55)); animation: poc-glow 4.5s linear infinite, poc-heat 7s ease-in-out infinite !important; opacity: 1 !important; }
         /* current in the wires, irregular: three independent windows (own speed, own period) reveal a dim bright copy of the grid, flaring and jumping about */
         @property --p1 { syntax: '<percentage>'; inherits: false; initial-value: 0%; }
@@ -2531,7 +2541,7 @@ if (isAutotunePage()) {
         @property --a2 { syntax: '<number>'; inherits: false; initial-value: 0; }
         @property --p3 { syntax: '<percentage>'; inherits: false; initial-value: 0%; }
         @property --a3 { syntax: '<number>'; inherits: false; initial-value: 0; }
-        ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title::before { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: 5px; opacity: .5;
+        :is(ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title, .poc-ntitle)::before { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: 5px; opacity: .5;
           background: repeating-linear-gradient(0deg, #ffc46b 0 1px, transparent 1px 6px), repeating-linear-gradient(90deg, #ffc46b 0 1px, transparent 1px 6px); filter: drop-shadow(0 0 1px #ffb34788);
           -webkit-mask-image: linear-gradient(90deg, transparent calc(var(--p1) - 9%), rgba(0, 0, 0, var(--a1)) var(--p1), transparent calc(var(--p1) + 9%)), linear-gradient(90deg, transparent calc(var(--p2) - 6%), rgba(0, 0, 0, var(--a2)) var(--p2), transparent calc(var(--p2) + 6%)), linear-gradient(90deg, transparent calc(var(--p3) - 12%), rgba(0, 0, 0, var(--a3)) var(--p3), transparent calc(var(--p3) + 12%));
           mask-image: linear-gradient(90deg, transparent calc(var(--p1) - 9%), rgba(0, 0, 0, var(--a1)) var(--p1), transparent calc(var(--p1) + 9%)), linear-gradient(90deg, transparent calc(var(--p2) - 6%), rgba(0, 0, 0, var(--a2)) var(--p2), transparent calc(var(--p2) + 6%)), linear-gradient(90deg, transparent calc(var(--p3) - 12%), rgba(0, 0, 0, var(--a3)) var(--p3), transparent calc(var(--p3) + 12%));
@@ -2540,14 +2550,14 @@ if (isAutotunePage()) {
         @keyframes poc-z2 { 0% { --p2: 70%; --a2: 0; } 12% { --p2: 70%; --a2: 0; } 13% { --p2: 62%; --a2: 0.9; } 15% { --p2: 66%; --a2: 0.1; } 16% { --p2: 30%; --a2: 0.7; } 20% { --p2: 22%; --a2: 0; } 46% { --p2: 22%; --a2: 0; } 47% { --p2: 90%; --a2: 0.8; } 49% { --p2: 84%; --a2: 0.3; } 50% { --p2: 88%; --a2: 0; } 62% { --p2: 88%; --a2: 0; } 63% { --p2: 48%; --a2: 0.9; } 64% { --p2: 50%; --a2: 0.1; } 66% { --p2: 12%; --a2: 0.8; } 69% { --p2: 8%; --a2: 0; } 100% { --p2: 8%; --a2: 0; } }
         @keyframes poc-z3 { 0% { --p3: 40%; --a3: 0; } 18% { --p3: 40%; --a3: 0; } 19% { --p3: 36%; --a3: 0.7; } 23% { --p3: 60%; --a3: 0.5; } 26% { --p3: 64%; --a3: 0; } 41% { --p3: 64%; --a3: 0; } 42% { --p3: 10%; --a3: 0.9; } 43% { --p3: 14%; --a3: 0.2; } 44% { --p3: 78%; --a3: 0.8; } 48% { --p3: 72%; --a3: 0; } 75% { --p3: 72%; --a3: 0; } 76% { --p3: 28%; --a3: 0.6; } 79% { --p3: 46%; --a3: 0.9; } 82% { --p3: 50%; --a3: 0; } 100% { --p3: 50%; --a3: 0; } }
         /* a bolted cable connector (brass terminals, red / green / blue leads) feeds the plate from each side */
-        ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title::after { content: ""; position: absolute; left: -52px; right: -52px; top: -10px; bottom: -10px; pointer-events: none; z-index: -1;
+        :is(ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title, .poc-ntitle)::after { content: ""; position: absolute; left: -52px; right: -52px; top: -10px; bottom: -10px; pointer-events: none; z-index: -1;
           background: ${T('sk-cable-l.png')} left center / auto 100% no-repeat, ${T('sk-cable-r.png')} right center / auto 100% no-repeat; filter: drop-shadow(0 2px 3px #000b); }
-        ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title > * { position: relative; }
+        :is(ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title, .poc-ntitle) > * { position: relative; }
         @property --gh { syntax: '<number>'; inherits: false; initial-value: 0; }
         @property --gw { syntax: '<number>#'; inherits: false; initial-value: 255, 157, 61; }
         i.poc-hook { position: absolute; height: 46px; pointer-events: none; z-index: 2; box-sizing: border-box; border: solid transparent; border-width: 0 24px; border-image: ${T('sk-hook.png')} 0 60 fill / 0 24px / 0 stretch; filter: drop-shadow(0 2px 3px #000c); }
         i.poc-hook.t { top: 16%; } i.poc-hook.b { bottom: 16%; }
-        ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title > i.poc-spark { position: absolute; z-index: 3; width: 1.5px; height: 1.5px; border-radius: 50%; pointer-events: none; opacity: 0; background: #fffbe6; box-shadow: 0 0 2px 1px #ffd27a, 0 0 5px 1px #ff7a1fcc; animation: poc-fall 1.5s linear infinite; }
+        :is(ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title, .poc-ntitle) > i.poc-spark { position: absolute; z-index: 3; width: 1.5px; height: 1.5px; border-radius: 50%; pointer-events: none; opacity: 0; background: #fffbe6; box-shadow: 0 0 2px 1px #ffd27a, 0 0 5px 1px #ff7a1fcc; animation: poc-fall 1.5s linear infinite; }
         @keyframes poc-fall { 0% { opacity: 0; transform: translate(0, 0) scale(1); } 0.3% { opacity: 1; transform: translate(0, 0) scale(1.8); } 2.5% { opacity: 1; transform: translate(calc(var(--dx) * .8), calc(var(--dy) * .8)) scale(1); } 5% { opacity: .7; transform: translate(var(--dx), calc(var(--dy) + 6px)) scale(.7); } 7% { opacity: 0; transform: translate(calc(var(--dx) * 1.1), calc(var(--dy) + 12px)) scale(.4); } 100% { opacity: 0; transform: translate(calc(var(--dx) * 1.1), calc(var(--dy) + 12px)); } }
         @keyframes poc-heat { 0%, 12% { --gh: 0; --gw: 255, 157, 61; } 32% { --gh: .45; --gw: 255, 120, 45; } 46% { --gh: 1; --gw: 255, 82, 35; } 52% { --gh: .9; --gw: 255, 82, 35; } 76% { --gh: .25; --gw: 255, 130, 50; } 92%, 100% { --gh: 0; --gw: 255, 157, 61; } }
         @keyframes poc-glow { 0% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 58% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 59% { color: #8a5c2e; text-shadow: none; } 60% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 61% { color: #8a5c2e; text-shadow: none; } 62% { color: #d9a45c; text-shadow: 0 0 2px #ffb347, 0 0 5px #ff8a1f66; } 63% { color: #8a5c2e; text-shadow: none; } 64% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 65% { color: #8a5c2e; text-shadow: none; } 67% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 80% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 81% { color: #d9a45c; text-shadow: 0 0 2px #ffb347, 0 0 5px #ff8a1f66; } 82% { color: #8a5c2e; text-shadow: none; } 84% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 85% { color: #8a5c2e; text-shadow: none; } 86% { color: #8a5c2e; text-shadow: none; } 88% { color: #d9a45c; text-shadow: 0 0 2px #ffb347, 0 0 5px #ff8a1f66; } 89% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } 100% { color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99, 0 0 22px #ff6a0055; } }
@@ -2593,6 +2603,9 @@ if (isAutotunePage()) {
         ytmusic-nav-bar { height: 112px !important; padding-right: 120px !important; box-sizing: border-box !important; }
         ytmusic-nav-bar ytmusic-search-box { margin-top: 0 !important; }
         ytmusic-search-box input { color: #eadfca !important; }
+        #poc-brand { position: fixed; left: 112px; top: 30px; z-index: 2147483640; text-decoration: none; -webkit-app-region: no-drag; }
+        #poc-brand .poc-ntitle { margin: 0 !important; font-family: 'Cinzel Decorative', 'Oswald', serif !important; font-weight: 700 !important; font-size: 20px !important; letter-spacing: .03em; white-space: nowrap; color: #ffc46b; padding: 5px 16px !important; }
+        ytmusic-nav-bar ytmusic-search-box { position: relative; left: clamp(0px, calc(560px - 33vw), 130px); width: min(480px, calc(100vw - 800px)) !important; min-width: 300px; }
       `;
       root.append(style, ui);
       try { const gs = document.createElement('style'); gs.textContent = 'ytmusic-player-bar { opacity: 0 !important; pointer-events: none !important; }' + skinCss; (document.head || document.documentElement).appendChild(gs); } catch {} // our own bar replaces the native one (kept alive: its buttons are still clicked programmatically)
