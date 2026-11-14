@@ -260,7 +260,7 @@ if (isAutotunePage()) {
         if (target === 'listen') { setAppMode('listen'); info.textContent = ''; }
         else {
           const m = findMedia(); if (m && !m.paused) { try { m.pause(); } catch {} } // nothing plays until START KARAOKE
-          setAppMode('karaoke'); info.textContent = 'PRESS START KARAOKE WHEN READY';
+          setAppMode('karaoke'); info.textContent = 'READY - START KARAOKE';
         }
       } catch (error) { info.textContent = 'ERROR: ' + String(error?.message || error).slice(0, 60); stemDiag('ui_error', { error: String(error?.stack || error).slice(0, 400) }); } finally { busy = false; }
     };
@@ -448,11 +448,11 @@ if (isAutotunePage()) {
       studio.lastStatus = now;
       const names = { 'umx-hq': 'UMX-HQ', htdemucs: 'HT-DEMUCS', passthrough: 'TEST PASSTHROUGH' };
       const [m, b, u] = studio.statusEls;
-      m.textContent = 'MODEL: ' + (names[modelSelect?.value] || '-');
+      m.textContent = names[modelSelect?.value] || '-';
       if (captureActive && stemPlayer && activeContext) {
-        b.textContent = 'BUFFER ' + Math.max(0, stemPlayer.nextTime - activeContext.currentTime).toFixed(1) + ' s · TARGET ' + stemLeadS.toFixed(1) + ' s';
+        b.textContent = 'BUF ' + Math.max(0, stemPlayer.nextTime - activeContext.currentTime).toFixed(1) + 's / ' + stemLeadS.toFixed(1) + 's';
         u.textContent = 'UNDERRUNS ' + stemPlayer.underruns;
-      } else { b.textContent = captureActive ? 'WAITING FOR STEMS...' : 'CAPTURE OFF'; u.textContent = 'UNDERRUNS -'; }
+      } else { b.textContent = captureActive ? 'WAITING...' : 'CAPTURE OFF'; u.textContent = 'UNDERRUNS -'; }
     }
     const took = performance.now() - t0; // diagnostic: a slow UI frame competes with chunk scheduling
     if (took > 20 && t0 - (studio.lastSlowLog || 0) > 1000) { studio.lastSlowLog = t0; stemDiag('ui_slow', { lagMs: Math.round(took) }); }
@@ -2898,10 +2898,10 @@ if (isAutotunePage()) {
     .skin .st-chain-module.st-chain-m0 .st-module-content > .eqinfo,
     .skin .st-chain-module.st-chain-m1 .st-module-content > .eqinfo { font-size:.6cqw; }
     .skin .section.session > .bigbtn { position:absolute; }
-    .skin .section.session > .bigbtn.recBig::before, .skin .section.session > .bigbtn.recbig::before { position:absolute; left:8%; top:50%; transform:translateY(-50%); margin:0; width:1.25cqw; height:1.25cqw; }
+    .skin .section.session > .bigbtn.recBig::before, .skin .section.session > .bigbtn.recbig::before { position:absolute; left:8%; top:50%; transform:translateY(-50%); margin:0; width:.72em; height:.72em; }
     .skin .st-listen::before { content:''; position:absolute; left:8%; top:50%; transform:translateY(-50%); width:0; height:0; border-top:.42em solid transparent; border-bottom:.42em solid transparent; border-left:.62em solid currentColor; }
     .skin .st-stems::before { content:''; position:absolute; left:7%; top:50%; transform:translateY(-50%); box-sizing:border-box; width:.78em; height:.68em; border:.09em solid currentColor; border-bottom:0; border-radius:.7em .7em 0 0; background:linear-gradient(currentColor,currentColor) left bottom/.16em .25em no-repeat,linear-gradient(currentColor,currentColor) right bottom/.16em .25em no-repeat; }
-    .skin .status > span { font-size:.95cqw; }
+    .skin .status > span { font-size:clamp(7px,.5cqw,13px); line-height:1; }
     .skin .status > span.clock { justify-content:center; text-align:center; font:700 .7cqw/1 'Oswald',sans-serif; letter-spacing:.02em; }
     .skin .strip .name { font:700 .82cqw/1 'Barlow Condensed','Oswald',sans-serif; letter-spacing:.02em; white-space:nowrap; }
     .skin .st-chain-module .st-module-content .btn.fxon, .skin .st-chain-module .st-module-content .btn.takebtn { box-sizing:border-box; border:0; border-image:none; background:${T('sk-st-cream.png')} center/100% 100% no-repeat; }
@@ -2915,11 +2915,42 @@ if (isAutotunePage()) {
     .skin .strip .name { font-size:clamp(12px,20cqi,24px); }
     .skin .strip .micfx { font-size:clamp(12px,18cqi,22px); }
     .skin .section.session .advtoggle { font:700 .68cqw/1 'Barlow Condensed','Oswald',sans-serif; }
-    .skin .section.session > .bigbtn { font-size:.78cqw !important; line-height:1 !important; }
-    .skin .section.tune .switches .btn, .skin .section.eq .btn, .skin .section.enh .switches > .btn, .skin .section.output .limiter { font-size:.62cqw; font-weight:700; }
+    .skin .section.session > .bigbtn { font-size:clamp(11px,.72cqw,19px) !important; line-height:1 !important; letter-spacing:.03em; }
+    .skin .section.session > .startk { font-size:clamp(9px,.58cqw,16px) !important; }
+    .skin .section.tune .switches .btn, .skin .section.eq .btn, .skin .section.enh .switches > .btn, .skin .section.output .limiter { font-size:clamp(10px,.62cqw,20px); font-weight:700; }
     .skin .section.eq .btn.on, .skin .section.enh .switches > .btn.on, .skin .section.output .limiter.on { color:#8a1a0a; }
     .skin .st-chain-module .st-module-content > .btn.fxon, .skin .st-chain-module .st-module-content > .btn.takebtn { font-size:.7cqw; font-weight:700; line-height:1; white-space:nowrap; }
     .skin .st-chain-module .st-module-content > .btn.fxon.on { color:#8a1a0a; text-shadow:0 1px 1px #fff4; }
+    .skin .section.session > .bigbtn, .skin .section.session .btn.startk,
+    .skin .section.eq .switches .btn, .skin .section.enh .switches > .btn,
+    .skin .section.output .limiter, .skin .st-mixer .strip .name,
+    .skin .st-mixer .strip .btns .btn, .skin .st-mixer .strip .micfx,
+    .skin .expbtn, .skin .offrow {
+      opacity:1; overflow:visible; text-align:center; text-shadow:0 1px 1px #fff4;
+      color:#2a1a0c !important; -webkit-text-fill-color:#2a1a0c !important;
+    }
+    .skin .section.session > .startk { font-size:clamp(10px,.58cqw,16px) !important; letter-spacing:.02em; }
+    .skin .section.session > .bigbtn.recBig::before, .skin .section.session > .bigbtn.recbig::before { left:7%; }
+    .skin .section.eq .btn.on, .skin .section.enh .switches > .btn.on,
+    .skin .section.output .limiter.on, .skin .section.session > .bigbtn.on {
+      color:#8a1a0a !important; -webkit-text-fill-color:#8a1a0a !important;
+    }
+    .skin .st-mixer .strip .btns .btn.mute { color:#f1d6bd !important; -webkit-text-fill-color:#f1d6bd !important; text-shadow:0 1px 2px #120b05; }
+    .skin button:disabled, .skin .btn:disabled { opacity:.5 !important; }
+    .skin .section.session .sessinfo { font-size:clamp(5px,.42cqw,12px); line-height:1; white-space:nowrap; text-overflow:clip; }
+    .skin .status > span { min-width:0; overflow:hidden; text-overflow:clip; white-space:nowrap; }
+    .skin .st-mixer .strip .name { font-size:clamp(7px,22cqi,22px); letter-spacing:0; color:#f0d6a5 !important; -webkit-text-fill-color:#f0d6a5 !important; text-shadow:0 1px 2px #120b05; }
+    .skin .st-mixer .strip .btns .btn { font-size:clamp(7px,16cqi,20px); letter-spacing:0; }
+    .skin .st-mixer .fader-wrap { left:8%; width:84%; }
+    .skin .st-mixer .scale { display:flex; flex:0 0 clamp(12px,34cqi,22px); width:clamp(12px,34cqi,22px); min-width:0; font-size:clamp(6px,13cqi,10px); line-height:1; }
+    .skin .st-mixer .strip .btns .btn.mute:not(.on) { color:#f1d6bd !important; -webkit-text-fill-color:#f1d6bd !important; }
+    @container (max-width:45px) {
+      .skin .st-mixer .strip .btns { height:17%; flex-direction:column; gap:2%; }
+      .skin .st-mixer .strip .btns .btn { flex:1 1 0; width:100%; font-size:clamp(5px,20cqi,10px); }
+      .skin .st-mixer .fader-wrap { top:20%; left:18%; width:68%; }
+      .skin .st-mixer .scale { display:none; }
+      .skin .st-mixer .strip .name { font-size:clamp(5px,24cqi,11px); }
+    }
     .skin .st-chain-module .btn.fxon.on, .skin .section.eq .btn.on, .skin .section.enh .btn.on, .skin .section.output .limiter.on { color:#8a1a0a; text-shadow:0 1px 1px #fff4; }
     .skin .st-chain-module .st-rec::before { content:''; flex:none; width:.55em; height:.55em; border-radius:50%; background:#bd1f0e; box-shadow:inset 0 0 0 .08em #65120a,0 0 1px #000; margin-right:.42em; }
     .skin .btn:not(.mute):not(.modled):active { transform:translateY(1px); }  `;
