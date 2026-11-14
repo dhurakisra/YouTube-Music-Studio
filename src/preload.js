@@ -394,7 +394,7 @@ if (isAutotunePage()) {
       soloBtn.addEventListener('click', () => { state.stemFlags.solo = !state.stemFlags.solo; refreshFlags(); apply(); });
       muteBtn.addEventListener('click', () => { state.stemFlags.mute = !state.stemFlags.mute; refreshFlags(); apply(); });
       refreshFlags();
-      if (state.noSolo) soloBtn.style.display = 'none';
+      if (state.noSolo) soloBtn.disabled = true;
       const track = el.querySelector('.track'), cap = el.querySelector('.cap');
       const setPos = (pos) => {
         state.pos = Math.min(1, Math.max(0, pos));
@@ -2692,7 +2692,7 @@ if (isAutotunePage()) {
     .skin .section.session > .bigbtn.recBig::before, .skin .section.session > .bigbtn.recbig::before { content:''; width:1.25cqw; height:1.25cqw; margin-right:.7cqw; background:${T('sk-st-reddot.png')} center/contain no-repeat; }
     .skin .section.session .sessinfo { color:#ead9b2; text-align:center; font:600 .65cqw/1.2 'Barlow Condensed',sans-serif; text-shadow:0 1px 2px #000; }
     .skin .advtoggle { display:flex; align-items:center; justify-content:center; border:calc(20 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-cream.png')} 30 fill / calc(20 / 4344 * 100cqw) stretch; background:none; color:#422c16; font:600 .85cqw 'Barlow Condensed',sans-serif; letter-spacing:.1em; }
-    .skin .adv { z-index:8; padding:2.7cqw 1.1cqw 1cqw; background:#20190fee; border:calc(16 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-mod.png')} 82 40 44 50 fill / calc(18 / 4344 * 100cqw) calc(10 / 4344 * 100cqw) calc(12 / 4344 * 100cqw) calc(12 / 4344 * 100cqw) stretch; }
+    .skin .adv { display:none; z-index:8; padding:2.7cqw 1.1cqw 1cqw; background:#20190fee; border:calc(16 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-mod.png')} 82 40 44 50 fill / calc(18 / 4344 * 100cqw) calc(10 / 4344 * 100cqw) calc(12 / 4344 * 100cqw) calc(12 / 4344 * 100cqw) stretch; }
     .skin .adv.open { display:block; }
     .skin .adv .eqinfo-row { display:grid; grid-template-columns:1fr 1.5fr; margin:0 0 .4cqw; color:#e9d6a8; font:600 .7cqw 'Barlow Condensed',sans-serif; }
     .skin .adv .sel, .skin .adv input { width:100%; }
@@ -2734,6 +2734,10 @@ if (isAutotunePage()) {
     .skin .eqrow .sel, .skin .eqrow .txt { border:calc(20 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-select.png')} 20 62 fill / calc(20 / 4344 * 100cqw) calc(38 / 4344 * 100cqw) stretch; border-radius:0; background:none; color:#ead9b2; font:600 .7cqw 'Barlow Condensed',sans-serif; padding:0 1.2cqw; }
     .skin .eqrow .txt { border-image:${T('sk-st-input.png')} 18 fill / calc(18 / 4344 * 100cqw) stretch; }
     .skin .sel { border:calc(20 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-select.png')} 20 62 fill / calc(20 / 4344 * 100cqw) calc(38 / 4344 * 100cqw) stretch; border-radius:0; background:none; color:#ead9b2; font:600 .7cqw 'Barlow Condensed',sans-serif; }
+    .skin .sel.st-select-wrap { position:relative; display:flex; align-items:center; overflow:hidden; padding:0 calc(62 / 4344 * 100cqw) 0 calc(20 / 4344 * 100cqw); appearance:none; -webkit-appearance:none; white-space:nowrap; line-height:1; border:0 !important; border-image:none !important; background:none; }
+    .skin .st-select-wrap::before { content:''; position:absolute; inset:0; z-index:0; pointer-events:none; border:calc(20 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-select.png')} 20 62 fill / calc(20 / 4344 * 100cqw) calc(62 / 4344 * 100cqw) stretch; }
+    .skin .st-select-label { position:absolute; z-index:1; left:calc(20 / 4344 * 100cqw); right:calc(62 / 4344 * 100cqw); top:0; height:100%; display:flex; align-items:center; overflow:hidden; white-space:nowrap; text-overflow:clip; color:#ead9b2; font:inherit; line-height:1; pointer-events:none; }
+    .skin .st-select-native { position:absolute !important; inset:0 !important; width:100% !important; height:100% !important; min-width:0 !important; max-width:none !important; margin:0 !important; padding:0 !important; border:0 !important; opacity:.01 !important; z-index:2 !important; cursor:pointer; appearance:none !important; -webkit-appearance:none !important; }
     .skin .txt { border:calc(18 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-input.png')} 18 fill / calc(18 / 4344 * 100cqw) stretch; border-radius:0; background:none; color:#ead9b2; font:600 .7cqw 'Barlow Condensed',sans-serif; }
     .skin .offrow .offin { width:28%; min-width:0; height:100%; }
     .skin .qrange { accent-color:#bd8640; }
@@ -2793,7 +2797,7 @@ if (isAutotunePage()) {
     .skin .st-chain-module .btn.fxon.on { border-image:${T('sk-st-amber.png')} 28 fill / calc(14 / 4344 * 100cqw) stretch; }
     .skin .st-chain-module .switches { margin:0; }
     .skin .st-chain-module.off { filter:brightness(.58) saturate(.55); }
-    .skin:not(.m-karaoke):not(.mixview):not(.practice) .st-chainrow { opacity:.42; filter:grayscale(.45); pointer-events:none; }
+    .skin:not(.m-karaoke):not(.mixview):not(.practice) .st-chainrow { opacity:.55; filter:grayscale(.35); pointer-events:none; }
     .skin .st-chainrow .modarrow { display:none; }
     .np.st-lift { position:fixed; left:0; right:0; bottom:var(--dh); height:104px; margin:0; z-index:2147483644; }
     .skin .status { position:absolute; inset:0; display:block; padding:0; font:600 .68cqw 'Barlow Condensed',sans-serif; color:#ead9b2; letter-spacing:.08em; text-shadow:0 1px 2px #000; }
@@ -2803,6 +2807,71 @@ if (isAutotunePage()) {
     .skin .status > span:nth-child(2), .skin .status > span:nth-child(3) { justify-content:center; }
     .skin .section.tune .tunerow:nth-of-type(1) { top:12.3%; }
     .skin .section.tune .tunerow:nth-of-type(2) { top:18.2%; }
+    /* Reference scale and fixed text fitting for the steampunk control plates. */
+    .skin .section > h3.title { display:none !important; }
+    .skin button, .skin .btn { box-sizing:border-box; white-space:nowrap; padding:0; line-height:1; overflow:hidden; }
+    .skin .st-label { visibility:hidden; }
+    .skin .st-label-layer { position:absolute; inset:0; z-index:2147483639; pointer-events:none; overflow:hidden; }
+    .skin .st-button-label { position:absolute; display:flex; align-items:center; justify-content:center; overflow:hidden; white-space:nowrap; padding:0; text-align:center; }
+    .skin .section.session > .bigbtn, .skin .section.session .btn.startk { display:flex; align-items:center; justify-content:center; font:700 .64cqw/1 'Barlow Condensed','Oswald',sans-serif !important; color:#422c16 !important; -webkit-text-fill-color:#422c16; letter-spacing:.08em; line-height:1; white-space:nowrap; padding:0; }
+    .skin .section.session > .btn.stemb { display:flex !important; }
+    .skin .section.session > .btn.startk { display:none !important; }
+    .skin.m-karaoke .section.session > .btn.stemb, .skin.m-karaoke .section.session > .btn.recbig:not(.startk),
+    .skin.mixview .section.session > .btn.stemb { display:none !important; }
+    .skin.m-karaoke .section.session > .btn.startk { display:flex !important; }
+    .skin .section.session .advtoggle { font-size:0; line-height:1; }
+    .skin .section.tune .tunevalue { font-size:.55cqw; white-space:nowrap; }
+    .skin .section.tune .switches .btn, .skin .section.eq .btn, .skin .section.enh .switches > .btn,
+    .skin .section.output .limiter { font-size:.4cqw; line-height:1; white-space:nowrap; padding:0; }
+    .skin .section.tune .switches .btn, .skin .section.enh .switches > .btn { display:flex; align-items:center; justify-content:center; font-size:.52cqw; }
+    .skin .section.eq .btn { font-size:.62cqw; }
+    .skin .strip .btns { left:0; width:100%; gap:5%; }
+    .skin .strip .btns .btn { flex:0 0 47.5%; width:47.5%; font-size:.44cqw; line-height:1; white-space:nowrap; padding:0; }
+    .skin .strip .btns .btn:disabled { opacity:1; }
+    .skin .strip .name { font-size:.5cqw; line-height:1; white-space:nowrap; }
+    .skin .strip .btn.micfx { font-size:.45cqw; line-height:1; white-space:nowrap; padding:0; }
+    .skin .expbtn, .skin .offrow { font-size:.38cqw; line-height:1; white-space:nowrap; padding:0; }
+    .skin .eqrow .sel, .skin .st-chainbar .sel, .skin .st-chain-module .sel, .skin .sel {
+      box-sizing:border-box; min-width:0; padding:0 calc(62 / 4344 * 100cqw) 0 calc(20 / 4344 * 100cqw);
+      appearance:none; -webkit-appearance:none; white-space:nowrap; overflow:hidden; text-overflow:clip;
+      line-height:1; font-size:.52cqw;
+    }
+    .skin .eqrow .txt, .skin .txt { box-sizing:border-box; min-width:0; padding:0 calc(20 / 4344 * 100cqw); line-height:1; font-size:.43cqw; }
+    .skin .section.enh .knob-box { font-size:0; }
+    .skin .section.enh .knob-box .knob { inset:auto; left:50%; top:0; width:calc(92 / 4344 * 100cqw); height:calc(92 / 4344 * 100cqw); transform:translateX(-50%); }
+    .skin .section.output .knob-box { font-size:0; }
+    .skin .section.output .knob-box .knob { inset:0; }
+    .skin .section.enh .switches > .btn { font-size:.4cqw; line-height:1; white-space:nowrap; padding:0; }
+    .skin .st-chain-module {
+      display:block; position:relative; padding:0; overflow:hidden; opacity:1; filter:none;
+      border:0; background:none; box-shadow:none;
+    }
+    .skin .st-chain-module::before { content:''; position:absolute; inset:0; z-index:0; pointer-events:none; border:calc(82 / 4344 * 100cqw) solid transparent; border-width:calc(82 / 4344 * 100cqw) calc(40 / 4344 * 100cqw) calc(44 / 4344 * 100cqw) calc(50 / 4344 * 100cqw); border-image:${T('sk-st-mod.png')} 82 40 44 50 fill / calc(82 / 4344 * 100cqw) calc(40 / 4344 * 100cqw) calc(44 / 4344 * 100cqw) calc(50 / 4344 * 100cqw) stretch; }
+    .skin .st-chain-module .st-module-content { position:absolute; inset:0; z-index:1; }
+    .skin .st-mod-label { position:relative; z-index:20; display:inline-block; }
+    .skin .st-chain-module .st-modtitle { left:4%; right:4%; top:2%; height:14%; font-size:.62cqw; line-height:1; text-align:center; z-index:2; }
+    .skin .st-chain-module .modled { right:7%; top:5%; width:10%; height:9%; }
+    .skin .st-chain-module .st-module-content > .modbody { position:absolute; left:calc(50 / 4344 * 100cqw); right:calc(40 / 4344 * 100cqw); top:21%; height:49%; min-height:0; display:flex; align-items:stretch; justify-content:center; gap:2%; overflow:visible; }
+    .skin .st-chain-module .knob-box { position:relative; flex:1 1 0; width:0; min-width:0; height:100%; padding:0; display:flex; align-items:flex-end; justify-content:center; font:600 .48cqw/1 'Barlow Condensed',sans-serif; letter-spacing:.02em; white-space:nowrap; }
+    .skin .st-chain-module .knob { position:absolute; inset:auto; left:50%; top:0; width:calc(92 / 4344 * 100cqw); height:calc(92 / 4344 * 100cqw); transform:translateX(-50%); }
+    .skin .st-chain-module .st-module-content > .sel { position:absolute; left:calc(50 / 4344 * 100cqw); right:calc(40 / 4344 * 100cqw); bottom:4%; width:auto; height:9%; min-height:0; font-size:.48cqw; }
+    .skin .st-chain-module .grbar { position:absolute; left:calc(50 / 4344 * 100cqw + 4%); right:calc(40 / 4344 * 100cqw + 4%); top:73%; height:calc(8 / 4344 * 100cqw); min-height:2px; }
+    .skin .st-chain-module .st-module-content > .eqinfo { position:absolute; left:calc(50 / 4344 * 100cqw); right:calc(40 / 4344 * 100cqw); bottom:5%; display:flex; justify-content:center; font-size:.39cqw; line-height:1; white-space:nowrap; }
+    .skin .st-chain-module .st-module-content > .btn.fxon, .skin .st-chain-module .st-module-content > .btn.takebtn { position:absolute; left:calc(50 / 4344 * 100cqw); right:calc(40 / 4344 * 100cqw); bottom:18%; width:auto; height:14%; min-height:0; display:flex; align-items:center; justify-content:center; font-size:.5cqw; line-height:1; white-space:nowrap; padding:0; }
+    .skin .st-chain-module .live { position:absolute; left:7%; right:7%; bottom:4%; height:12%; display:flex; align-items:center; justify-content:center; }
+    .skin .st-chain-module .live .eqinfo { font-size:.39cqw; white-space:nowrap; }
+    .skin .st-chain-module.st-chain-m0 .st-module-content > .sel { top:18%; bottom:auto; height:10%; }
+    .skin .st-chain-module.st-chain-m0 .st-module-content > .modbody { top:36%; height:39%; }
+    .skin .st-chain-module.st-chain-m0 .st-module-content > .eqinfo { bottom:4%; }
+    .skin .st-chain-module.st-chain-m1 .st-module-content > .eqinfo-row { position:absolute; left:calc(50 / 4344 * 100cqw + 3%); right:calc(40 / 4344 * 100cqw + 3%); top:17%; height:13%; display:flex; gap:3%; }
+    .skin .st-chain-module.st-chain-m1 .st-module-content > .eqinfo-row .sel { width:48%; height:100%; font-size:.4cqw; }
+    .skin .st-chain-module.st-chain-m1 .st-module-content > .modbody { top:33%; height:36%; }
+    .skin .st-chain-module.st-chain-m1 .st-module-content > .btn { position:absolute; left:calc(50 / 4344 * 100cqw); right:calc(40 / 4344 * 100cqw); bottom:17%; width:auto; height:13%; font-size:.46cqw; }
+    .skin .st-chain-module.st-chain-m1 .st-module-content > .eqinfo { bottom:4%; }
+    .skin .st-chain-module.st-chain-m10 .st-module-content > .sel:first-of-type { top:18%; bottom:auto; height:10%; }
+    .skin .st-chain-module.st-chain-m10 .st-module-content > .modbody { top:35%; height:39%; }
+    .skin .st-chain-module.off { filter:brightness(.8) saturate(.7); }
+    .skin:not(.m-karaoke):not(.mixview):not(.practice) .st-chainrow { opacity:.55; filter:grayscale(.35); pointer-events:none; }
     .skin .btn:not(.mute):not(.modled):active { transform:translateY(1px); }  `;
 
   async function installStudioDrawer() {
@@ -3053,6 +3122,11 @@ if (isAutotunePage()) {
       };
       const q = (root, selector) => root.querySelector(selector);
       const qa = (root, selector) => [...root.querySelectorAll(selector)];
+      qa(consoleEl, 'button').forEach((button) => {
+        [...button.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim()).forEach((node) => {
+          const labelText = node.textContent.trim(); const label = h('span', 'st-label', labelText); button.dataset.stLabel = labelText; button.replaceChild(label, node);
+        });
+      });
       const sessBtns = qa(sessSection, ':scope > .btn');
       stPlace(sessBtns[0],108,178,465,250); stPlace(sessBtns[1],108,285,465,358); stPlace(sessBtns[2],108,392,465,467); stPlace(sessBtns[3],108,392,465,467);
       stPlace(q(sessSection,'.advtoggle'),158,508,408,568); stPlace(q(sessSection,'.sessinfo'),108,572,465,618);
@@ -3080,13 +3154,54 @@ if (isAutotunePage()) {
       const enhRow=q(enhSection,'.fxknobs'); const enhKnobs=qa(enhRow,'.knob-box');
       [[2786,164,2878,256],[2915,164,3007,256],[3042,164,3134,256],[3167,164,3259,256]].forEach(([x0,y0,x1,y1],i)=>stPlace(enhKnobs[i],x0,y0,x1,y1));
       q(enhSection,'.switches')?.classList.add('st-enh-switches');
-      qa(enhSection,'.switches > .btn').slice(1).forEach((el,i)=>stPlace(el,[[2780,420,2930,480],[2950,420,3097,480],[3117,420,3262,480]][i][0],420,[[2780,420,2930,480],[2950,420,3097,480],[3117,420,3262,480]][i][2],480));
+      const enhBtns=qa(enhSection,'.switches > .btn'); stPlace(enhBtns[0],2778,333,3262,393);
+      enhBtns.slice(1).forEach((el,i)=>stPlace(el,[[2780,420,2930,480],[2950,420,3097,480],[3117,420,3262,480]][i][0],420,[[2780,420,2930,480],[2950,420,3097,480],[3117,420,3262,480]][i][2],480));
       const vus=q(outSection,'.vus'); qa(vus,'.vu').forEach((el,i)=>stPlace(el,...(i===0?[3368,172,3648,365]:[3675,172,3952,365])));
       const outKnobs=qa(outSection,'.knob-box'); outKnobs.forEach((el,i)=>stPlace(el,...(i===0?[3443,366,3651,574]:[3734,423,3826,515])));
       stPlace(q(outSection,'.limiter'),3553,655,3743,715);
       const chainRow=q(chainSection,'.st-chainrow'); qa(chainRow,'.st-mod').forEach((el,i)=>{el.style.flex='0 1 calc('+[370,370,200,200,280,200,200,200,280,280,200,280,280,200][i]+' / 4344 * 100cqw)';});
       const chainbar=q(chainSection,'.st-chainbar'); stPlace(chainbar,973,845,2320,902); chainbar.classList.add('st-placed');
-      const modules=qa(chainRow,'.st-mod'); modules.forEach(el=>{el.classList.add('st-chain-module'); el.querySelector('.modtitle')?.classList.add('st-modtitle');});
+      const modules=qa(chainRow,'.st-mod'); modules.forEach((el,i)=>{
+        const content=h('div','st-module-content'); while(el.firstChild) content.appendChild(el.firstChild); el.appendChild(content);
+        el.classList.add('st-chain-module','st-chain-m'+i);
+        const title=el.querySelector('.modtitle'); if(title){ title.classList.add('st-modtitle'); [...title.childNodes].filter(n=>n.nodeType===Node.TEXT_NODE&&n.textContent.trim()).forEach(n=>{const label=h('span','st-mod-label',n.textContent.trim()); title.replaceChild(label,n);}); }
+      });
+      qa(consoleEl,'select').forEach((select)=>{
+        const wrap=h('div',select.className+' st-select-wrap'), label=h('span','st-select-label');
+        wrap.style.cssText=select.style.cssText;
+        select.parentNode.insertBefore(wrap,select); wrap.append(select,label);
+        select.className='st-select-native';
+        const sync=()=>{label.textContent=select.selectedOptions[0]?.textContent||'';};
+        select.addEventListener('change',sync); select.addEventListener('input',sync);
+        new MutationObserver(sync).observe(select,{childList:true,subtree:true,characterData:true}); sync();
+      });
+      const labelLayer=h('div','st-label-layer'); consoleEl.appendChild(labelLayer);
+      const labelEntries=[], registeredLabels=new WeakSet();
+      const registerButtonLabel=(button)=>{
+        if(registeredLabels.has(button)||button.classList.contains('tunebtn')||button.classList.contains('advtoggle')) return;
+        let source=button.querySelector(':scope > .st-label');
+        if(!source){
+          const node=[...button.childNodes].find(n=>n.nodeType===Node.TEXT_NODE&&n.textContent.trim());
+          if(node){const value=node.textContent.trim();source=h('span','st-label',value);button.dataset.stLabel=value;button.replaceChild(source,node);}
+        }
+        if(!source) return; registeredLabels.add(button);
+        const label=h('span','st-button-label'); labelLayer.appendChild(label);
+        const sync=()=>{
+          const br=button.getBoundingClientRect(), sr=consoleEl.getBoundingClientRect(), cs=getComputedStyle(button);
+          if(label.textContent!==source.textContent) label.textContent=source.textContent; label.style.left=(br.left-sr.left)+'px'; label.style.top=(br.top-sr.top)+'px'; label.style.width=br.width+'px'; label.style.height=br.height+'px';
+          label.style.display=br.width&&br.height&&cs.display!=='none'?'flex':'none'; label.style.font=cs.font; label.style.color=cs.color; label.style.textShadow=cs.textShadow; label.style.letterSpacing=cs.letterSpacing;
+          let opacity=1; for(let node=button;node&&node!==consoleEl;node=node.parentElement) opacity*=Number(getComputedStyle(node).opacity)||1; label.style.opacity=String(opacity);
+        };
+        new MutationObserver(sync).observe(button,{childList:true,subtree:true,characterData:true});
+        new ResizeObserver(sync).observe(button); sync();
+        labelEntries.push(sync);
+      };
+      const syncButtonLabels=()=>{qa(consoleEl,'button').forEach(registerButtonLabel); labelEntries.forEach(sync=>sync());};
+      new ResizeObserver(syncButtonLabels).observe(consoleEl);
+      new MutationObserver(syncButtonLabels).observe(consoleEl,{attributes:true,attributeFilter:['class']});
+      new MutationObserver(syncButtonLabels).observe(consoleEl,{childList:true,subtree:true});
+      new MutationObserver(syncButtonLabels).observe(drawer,{attributes:true,attributeFilter:['class']});
+      root.querySelector('.tab').addEventListener('click',()=>requestAnimationFrame(syncButtonLabels));
       const statusEls=[...status.querySelectorAll('span')];
       [[180,1374,445,1410],[1968,1376,2182,1412],[3488,1378,3712,1410],[4035,1378,4198,1414]].forEach((r,i)=>stPlace(statusEls[i],...r));
       applyOutput();
