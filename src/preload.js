@@ -125,6 +125,10 @@ if (isAutotunePage()) {
   // tracks and the earlier stream goes silent, so the chord tap used to kill the VU tap.
   const mediaStreams = new WeakMap();
   function mediaStreamFor(m) { let st = mediaStreams.get(m); if (!st) { st = m.captureStream(); mediaStreams.set(m, st); } return st; }
+  // A stream grabbed too early (cold start: page still wiring its audio) can stay dead for good; the VU loop calls this after ~2 s of
+  // digital silence while the song plays audibly, and every tap rebuilds on the fresh stream (taps compare stream identity).
+  function mediaStreamReset(m) { mediaStreams.delete(m); }
+  function liveTrack(st) { const ts = st.getAudioTracks(); return ts.find((t) => t.readyState === 'live') || ts[0]; }
 
   // Song clock. YTM can keep the same media element (and its buffer) across consecutive songs, so element.currentTime / .duration then
   // run on from the previous song (a 3:00 song followed by a 5:00 one reports 8:00). The page's own player API knows the real position and
@@ -1897,8 +1901,8 @@ if (isAutotunePage()) {
     const ensureTap = () => {
       const m = findMedia(); if (!m || typeof m.captureStream !== 'function') return null;
       try {
-        if (m !== tapMedia) { tapMedia = m; tapStream = mediaStreamFor(m); tapKey = ''; tapAn = null; } // ONE stream per element: captureStream() returns fresh tracks every call
-        const tr = tapStream.getAudioTracks()[0]; if (!tr) return tapAn;
+        if (mediaStreamFor(m) !== tapStream) { tapMedia = m; tapStream = mediaStreamFor(m); tapKey = ''; tapAn = null; } // ONE stream per element: captureStream() returns fresh tracks every call
+        const tr = liveTrack(tapStream); if (!tr) return tapAn;
         if (tr.id === tapKey && tapAn) return tapAn;
         if (!tapCtx || tapCtx.state === 'closed') tapCtx = new AudioContext({ latencyHint: 'playback' });
         if (tapCtx.state === 'suspended') tapCtx.resume().catch(() => {});
@@ -1917,13 +1921,18 @@ if (isAutotunePage()) {
       box.style.display = z < 0.45 ? 'none' : 'flex'; box.style.zoom = String(Math.max(0.45, z));
     };
     window.addEventListener('resize', fit); fit();
-    let lastTapCheck = 0;
+    let lastTapCheck = 0, deadTicks = 0, lastHeal = 0;
     setInterval(() => {
       if (document.hidden) return;
       let ans = masterEq?.anL ? [masterEq.anL, masterEq.anR] : null;
       if (!ans) { const now = performance.now(); if (!tapAn || now - lastTapCheck > 1500) { lastTapCheck = now; ensureTap(); } ans = tapAn; }
       if (tapCtx && tapCtx.state === 'suspended') tapCtx.resume().catch(() => {});
       studio.vuAns = ans; // shared with the player-bar spectrum
+      if (ans && ans === tapAn) { // self-heal a dead passive tap
+        const m = findMedia(), audible = m && !m.paused && !m.muted && m.volume > 0.01 && m.currentTime > 1;
+        if (audible && rmsDb(ans[0]) < -95 && rmsDb(ans[1]) < -95) { deadTicks += 1; } else deadTicks = 0;
+        if (deadTicks > 50 && performance.now() - lastHeal > 4000) { lastHeal = performance.now(); deadTicks = 0; mediaStreamReset(m); tapAn = null; lastTapCheck = 0; }
+      }
       needles.forEach((n, i) => {
         const target = ans ? angleOf(rmsDb(ans[i])) : -39;
         angles[i] += (target - angles[i]) * 0.3;
@@ -1959,8 +1968,8 @@ if (isAutotunePage()) {
       }
       const m = findMedia(); if (!m || typeof m.captureStream !== 'function') return null;
       try {
-        if (m !== tapMedia) { tapMedia = m; tapStream = mediaStreamFor(m); tapTrack = ''; tapAn = null; }
-        const tr = tapStream.getAudioTracks()[0]; if (!tr) return tapAn ? { an: tapAn, sr: tapCtx.sampleRate } : null;
+        if (mediaStreamFor(m) !== tapStream) { tapMedia = m; tapStream = mediaStreamFor(m); tapTrack = ''; tapAn = null; }
+        const tr = liveTrack(tapStream); if (!tr) return tapAn ? { an: tapAn, sr: tapCtx.sampleRate } : null;
         if (tr.id !== tapTrack || !tapAn) {
           if (!tapCtx || tapCtx.state === 'closed') tapCtx = new AudioContext({ latencyHint: 'playback' });
           if (tapCtx.state === 'suspended') tapCtx.resume().catch(() => {});
