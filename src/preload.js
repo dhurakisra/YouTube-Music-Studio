@@ -1931,7 +1931,7 @@ if (isAutotunePage()) {
       if (ans && ans === tapAn) { // self-heal a dead passive tap
         const m = findMedia(), audible = m && !m.paused && !m.muted && m.volume > 0.01 && m.currentTime > 1;
         if (audible && rmsDb(ans[0]) < -95 && rmsDb(ans[1]) < -95) { deadTicks += 1; } else deadTicks = 0;
-        if (deadTicks > 50 && performance.now() - lastHeal > 4000) { lastHeal = performance.now(); deadTicks = 0; mediaStreamReset(m); tapAn = null; lastTapCheck = 0; }
+        if (deadTicks > 25 && performance.now() - lastHeal > 2000) { lastHeal = performance.now(); deadTicks = 0; mediaStreamReset(m); tapAn = null; lastTapCheck = 0; }
       }
       needles.forEach((n, i) => {
         const target = ans ? angleOf(rmsDb(ans[i])) : -39;
