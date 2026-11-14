@@ -1736,7 +1736,8 @@ if (isAutotunePage()) {
   // so scrolling looks like the chains haul the plates up.
   function studioBuildChains(ui) {
     const l = h('div', 'chain l'), r = h('div', 'chain r');
-    ui.append(l, r);
+    const gl = h('i', 'chgear l'), gr = h('i', 'chgear r');
+    ui.append(l, r, gl, gr);
     const scroller = () => document.scrollingElement || document.documentElement;
     let frame = 0;
     const draw = () => { frame = 0; const y = '0 ' + (-Math.round(scroller().scrollTop)) + 'px'; l.style.backgroundPosition = y; r.style.backgroundPosition = y; };
@@ -1747,7 +1748,7 @@ if (isAutotunePage()) {
       const guide = document.getElementById('guide');
       const gw = guide ? guide.getBoundingClientRect().right : 300;
       const left = gw + 6, right = window.innerWidth - 26; // chain strip: just right of the left panel, just left of the page scrollbar
-      l.style.left = left + 'px'; r.style.left = (right - 38) + 'px';
+      l.style.left = left + 'px'; r.style.left = (right - 38) + 'px'; gl.style.left = (left + 19 - 62) + 'px'; gr.style.left = (right - 19 - 62) + 'px';
       let shelves = []; try { shelves = document.querySelectorAll(sel); } catch { return; }
       for (const sh of shelves) {
         const rc = sh.getBoundingClientRect(); if (!rc.width) continue;
@@ -2193,7 +2194,9 @@ if (isAutotunePage()) {
         .np { position: relative; flex: 1 0 100%; display: flex; align-items: center; gap: 18px; box-sizing: border-box; margin-top: 4px;
       padding: 10px 18px; border: 1px solid #0009; border-radius: 10px; box-shadow: inset 0 0 18px #000a;
       background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; }
-    .chain { position: fixed; top: 158px; bottom: 112px; width: 38px; z-index: 2147483637; pointer-events: none; background: ${T('sk-chain.png')} 0 0 / 38px 74px repeat-y; filter: drop-shadow(1px 0 1px #000c); opacity: .95; }
+    .chain { position: fixed; top: 190px; bottom: 112px; width: 38px; z-index: 2147483637; pointer-events: none; background: ${T('sk-chain.png')} 0 0 / 38px 74px repeat-y; filter: drop-shadow(1px 0 1px #000c); opacity: .95; }
+    .chgear { position: fixed; top: 128px; width: 124px; height: 124px; z-index: 2147483638; pointer-events: none; background: ${T('sk-gear.png')} center / contain no-repeat; filter: drop-shadow(0 3px 5px #000c); animation: chg 60s linear infinite; }
+    .chgear.r { animation-direction: reverse; } @keyframes chg { to { transform: rotate(360deg); } }
     .chain::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 26px; background: linear-gradient(#0d0a08, transparent); }
     .chordbox { position: fixed; left: 64px; top: 116px; height: 38px; z-index: 2147483639; display: flex; align-items: center; gap: 12px; padding: 0 14px; max-width: 560px; box-sizing: border-box; overflow: hidden;
       background: #0d0a08d9; border: 1px solid #5a4630; border-radius: 6px; box-shadow: inset 0 0 8px #000, 0 2px 6px #000a; pointer-events: none; }
@@ -2473,17 +2476,15 @@ if (isAutotunePage()) {
       // YTM page skin, step 1: top bar (rust/metal plate with corner screws, inset brass-rimmed search field)
       const skinCss = `
         ${fontCss}
+        .background-gradient { background: none !important; } ytmusic-fullbleed-thumbnail-renderer { display: none !important; }
+        html, body { background: ${T('sk-bg.jpg')} center / cover no-repeat fixed, #0b0806 !important; }
+        ytmusic-app, ytmusic-app-layout, ytmusic-browse-response, ytmusic-tabbed-search-results-renderer, #main-panel, #content { --ytmusic-general-background-c: transparent; background: transparent !important; }
         ytmusic-nav-bar, ytmusic-nav-bar #left-content { --ytmusic-nav-bar-background: transparent; }
         ytmusic-nav-bar { background:
             ${T('screw.png')} left 8px top 8px / 11px 11px no-repeat, ${T('screw.png')} right 8px top 8px / 11px 11px no-repeat,
             ${T('sk-brkt.png')} left 0 bottom 6px / 64px auto no-repeat, ${T('sk-brkt.png')} right 0 bottom 6px / 64px auto no-repeat,
             ${T('sk-rod.png')} center bottom 0 / 100% 14px no-repeat,
-            ${T('sk-lamp.png')} left 338px top 14px / auto 78px no-repeat,
-            ${T('sk-gear.png')} left 372px top 30px / 70px auto no-repeat,
-            ${T('sk-gear.png')} left 408px top -26px / 56px auto no-repeat,
-            linear-gradient(90deg, #0b0806f2 0, #0b080699 22%, #0b080666 60%, #0b0806cc 100%),
-            ${T('sk-city.jpg')} center 40% / cover,
-            #14110f !important;
+            linear-gradient(#0b0806d0, #0b080699 70%, #0b0806cc) !important;
           border-bottom: 2px solid #0a0807 !important; box-shadow: inset 0 -1px 0 #ffffff1a, 0 5px 16px #000c !important; }
         ytmusic-nav-bar #left-content { background: transparent !important; }
         ytmusic-nav-bar ytmusic-logo { visibility: hidden !important; }
@@ -2543,7 +2544,7 @@ if (isAutotunePage()) {
         @keyframes poc-flick { 0% { opacity: 0.25; } 6% { opacity: 0.55; } 11% { opacity: 0.95; } 15% { opacity: 0.7; } 19% { opacity: 1; } 26% { opacity: 0.8; } 31% { opacity: 0.35; } 35% { opacity: 0.6; } 41% { opacity: 1; } 47% { opacity: 0.9; } 52% { opacity: 0.45; } 57% { opacity: 0.85; } 63% { opacity: 1; } 69% { opacity: 0.6; } 74% { opacity: 0.3; } 80% { opacity: 0.75; } 87% { opacity: 0.95; } 93% { opacity: 0.5; } 100% { opacity: 0.25; } }
         ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)):hover, ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)):hover, ytmusic-immersive-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)):hover { box-shadow: 0 0 18px 3px #ffb34775, 0 0 4px 1px #ffd27aaa; }
         /* left guide: framed metal panel with its own textured inner plate */
-        ytmusic-app-layout #guide-wrapper { background: ${T('metal.jpg')} 0 0 / 256px 256px, #14110f !important; }
+        ytmusic-app-layout #guide-wrapper { background: linear-gradient(#0b0806e6, #0b0806f2) !important; }
         ytmusic-app-layout, ytmusic-app { --ytmusic-guide-width: 300px !important; }
         html.ytmpoc-open ytmusic-guide-renderer { height: max(0px, calc(100vh - 158px - min(660px, 84vh) - 22px)) !important; }
         ytmusic-guide-renderer { box-sizing: border-box !important; margin: 6px 10px 0 !important; width: calc(100% - 20px) !important; height: calc(100vh - 158px - 134px) !important; overflow-y: auto !important; overflow-x: hidden !important;
