@@ -2292,8 +2292,8 @@ if (isAutotunePage()) {
         .np { position: relative; flex: 1 0 100%; display: flex; align-items: center; gap: 18px; box-sizing: border-box; margin-top: 4px;
       padding: 10px 18px; border: 1px solid #0009; border-radius: 10px; box-shadow: inset 0 0 18px #000a;
       background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; }
-    .chain { position: fixed; top: 190px; bottom: 112px; width: 38px; z-index: 2147483637; pointer-events: none; background: ${T('sk-chain.png')} 0 0 / 38px 74px repeat-y; filter: drop-shadow(1px 0 1px #000c); opacity: .95; }
-    .chgear { position: fixed; top: 128px; width: 124px; height: 124px; z-index: 2147483638; pointer-events: none; background: ${T('sk-gear.png')} center / contain no-repeat; filter: drop-shadow(0 3px 5px #000c); animation: chg 60s linear infinite; }
+    .chain { position: fixed; top: 144px; bottom: 124px; width: 38px; z-index: 2147483637; pointer-events: none; background: ${T('sk-chain.png')} 0 0 / 38px 74px repeat-y; filter: drop-shadow(1px 0 1px #000c); opacity: .95; }
+    .chgear { position: fixed; top: 82px; width: 124px; height: 124px; z-index: 2147483638; pointer-events: none; background: ${T('sk-gear.png')} center / contain no-repeat; filter: drop-shadow(0 3px 5px #000c); animation: chg 60s linear infinite; }
     .chgear.r { animation-direction: reverse; } @keyframes chg { to { transform: rotate(360deg); } }
     .chain::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 26px; background: linear-gradient(#0d0a08, transparent); }
     .chordbox { display: none !important; } /* chord detection keeps running (experimental); the box is hidden until it gets a new home */
@@ -2302,6 +2302,7 @@ if (isAutotunePage()) {
     .chlbl { font: 700 9px "Barlow Condensed", sans-serif; letter-spacing: .2em; color: var(--brass); }
     .chcur { min-width: 56px; font: 400 28px/1 "Metamorphous", serif; color: #ffc46b; text-shadow: 0 0 3px #ffb347, 0 0 10px #ff8a1f99; }
     .chhist { font: 600 12px "Barlow Condensed", sans-serif; letter-spacing: .06em; color: #cdbfa9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .steam { display: none !important; } /* pipe strip under the header removed (user): the copper header plate sits directly on the content */
     .steam { position: fixed; left: 0; right: 0; top: 112px; height: 46px; z-index: 2147483638; display: flex; align-items: center; pointer-events: none; box-sizing: border-box; padding: 0 14px;
       background: linear-gradient(#0000008c, #00000030 30%, #0000005a), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; border-bottom: 2px solid #0a0807; box-shadow: 0 5px 14px #000c, inset 0 1px 0 #ffffff14; }
     .steam .sp { display: block; height: 44px; flex: none; background-repeat: no-repeat; background-position: center; background-size: 100% 100%; filter: drop-shadow(0 2px 2px #000a); }
@@ -2674,8 +2675,8 @@ if (isAutotunePage()) {
         /* left guide: framed metal panel with its own textured inner plate */
         ytmusic-app-layout #guide-wrapper { background: linear-gradient(#0b0806e6, #0b0806f2) !important; }
         ytmusic-app-layout, ytmusic-app { --ytmusic-guide-width: 300px !important; }
-        html.ytmpoc-open ytmusic-guide-renderer { height: max(0px, calc(100vh - 158px - min(660px, 84vh) - 22px)) !important; }
-        ytmusic-guide-renderer { box-sizing: border-box !important; margin: 6px 10px 0 !important; width: calc(100% - 20px) !important; height: calc(100vh - 158px - 134px) !important; overflow-y: auto !important; overflow-x: hidden !important;
+        html.ytmpoc-open ytmusic-guide-renderer { height: max(0px, calc(100vh - 112px - min(660px, 84vh) - 22px)) !important; }
+        ytmusic-guide-renderer { box-sizing: border-box !important; margin: 6px 10px 0 !important; width: calc(100% - 20px) !important; height: calc(100vh - 112px - 134px) !important; overflow-y: auto !important; overflow-x: hidden !important;
           border: 14px solid transparent !important; border-image: ${T('sk-square.png')} 62 / 18px stretch !important; background: linear-gradient(#0000003a, #0000008c), ${T('metal.jpg')} 0 0 / 256px 256px, #12100e !important; background-clip: padding-box !important; }
         ytmusic-guide-entry-renderer tp-yt-paper-item { background: transparent !important; border: 1px solid transparent !important; border-radius: 4px !important; color: #e9dcc2 !important; font-weight: 700 !important; letter-spacing: .05em; text-shadow: 0 1px 2px #000; }
         ytmusic-guide-entry-renderer:hover tp-yt-paper-item { background: #ffffff0f !important; color: #fff3d6 !important; }
@@ -2688,7 +2689,7 @@ if (isAutotunePage()) {
         ytmusic-nav-bar #right-content ytmusic-settings-button #avatar, ytmusic-nav-bar #right-content ytmusic-settings-button img { border-radius: 50% !important; box-shadow: 0 0 0 2px #0a0807, 0 0 0 3px #8a6a3c; }
         ytmusic-nav-bar #right-content { position: fixed !important; top: 20px; right: 14px; zoom: var(--poc-rz, 1); z-index: 2147483640; display: flex !important; align-items: center; }
         ytmusic-search-box .search-box { background: #0a0807 !important; background-clip: border-box !important; border: 14px solid transparent !important; border-image: ${T('sk-pill.png')} 72 / 28px stretch !important; border-radius: 26px !important; box-shadow: none !important; height: 56px !important; box-sizing: border-box !important; }
-        ytmusic-app-layout { --ytmusic-nav-bar-height: 158px !important; }
+        ytmusic-app-layout { --ytmusic-nav-bar-height: 112px !important; }
         ytmusic-nav-bar { height: 112px !important; padding-right: 120px !important; box-sizing: border-box !important; }
         ytmusic-nav-bar ytmusic-search-box { margin-top: 0 !important; }
         ytmusic-search-box input { color: #eadfca !important; }
