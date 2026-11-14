@@ -2689,6 +2689,28 @@ if (isAutotunePage()) {
         ytmusic-nav-bar { height: 112px !important; padding-right: 120px !important; box-sizing: border-box !important; }
         ytmusic-nav-bar ytmusic-search-box { margin-top: 0 !important; }
         ytmusic-search-box input { color: #eadfca !important; }
+        /* mood chips, Play all / More, carousel arrows: brass plates cut from the asset sheet */
+        ytmusic-chip-cloud-renderer, ytmusic-chip-cloud-renderer * { scrollbar-color: #c08a44 #0a0705aa !important; scrollbar-width: thin !important; }
+        ytmusic-chip-cloud-renderer *::-webkit-scrollbar-track { background: #0a0705aa; border-radius: 3px; box-shadow: inset 0 0 2px #000; }
+        ytmusic-chip-cloud-renderer *::-webkit-scrollbar-thumb { background: linear-gradient(#e0a95a, #8a5a24); border-radius: 3px; box-shadow: 0 0 4px #ff9a3a66; }
+        ytmusic-chip-cloud-chip-renderer { --ytmusic-chip-background: transparent; background: none !important; border: 0 !important; border-radius: 0 !important; height: auto !important; padding: 0 !important; margin-right: 6px !important; filter: drop-shadow(0 2px 3px #000b); transition: filter .15s; }
+        ytmusic-chip-cloud-chip-renderer .gradient-box { background: none !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; }
+        ytmusic-chip-cloud-chip-renderer a { display: flex !important; align-items: center; box-sizing: border-box; height: 38px !important; padding: 0 22px !important; margin: 0 !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; background: none !important;
+          border-image: ${T('sk-chip.png')} 38 44 fill / 13px 15px stretch !important; }
+        ytmusic-chip-cloud-chip-renderer a, ytmusic-chip-cloud-chip-renderer a * { color: #e6d3ad !important; text-shadow: 0 1px 2px #000; }
+        ytmusic-chip-cloud-chip-renderer:hover { filter: drop-shadow(0 0 6px #ffb34799) brightness(1.15); }
+        ytmusic-chip-cloud-chip-renderer[is-selected] a, ytmusic-chip-cloud-chip-renderer a[aria-selected=true] { border-image: ${T('sk-chip-on.png')} 40 40 fill / 13px 15px stretch !important; }
+        ytmusic-chip-cloud-chip-renderer[is-selected] a, ytmusic-chip-cloud-chip-renderer[is-selected] a *, ytmusic-chip-cloud-chip-renderer a[aria-selected=true], ytmusic-chip-cloud-chip-renderer a[aria-selected=true] * { color: #fff4dc !important; text-shadow: 0 1px 2px #000, 0 0 6px #ffb34799; }
+        ytmusic-carousel-shelf-basic-header-renderer yt-button-renderer button, ytmusic-carousel-shelf-basic-header-renderer yt-button-shape button { background: none !important; border: 13px solid transparent !important; border-radius: 0 !important; height: 40px !important; padding: 0 10px !important; box-sizing: border-box;
+          border-image: ${T('sk-btn-sm.png')} 34 40 fill / 13px 15px stretch !important; color: #fff4dc !important; font-weight: 700 !important; letter-spacing: .04em; text-shadow: 0 1px 2px #000, 0 0 6px #ffb34799; filter: drop-shadow(0 2px 3px #000b); }
+        ytmusic-carousel-shelf-basic-header-renderer yt-button-renderer button:hover, ytmusic-carousel-shelf-basic-header-renderer yt-button-shape button:hover { filter: drop-shadow(0 0 6px #ffb347aa) brightness(1.12); }
+        ytmusic-carousel-shelf-basic-header-renderer yt-button-renderer button * { color: #fff4dc !important; }
+        ytmusic-carousel-shelf-renderer #previous-items-button, ytmusic-carousel-shelf-renderer #next-items-button { width: 40px !important; height: 40px !important; padding: 0 !important; border-radius: 50%; background: center / contain no-repeat !important; filter: drop-shadow(0 2px 3px #000c); }
+        ytmusic-carousel-shelf-renderer #previous-items-button { background-image: ${T('sk-arr-l.png')} !important; }
+        ytmusic-carousel-shelf-renderer #next-items-button { background-image: ${T('sk-arr-r.png')} !important; }
+        ytmusic-carousel-shelf-renderer #previous-items-button > *, ytmusic-carousel-shelf-renderer #next-items-button > * { opacity: 0 !important; }
+        ytmusic-carousel-shelf-renderer #previous-items-button:hover, ytmusic-carousel-shelf-renderer #next-items-button:hover { filter: drop-shadow(0 0 6px #ffb347aa) brightness(1.15); }
+        ytmusic-carousel-shelf-renderer #previous-items-button[disabled], ytmusic-carousel-shelf-renderer #next-items-button[disabled] { opacity: .35; }
         #poc-bgfx { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
         #poc-bgfx .fxspace { position: absolute; left: 0; top: 0; width: 1920px; height: 1081px; transform-origin: 0 0; }
         #poc-bgfx .fx { position: absolute; display: block; }
