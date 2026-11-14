@@ -1936,8 +1936,7 @@ if (isAutotunePage()) {
     ui.append(box, pan);
     const setOpen = (o) => { pan.classList.toggle('open', o); tab.textContent = o ? 'EQ \u25B2' : 'EQ \u25BC'; tab.setAttribute('aria-label', o ? 'Close the graphic equalizer panel' : 'Open the graphic equalizer panel'); };
     tab.addEventListener('click', () => setOpen(!pan.classList.contains('open')));
-    window.addEventListener('pointerdown', (e) => { if (pan.classList.contains('open') && !e.composedPath().some((n) => n === pan || n === box)) setOpen(false); }, true);
-    window.addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
+    // the panel stays open until the EQ button is pressed again (no outside-click / Esc close)
     const draw = () => {
       for (const el of [box, pan]) { el.classList.toggle('off', !geqState.on); el.classList.toggle('locked', captureActive); }
       for (const pw of pwEls) pw.setAttribute('aria-pressed', String(geqState.on));
@@ -2452,12 +2451,14 @@ if (isAutotunePage()) {
     .geq.locked .geqtab { opacity: 1; pointer-events: auto; filter: none; }
     /* fold-down full-size panel (same look as the reference artwork) */
     .geqpan { -webkit-app-region: no-drag; position: fixed; top: 104px; z-index: 2147483641; box-sizing: border-box; display: none;
-      border: 18px solid transparent; border-image: ${T('sk-geq-frame.png')} 46 / 18px stretch; background: radial-gradient(ellipse at 50% 20%, #ff8a1f1a, transparent 65%), #0d0907f2; background-clip: padding-box; box-shadow: 0 10px 28px #000e; }
+      border: 18px solid transparent; border-image: ${T('sk-geq-frame.png')} 46 / 18px stretch; background: radial-gradient(ellipse at 50% 20%, #ff8a1f1a, transparent 65%), #0d0907; background-clip: padding-box; box-shadow: 0 10px 28px #000e; }
     .geqpan.open { display: block; animation: geqdrop .18s ease-out; }
     @keyframes geqdrop { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: none; } }
     .geqtitle { position: absolute; left: 50%; top: -22px; width: 54%; aspect-ratio: 770 / 96; transform: translateX(-50%); background: ${T('sk-geq-title.png')} center / 100% 100% no-repeat; filter: drop-shadow(0 3px 4px #000c); }
-    .geqlamp { position: absolute; top: 16%; width: 9%; height: 58%; background: center / contain no-repeat; animation: poc-lamp 4.7s linear infinite; filter: drop-shadow(0 0 10px #ff9a3a88); }
-    .geqlamp.l { left: -4px; background-image: ${T('sk-geq-lamp-l.png')}; } .geqlamp.r { right: -4px; background-image: ${T('sk-geq-lamp-r.png')}; animation-delay: -1.9s; }
+    /* lamps centred in the side gutters (between the frame and the screen, 11 % each), mirrored; they go dark when the EQ is off */
+    .geqlamp { position: absolute; top: 15%; width: 8%; height: 60%; background: center / contain no-repeat; animation: poc-lamp 4.7s linear infinite; filter: drop-shadow(0 0 10px #ff9a3a88); transition: filter .25s; }
+    .geqpan.off .geqlamp { animation: none; filter: grayscale(1) brightness(.32); }
+    .geqlamp.l { left: 1.5%; background-image: ${T('sk-geq-lamp-l.png')}; } .geqlamp.r { right: 1.5%; background-image: ${T('sk-geq-lamp-r.png')}; animation-delay: -1.9s; }
     @keyframes poc-lamp { 0%, 40%, 44%, 100% { opacity: 1; } 41% { opacity: .55; } 42% { opacity: .95; } 43% { opacity: .7; } }
     .geqscr { position: absolute; left: 11%; right: 11%; top: 13%; bottom: 25%; border-radius: 8px; background: linear-gradient(#ffffff06, #00000040); box-shadow: inset 0 0 14px #000, 0 0 0 1px #6a4a26, 0 0 0 3px #1a0f08; }
     .geqgrid { position: absolute; left: 34px; right: 34px; top: calc(22px + 13px); bottom: 21px; pointer-events: none;
