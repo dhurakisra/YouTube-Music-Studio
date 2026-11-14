@@ -2689,6 +2689,8 @@ if (isAutotunePage()) {
         ytmusic-nav-bar { height: 112px !important; padding-right: 120px !important; box-sizing: border-box !important; }
         ytmusic-nav-bar ytmusic-search-box { margin-top: 0 !important; }
         ytmusic-search-box input { color: #eadfca !important; }
+        /* the scrolling content column sits one background plate seam further left (user-aligned; the background scales with the width, so vw) */
+        ytmusic-browse-response ytmusic-section-list-renderer { position: relative; left: -2.35vw; }
         /* mood chips, Play all / More, carousel arrows: brass plates cut from the asset sheet */
         ytmusic-chip-cloud-renderer, ytmusic-chip-cloud-renderer * { scrollbar-color: #c08a44 #0a0705aa !important; scrollbar-width: thin !important; }
         ytmusic-chip-cloud-renderer *::-webkit-scrollbar-track { background: #0a0705aa; border-radius: 3px; box-shadow: inset 0 0 2px #000; }
