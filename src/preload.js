@@ -1720,6 +1720,30 @@ if (isAutotunePage()) {
     mount();
   }
 
+  // Living background: an overlay in the background image's own pixel space (1920x1081, scaled like 'cover'), so lamps flicker,
+  // the red valve wheel turns, steam rises and the small gauge's needle wanders exactly over the painted objects.
+  function studioBgFx() {
+    const IW = 1920, IH = 1081;
+    const mk = (cls, x, y, w, hh, extra) => { const e = document.createElement('i'); e.className = 'fx ' + cls; Object.assign(e.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: hh + 'px' }, extra || {}); return e; };
+    const mount = () => {
+      if (!document.body) { setTimeout(mount, 300); return; }
+      if (document.getElementById('poc-bgfx')) return;
+      const box = document.createElement('div'); box.id = 'poc-bgfx';
+      const sp = document.createElement('div'); sp.className = 'fxspace'; box.appendChild(sp);
+      // lamps (centre x, centre y, w, h, delay)
+      for (const [x, y, w, hh, d] of [[274, 596, 46, 78, 0], [1840, 280, 52, 76, -1.7], [1741, 698, 34, 56, -3.1], [1856, 690, 86, 116, -0.8]]) sp.appendChild(mk('lamp', x - w, y - hh, w * 2, hh * 2, { animationDelay: d + 's', animationDuration: (2.6 + Math.abs(d) * 0.37) + 's' }));
+      sp.appendChild(mk('valvebg', 1618, 675, 72, 72));
+      sp.appendChild(mk('valve', 1618, 675, 72, 72));
+      sp.appendChild(mk('gauge', 278, 817, 60, 60));
+      const ndl = mk('needle', 307, 829, 2, 19); sp.appendChild(ndl); sp.appendChild(mk('hub', 305, 844, 6, 6));
+      for (let i = 0; i < 7; i += 1) sp.appendChild(mk('puff', 1722, 532, 36, 36, { animationDelay: (-i * 0.9) + 's' }));
+      document.body.appendChild(box);
+      const fit = () => { const vw = document.documentElement.clientWidth, vh = window.innerHeight; const sc = Math.max(vw / IW, vh / IH); sp.style.transform = 'translate(' + (vw - IW * sc) / 2 + 'px,' + (vh - IH * sc) / 2 + 'px) scale(' + sc + ')'; };
+      fit(); window.addEventListener('resize', fit);
+    };
+    mount();
+  }
+
   // Steampunk strip under the header: caps + stretchy tubes + a centre ornament (gauge, lamps, gears), all pre-cut from one panel image.
   function studioSparks() {
     const rnd = (a, b) => a + Math.random() * (b - a);
@@ -2507,7 +2531,7 @@ if (isAutotunePage()) {
       studioBuildTopMeters(ui);
       studioBuildChords(ui);
       studioBuildWinButtons(ui);
-      studioBuildBrand(ui);
+      studioBuildBrand(ui); studioBgFx();
       studioBuildSteamPanel(ui);
       studioSparks();
       studioBuildChains(ui);
@@ -2605,6 +2629,20 @@ if (isAutotunePage()) {
         ytmusic-nav-bar { height: 112px !important; padding-right: 120px !important; box-sizing: border-box !important; }
         ytmusic-nav-bar ytmusic-search-box { margin-top: 0 !important; }
         ytmusic-search-box input { color: #eadfca !important; }
+        #poc-bgfx { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+        #poc-bgfx .fxspace { position: absolute; left: 0; top: 0; width: 1920px; height: 1081px; transform-origin: 0 0; }
+        #poc-bgfx .fx { position: absolute; display: block; }
+        #poc-bgfx .lamp { border-radius: 50%; background: radial-gradient(ellipse at center, #ffd88aaa 0, #ffa03a66 22%, #ff7a1a22 48%, transparent 70%); mix-blend-mode: screen; animation: poc-lampfx 3s linear infinite; }
+        @keyframes poc-lampfx { 0%, 100% { opacity: .55; } 7% { opacity: .9; } 9% { opacity: .35; } 11% { opacity: .85; } 30% { opacity: .7; } 46% { opacity: 1; } 48% { opacity: .2; } 50% { opacity: .95; } 53% { opacity: .5; } 70% { opacity: .8; } 83% { opacity: .4; } 86% { opacity: .9; } }
+        #poc-bgfx .valvebg { background: ${T('sk-fx-valvebg.png')} center / 100% 100%; }
+        #poc-bgfx .valve { background: ${T('sk-fx-valve.png')} center / 100% 100%; animation: poc-spin 26s linear infinite; }
+        @keyframes poc-spin { to { transform: rotate(360deg); } }
+        #poc-bgfx .gauge { background: ${T('sk-fx-gauge.png')} center / 100% 100%; }
+        #poc-bgfx .needle { background: linear-gradient(#1a0f08, #2a1a0e); border-radius: 1px 1px 0 0; transform-origin: 50% 100%; box-shadow: 0 0 1px #000; animation: poc-needle 9s ease-in-out infinite; }
+        @keyframes poc-needle { 0% { transform: rotate(-55deg); } 12% { transform: rotate(-20deg); } 15% { transform: rotate(-27deg); } 30% { transform: rotate(35deg); } 33% { transform: rotate(28deg); } 36% { transform: rotate(40deg); } 52% { transform: rotate(-5deg); } 55% { transform: rotate(4deg); } 70% { transform: rotate(60deg); } 73% { transform: rotate(52deg); } 88% { transform: rotate(-35deg); } 92% { transform: rotate(-42deg); } 100% { transform: rotate(-55deg); } }
+        #poc-bgfx .hub { border-radius: 50%; background: radial-gradient(circle at 35% 35%, #f0c070, #6a4010); }
+        #poc-bgfx .puff { border-radius: 50%; background: radial-gradient(circle, #f2eee8cc 0, #d8d2caa0 30%, #c8c0b840 55%, transparent 72%); filter: blur(3px); opacity: 0; animation: poc-steam 6.3s linear infinite; }
+        @keyframes poc-steam { 0% { opacity: 0; transform: translate(0, 0) scale(.35); } 8% { opacity: .75; } 45% { opacity: .55; transform: translate(42px, -70px) scale(1.4); } 100% { opacity: 0; transform: translate(96px, -175px) scale(2.6); } }
         #poc-brand { position: fixed; left: 112px; top: 30px; z-index: 2147483640; text-decoration: none; -webkit-app-region: no-drag; }
         #poc-brand .poc-ntitle { margin: 0 !important; padding: 8px 26px !important; font-size: 0 !important; line-height: 1 !important; }
         #poc-brand .poc-logo { display: flex !important; align-items: center; gap: 10px; text-shadow: none; animation: poc-logo-glow 4.5s linear infinite; }
