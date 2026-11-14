@@ -2516,7 +2516,7 @@ if (isAutotunePage()) {
             ${T('screw.png')} left 8px top 8px / 11px 11px no-repeat, ${T('screw.png')} right 8px top 8px / 11px 11px no-repeat,
             ${T('sk-brkt.png')} left 0 bottom 6px / 64px auto no-repeat, ${T('sk-brkt.png')} right 0 bottom 6px / 64px auto no-repeat,
             ${T('sk-rod.png')} center bottom 0 / 100% 14px no-repeat,
-            linear-gradient(#0b0806d0, #0b080699 70%, #0b0806cc) !important;
+            linear-gradient(#ffffff10, #00000040 18%, #00000020 60%, #00000080), ${T('sk-plate.jpg')} center / 100% 100% no-repeat, #120c08 !important;
           border-bottom: 2px solid #0a0807 !important; box-shadow: inset 0 -1px 0 #ffffff1a, 0 5px 16px #000c !important; }
         ytmusic-nav-bar #left-content { background: transparent !important; }
         ytmusic-nav-bar ytmusic-logo { visibility: hidden !important; }
