@@ -2296,6 +2296,7 @@ if (isAutotunePage()) {
     .chgear { position: fixed; top: 128px; width: 124px; height: 124px; z-index: 2147483638; pointer-events: none; background: ${T('sk-gear.png')} center / contain no-repeat; filter: drop-shadow(0 3px 5px #000c); animation: chg 60s linear infinite; }
     .chgear.r { animation-direction: reverse; } @keyframes chg { to { transform: rotate(360deg); } }
     .chain::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 26px; background: linear-gradient(#0d0a08, transparent); }
+    .chordbox { display: none !important; } /* chord detection keeps running (experimental); the box is hidden until it gets a new home */
     .chordbox { position: fixed; left: 64px; top: 116px; height: 38px; z-index: 2147483639; display: flex; align-items: center; gap: 12px; padding: 0 14px; max-width: 560px; box-sizing: border-box; overflow: hidden;
       background: #0d0a08d9; border: 1px solid #5a4630; border-radius: 6px; box-shadow: inset 0 0 8px #000, 0 2px 6px #000a; pointer-events: none; }
     .chlbl { font: 700 9px "Barlow Condensed", sans-serif; letter-spacing: .2em; color: var(--brass); }
