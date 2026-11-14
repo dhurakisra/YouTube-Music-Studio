@@ -1877,6 +1877,65 @@ if (isAutotunePage()) {
     ui.append(h('div', 'dragstrip'), wrap);
   }
 
+  // Graphic EQ strip in the header (between search and VU meters): power, 10 faders (drag / wheel / double-click = 0), preset stepper.
+  function studioBuildGeq(ui) {
+    const LBL = ['32', '63', '125', '250', '500', '1K', '2K', '4K', '8K', '16K'];
+    const box = h('div', 'geq');
+    const pw = h('button', 'geqpw', null, { type: 'button', 'aria-label': 'Graphic EQ on / off' });
+    const bands = h('div', 'geqbands');
+    const caps = [], fills = [], trks = [];
+    let changed = () => {};
+    GEQ_FREQS.forEach((fq, i) => {
+      const col = h('div', 'geqcol'), tr = h('div', 'geqtrk'), fl = h('i', 'geqfill'), cp = h('i', 'geqcap');
+      tr.append(fl, cp); col.append(h('span', 'geqlbl', LBL[i]), tr); bands.appendChild(col);
+      caps.push(cp); fills.push(fl); trks.push(tr);
+      const set = (v) => { geqState.gains[i] = Math.max(-12, Math.min(12, Math.round(v))); geqState.preset = ''; changed(); };
+      const fromY = (y) => { const r = tr.getBoundingClientRect(); const cap = 14; set((1 - (y - r.top - cap / 2) / Math.max(1, r.height - cap)) * 24 - 12); };
+      tr.addEventListener('pointerdown', (e) => {
+        e.preventDefault(); try { tr.setPointerCapture(e.pointerId); } catch {}
+        fromY(e.clientY);
+        const mv = (ev) => fromY(ev.clientY);
+        const up = () => { tr.removeEventListener('pointermove', mv); tr.removeEventListener('pointerup', up); tr.removeEventListener('pointercancel', up); };
+        tr.addEventListener('pointermove', mv); tr.addEventListener('pointerup', up); tr.addEventListener('pointercancel', up);
+      });
+      tr.addEventListener('dblclick', () => set(0));
+      tr.addEventListener('wheel', (e) => { e.preventDefault(); set(geqState.gains[i] + (e.deltaY < 0 ? 1 : -1)); }, { passive: false });
+    });
+    const names = Object.keys(GEQ_PRESETS);
+    const pl = h('button', 'geqarr', '\u25C0', { type: 'button', 'aria-label': 'Previous EQ preset' });
+    const pr = h('button', 'geqarr', '\u25B6', { type: 'button', 'aria-label': 'Next EQ preset' });
+    const pn = h('div', 'geqname');
+    const pre = h('div', 'geqpre'); pre.append(pl, pn, pr);
+    const step = (d) => { let k = names.indexOf(geqState.preset); k = k < 0 ? (d > 0 ? 0 : names.length - 1) : (k + d + names.length) % names.length; geqState.preset = names[k]; geqState.gains = GEQ_PRESETS[names[k]].slice(); changed(); };
+    pl.addEventListener('click', () => step(-1)); pr.addEventListener('click', () => step(1));
+    pw.addEventListener('click', () => { geqState.on = !geqState.on; changed(); });
+    const lock = h('div', 'geqlock', 'STUDIO EQ ACTIVE');
+    box.append(pw, bands, pre, lock); ui.appendChild(box);
+    const draw = () => {
+      box.classList.toggle('off', !geqState.on); box.classList.toggle('locked', captureActive);
+      pw.setAttribute('aria-pressed', String(geqState.on));
+      pn.textContent = geqState.preset || 'Custom';
+      geqState.gains.forEach((g, i) => {
+        const p = (g + 12) / 24;
+        caps[i].style.bottom = 'calc(' + p + ' * (100% - 14px))';
+        fills[i].style.height = 'calc(' + p + ' * (100% - 14px) + 7px)';
+        trks[i].title = LBL[i] + ' Hz: ' + (g > 0 ? '+' : '') + g + ' dB';
+      });
+    };
+    changed = () => { applyGeq(); saveGeq(); draw(); ensurePassiveGraph(); };
+    studio.geqSync = draw;
+    const place = () => {
+      const sb = document.querySelector('ytmusic-search-box');
+      const vu = box.parentNode && box.parentNode.querySelector('.topvu');
+      const l = (sb ? sb.getBoundingClientRect().right : 700) + 20;
+      const r = vu && vu.style.display !== 'none' ? vu.getBoundingClientRect().left - 20 : window.innerWidth - 220;
+      const w = Math.min(600, r - l);
+      box.style.display = w < 430 ? 'none' : 'flex';
+      box.style.left = l + 'px'; box.style.width = w + 'px';
+    };
+    window.addEventListener('resize', place); setInterval(place, 1000); place(); draw();
+  }
+
   function studioBuildTopMeters(ui) {
     const box = h('div', 'topvu');
     const needles = [];
@@ -2340,6 +2399,25 @@ if (isAutotunePage()) {
     .brandsub { margin-top: 5px; font: italic 700 9px/1 "Barlow Condensed", "Bahnschrift", system-ui, sans-serif; letter-spacing: .18em; color: var(--brass); white-space: nowrap; } .topvu .knob.big::after { top: 9px; height: 16px; width: 4px; margin-left: -2px; transform-origin: 50% 21px; }
     .np.float { position: fixed; left: 12px; right: 12px; bottom: 10px; z-index: 2147483643; margin: 0; border-radius: 10px; height: 104px; padding: 6px 24px; }
     .tab.np-up { bottom: 124px; }
+    .geq { -webkit-app-region: no-drag; position: fixed; top: 12px; height: 88px; z-index: 2147483640; display: flex; align-items: center; gap: 12px; box-sizing: border-box; padding: 4px 12px;
+      border: 12px solid transparent; border-image: ${T('sk-geq-frame.png')} 70 / 12px stretch; background: radial-gradient(ellipse at 50% 0, #ff8a1f14, transparent 70%), #0d0907eb; background-clip: padding-box; box-shadow: 0 3px 8px #000a; }
+    .geqpw { width: 42px; height: 42px; flex: none; padding: 0; border: 0; border-radius: 50%; cursor: pointer; background: ${T('sk-geq-pwr.png')} center / contain no-repeat; filter: drop-shadow(0 0 6px #ff9a3a99); transition: filter .15s; }
+    .geq.off .geqpw { filter: grayscale(.9) brightness(.5); }
+    .geqbands { flex: 1; min-width: 0; height: 100%; display: flex; justify-content: space-between; }
+    .geqcol { width: 24px; display: flex; flex-direction: column; align-items: center; }
+    .geqlbl { font: 600 9px/11px "Oswald", "Barlow Condensed", sans-serif; color: #f0d9a8; letter-spacing: .02em; text-shadow: 0 1px 1px #000; }
+    .geqtrk { position: relative; flex: 1; width: 24px; margin-top: 1px; cursor: ns-resize; touch-action: none; }
+    .geqtrk::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 7px; margin-left: -3.5px; border-radius: 4px; background: #050302; box-shadow: inset 0 1px 2px #000, 0 0 0 1px #6a4a26, 0 0 0 2px #140c06; }
+    .geqfill { position: absolute; left: 50%; bottom: 0; width: 3px; margin-left: -1.5px; border-radius: 2px; background: linear-gradient(#ffd27a, #ff8a1f); box-shadow: 0 0 5px #ff8a1fcc; pointer-events: none; }
+    .geqcap { position: absolute; left: 50%; width: 22px; height: 14px; margin-left: -11px; border-radius: 3px; background: ${T('sk-geq-cap.png')} center / 100% 100%; box-shadow: 0 2px 3px #000c; pointer-events: none; }
+    .geqtrk:hover .geqcap { filter: brightness(1.2) drop-shadow(0 0 3px #ffb347); }
+    .geq.off .geqfill { opacity: .25; box-shadow: none; }
+    .geqpre { flex: none; display: flex; align-items: center; height: 30px; padding: 0 2px; border-radius: 15px; background: #070504; box-shadow: inset 0 1px 3px #000, 0 0 0 1px #6a4a26, 0 0 0 2px #140c06; }
+    .geqarr { border: 0; background: none; color: #ffb347; font-size: 11px; padding: 0 6px; cursor: pointer; } .geqarr:hover { color: #ffe0a0; text-shadow: 0 0 4px #ffb347; }
+    .geqname { min-width: 84px; text-align: center; font: 600 13px "Barlow Condensed", sans-serif; color: #f6e6c6; white-space: nowrap; }
+    .geq.locked .geqbands, .geq.locked .geqpw, .geq.locked .geqpre { opacity: .3; pointer-events: none; filter: grayscale(.7); }
+    .geqlock { display: none; position: absolute; inset: 0; align-items: center; justify-content: center; pointer-events: none; font: 700 11px "Oswald", sans-serif; letter-spacing: .24em; color: #ffb347; text-shadow: 0 0 6px #ff8a1f, 0 1px 2px #000; }
+    .geq.locked .geqlock { display: flex; }
     /* header: rounded brass logo plate (same pill frame as the search box), spaced STUDIO line, two glass lamps hanging over the pipe strip */
     .brand { display: none !important; }
     .brand { top: 16px; height: 76px; border-width: 20px 26px; border-image: ${T('sk-pill.png')} 72 / 20px 26px stretch; border-radius: 38px; padding: 0 4px; box-shadow: 0 4px 12px #000b; }
@@ -2591,7 +2669,7 @@ if (isAutotunePage()) {
       studioBuildLibrary(ui);
       studioBuildLyrics(ui);
       studioBuildNowPlaying(ui);
-      studioBuildTopMeters(ui);
+      studioBuildTopMeters(ui); studioBuildGeq(ui);
       const CHORDS_ENABLED = false; // experimental chord detection: code kept intact, switched off (no box, no analysis, no audio tap); set true to bring it back
       if (CHORDS_ENABLED) studioBuildChords(ui);
       studioBuildWinButtons(ui);
@@ -2809,6 +2887,7 @@ if (isAutotunePage()) {
         if (modeSelect) modeSelect.disabled = false;
         if (gainSlider) gainSlider.disabled = false;
         captureActive = true;
+        captureModeChanged();
         log('capture_started', { sampleRate: context.sampleRate, state: 'capturing' });
         log('latency_info', {
           baseLatency: typeof context.baseLatency === 'number' ? context.baseLatency : null,
@@ -2851,6 +2930,7 @@ if (isAutotunePage()) {
     if (gainSlider) gainSlider.disabled = true;
     if (modelSelect) modelSelect.disabled = false;
     captureActive = false;
+    captureModeChanged();
     lastMetricsAt = 0;
     lastZeroStart = null;
     if (button) button.textContent = 'START';
@@ -2935,6 +3015,55 @@ if (isAutotunePage()) {
   function saveUserPresets(presets) { try { localStorage.setItem(EQ_PRESETS_KEY, JSON.stringify(presets)); } catch {} }
   let masterEq = null;
 
+  // Graphic EQ (top bar): 10 bands for plain listening. It sits in front of the parametric master EQ and is live only while
+  // capture is OFF; once Studio capture runs (stems etc.) it goes flat/locked and the parametric EQ takes over (and vice versa).
+  const GEQ_FREQS = [32, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+  const GEQ_PRESETS = {
+    Flat: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Rock: [5, 4, 3, 1, -1, -1, 1, 3, 4, 5], Pop: [-1, 1, 3, 4, 3, 0, -1, -1, 1, 2],
+    Jazz: [3, 2, 1, 2, -1, -1, 0, 1, 2, 3], Classical: [4, 3, 2, 1, -1, -1, 0, 2, 3, 4], 'Bass Boost': [7, 6, 5, 3, 1, 0, 0, 0, 0, 0],
+    'Treble Boost': [0, 0, 0, 0, 0, 1, 3, 5, 6, 7], Vocal: [-2, -2, -1, 1, 3, 4, 4, 2, 0, -1], Electronic: [5, 4, 1, 0, -2, 2, 1, 2, 4, 5],
+    Loudness: [6, 4, 1, 0, -1, 0, 1, 3, 5, 6],
+  };
+  const GEQ_KEY = 'ytm-poc-geq-v1';
+  const geqState = (() => {
+    const fresh = { on: true, gains: GEQ_PRESETS.Flat.slice(), preset: 'Flat' };
+    try {
+      const saved = JSON.parse(localStorage.getItem(GEQ_KEY) || 'null');
+      if (saved && Array.isArray(saved.gains) && saved.gains.length === 10) {
+        fresh.on = saved.on !== false; fresh.gains = saved.gains.map((v) => Math.max(-12, Math.min(12, Math.round(Number(v) || 0)))); fresh.preset = typeof saved.preset === 'string' ? saved.preset : '';
+      }
+    } catch {}
+    return fresh;
+  })();
+  function saveGeq() { try { localStorage.setItem(GEQ_KEY, JSON.stringify(geqState)); } catch {} }
+  function geqLive() { return geqState.on && !captureActive; }
+  function applyGeq() {
+    if (!masterEq || !masterEq.geq) return;
+    const t = masterEq.context.currentTime;
+    masterEq.geq.forEach((f, i) => f.gain.setTargetAtTime(geqLive() ? geqState.gains[i] : 0, t, 0.02));
+  }
+  // Plain listening has no Web Audio graph. Once the graphic EQ is on and not flat, the page media is wired (dry path, no PCM worker,
+  // no stems) into the master stage, the same graph capture reuses later. Only after a user gesture: a media element wired into a
+  // still-suspended AudioContext would go silent.
+  let geqGesture = false;
+  function geqNeedsGraph() { return geqState.on && geqState.gains.some((g) => g !== 0); }
+  function ensurePassiveGraph() {
+    if (!geqGesture || !geqNeedsGraph()) return;
+    const media = findMedia(); if (!media || wiredElements.has(media)) return;
+    if (!activeContext || activeContext.state === 'closed') activeContext = new AudioContext({ latencyHint: 'interactive' });
+    const context = activeContext;
+    context.resume().then(() => {
+      if (context.state !== 'running' || wiredElements.has(media)) return;
+      const source = context.createMediaElementSource(media);
+      wiredElements.add(media);
+      graphs.set(media, connectAudioGraph(source, context, media));
+      applyEq(); applyGeq(); routeEnhancer();
+    }).catch(() => {});
+  }
+  for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, () => { geqGesture = true; ensurePassiveGraph(); }, { capture: true });
+  setInterval(ensurePassiveGraph, 2000);
+  function captureModeChanged() { applyEq(); applyGeq(); routeEnhancer(); studio.geqSync?.(); }
+
   function saveEqState() { try { localStorage.setItem(EQ_STORE_KEY, JSON.stringify(eqState)); } catch {} }
 
   function applyEq() {
@@ -2944,7 +3073,7 @@ if (isAutotunePage()) {
       const f = masterEq.filters[i];
       f.frequency.setTargetAtTime(b.freq, t, 0.01);
       f.Q.setTargetAtTime(b.q, t, 0.01);
-      f.gain.setTargetAtTime(eqState.enabled ? b.gain : 0, t, 0.01); // disabled = 0 dB on every band (transparent)
+      f.gain.setTargetAtTime(eqState.enabled && captureActive ? b.gain : 0, t, 0.01); // disabled (or plain listening: graphic EQ's turn) = 0 dB on every band
     });
   }
 
@@ -2974,6 +3103,12 @@ if (isAutotunePage()) {
     const input = context.createGain();
     setChannelFormat(input);
     let prev = input;
+    const geq = GEQ_FREQS.map((fq, i) => {
+      const f = context.createBiquadFilter();
+      f.type = i === 0 ? 'lowshelf' : i === GEQ_FREQS.length - 1 ? 'highshelf' : 'peaking';
+      f.frequency.value = fq; f.Q.value = 1.41; f.gain.value = geqLive() ? geqState.gains[i] : 0;
+      setChannelFormat(f); prev.connect(f); prev = f; return f;
+    });
     const filters = eqState.bands.map((b) => {
       const f = context.createBiquadFilter();
       f.type = b.type;
@@ -3003,11 +3138,11 @@ if (isAutotunePage()) {
     analyser.fftSize = 4096; analyser.smoothingTimeConstant = 0.8;
     prev.connect(analyser); // tap only: drives the EQ screen spectrum
     enhancer = buildEnhancer(context); // wired in routeEnhancer(): while off, none of its nodes are connected to the destination
-    masterEq = { context, input, filters, analyser, limiter, eqOut, master, outNode, anL, anR, limiterOn: null, enhOn: null };
+    masterEq = { context, input, geq, filters, analyser, limiter, eqOut, master, outNode, anL, anR, limiterOn: null, enhOn: null };
     routeEnhancer(); applyEnhancer(); // Enhancer off = eqOut goes straight to master (clean bypass)
     routeLimiter();
     for (const [i, b] of eqState.bands.entries()) {
-      filters[i].frequency.value = b.freq; filters[i].Q.value = b.q; filters[i].gain.value = eqState.enabled ? b.gain : 0;
+      filters[i].frequency.value = b.freq; filters[i].Q.value = b.q; filters[i].gain.value = eqState.enabled && captureActive ? b.gain : 0;
     }
     return input;
   }
@@ -3085,7 +3220,7 @@ if (isAutotunePage()) {
 
   function routeEnhancer() {
     if (!masterEq || !enhancer) return;
-    const want = fxState.enh.on;
+    const want = fxState.enh.on && captureActive; // the Enhancer is a Studio tool: plain listening stays clean
     if (masterEq.enhOn === want) return;
     const { eqOut, master } = masterEq;
     try { eqOut.disconnect(master); } catch {}
