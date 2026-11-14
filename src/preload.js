@@ -1571,7 +1571,7 @@ if (isAutotunePage()) {
   // One ScriptProcessor carries all five stereo layers (10 channels): one callback per block instead of five.
   function buildStemPitch(context, nodes) {
     const nCh = STEM_SLOTS.length * 2;
-    const ins = {}, outs = {};
+    const ins = {}, outs = {}, paths = [];
     const merger = context.createChannelMerger(nCh);
     const proc = context.createScriptProcessor(4096, nCh, nCh);
     proc.channelCount = nCh; proc.channelCountMode = 'explicit'; proc.channelInterpretation = 'discrete';
@@ -1582,11 +1582,26 @@ if (isAutotunePage()) {
       const input = fxGain(context), sp = context.createChannelSplitter(2);
       input.connect(sp); sp.connect(merger, 0, 2 * k); sp.connect(merger, 1, 2 * k + 1);
       const mo = context.createChannelMerger(2), output = fxGain(context);
-      splitOut.connect(mo, 2 * k, 0); splitOut.connect(mo, 2 * k + 1, 1); mo.connect(output); output.connect(nodes[key]);
-      ins[key] = input; outs[key] = output;
+      // two paths per stem: 'direct' (KEY 0) never touches the main-thread ScriptProcessor, so a busy page cannot punch holes
+      // (clicks) into the stems; 'wet' carries the shifted signal. Only one is open at a time (short crossfade on change).
+      const direct = fxGain(context), wet = fxGain(context);
+      input.connect(direct); direct.connect(output);
+      splitOut.connect(mo, 2 * k, 0); splitOut.connect(mo, 2 * k + 1, 1); mo.connect(wet); wet.connect(output); output.connect(nodes[key]);
+      direct.gain.value = 1; wet.gain.value = 0;
+      ins[key] = input; outs[key] = output; paths.push({ direct, wet });
     });
     const pairs = STEM_SLOTS.map(() => ({ ps: new PairShifter(), seen: false, wasShifting: false }));
     const self = { ins, outs, proc };
+    let shifted = false;
+    const route = () => {
+      const want = tuneState.semis !== 0;
+      if (want === shifted || nodes.pitch !== self) return;
+      shifted = want;
+      // the shifter's own latency (~1 block) means the wet path lags; a 60 ms crossfade keeps the switch smooth
+      const t = context.currentTime;
+      for (const p of paths) { p.direct.gain.setTargetAtTime(want ? 0 : 1, t, 0.02); p.wet.gain.setTargetAtTime(want ? 1 : 0, t, 0.02); }
+    };
+    self.route = route; setInterval(route, 150);
     proc.onaudioprocess = (e) => {
       const inp = e.inputBuffer, out = e.outputBuffer, n = inp.length;
       if (nodes.pitch !== self) { for (let c = 0; c < nCh; c += 1) out.getChannelData(c).fill(0); return; } // superseded by a newer capture graph
@@ -1634,7 +1649,7 @@ if (isAutotunePage()) {
       keyV.textContent = (tuneState.semis > 0 ? '+' : '') + tuneState.semis;
       tempoV.textContent = Math.round(tuneState.tempo * 100) + '%';
     };
-    const setKey = (v) => { tuneState.semis = Math.max(-8, Math.min(8, v)); show(); };
+    const setKey = (v) => { tuneState.semis = Math.max(-8, Math.min(8, v)); show(); stemNodes?.pitch?.route?.(); };
     const setTempo = (v) => { tuneState.tempo = Math.max(0.5, Math.min(1.5, Math.round(v * 100) / 100)); show(); applyTempo(); };
     const keyRow = h('div', 'tunerow'); keyRow.append(h('span', 'tunelbl', 'KEY'), step('\u2212', () => setKey(tuneState.semis - 1)), keyV, step('+', () => setKey(tuneState.semis + 1)));
     const tempoRow = h('div', 'tunerow'); tempoRow.append(h('span', 'tunelbl', 'TEMPO'), step('\u2212', () => setTempo(tuneState.tempo - 0.05)), tempoV, step('+', () => setTempo(tuneState.tempo + 0.05)));
