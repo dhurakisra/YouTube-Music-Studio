@@ -1788,7 +1788,8 @@ if (isAutotunePage()) {
       sp.appendChild(mk('valve', 1618, 675, 72, 72));
       sp.appendChild(mk('gauge', 278, 817, 60, 60));
       const ndl = mk('needle', 307, 829, 2, 19); sp.appendChild(ndl); sp.appendChild(mk('hub', 305, 844, 6, 6));
-      for (let i = 0; i < 16; i += 1) sp.appendChild(mk('puff' + (i % 2 ? ' b' : ''), 1720 + (i % 3) * 2, 530, 40, 40, { animationDelay: (-i * 0.29 - Math.random() * 0.2) + 's', animationDuration: (4.2 + (i % 4) * 0.35) + 's' }));
+      // the painted steam itself (cut out by differencing the background against its smoke-free twin), looped as 3 overlapping rising copies per vent
+      for (const [cls, x, y, w, hh] of [['smoke r', 1707, 395, 142, 177], ['smoke l', 77, 452, 114, 160]]) for (let i = 0; i < 3; i += 1) sp.appendChild(mk(cls, x, y, w, hh, { animationDelay: (-i * 1.6) + 's' }));
       document.body.appendChild(box);
       const fit = () => { const vw = document.documentElement.clientWidth, vh = window.innerHeight; const sc = Math.max(vw / IW, vh / IH); sp.style.transform = 'translate(' + (vw - IW * sc) / 2 + 'px,' + (vh - IH * sc) / 2 + 'px) scale(' + sc + ')'; };
       fit(); window.addEventListener('resize', fit);
@@ -2727,6 +2728,11 @@ if (isAutotunePage()) {
         #poc-bgfx .hub { border-radius: 50%; background: radial-gradient(circle at 35% 35%, #f0c070, #6a4010); }
         #poc-bgfx .puff { border-radius: 50%; background: radial-gradient(circle, #f6f3eeee 0, #e2ddd6c0 30%, #cfc8c060 55%, transparent 72%); filter: blur(3px); opacity: 0; animation: poc-steam 4.4s cubic-bezier(.25,.6,.4,1) infinite; }
         #poc-bgfx .puff.b { animation-name: poc-steam2; }
+        #poc-bgfx .smoke { background: center / 100% 100% no-repeat; opacity: 0; animation: poc-smoke-r 4.8s linear infinite; }
+        #poc-bgfx .smoke.r { background-image: ${T('sk-smoke-r.png')}; transform-origin: 14% 96%; }
+        #poc-bgfx .smoke.l { background-image: ${T('sk-smoke-l.png')}; transform-origin: 86% 96%; animation-name: poc-smoke-l; }
+        @keyframes poc-smoke-r { 0% { opacity: 0; transform: translate(-4px, 26px) scale(.55, .45) skewX(0deg); } 12% { opacity: .95; } 45% { opacity: .9; transform: translate(4px, 4px) scale(.95, .92) skewX(-4deg); } 75% { opacity: .55; transform: translate(14px, -24px) scale(1.12, 1.15) skewX(3deg); } 100% { opacity: 0; transform: translate(26px, -52px) scale(1.3, 1.35) skewX(-2deg); } }
+        @keyframes poc-smoke-l { 0% { opacity: 0; transform: translate(4px, 24px) scale(.55, .45) skewX(0deg); } 12% { opacity: .95; } 45% { opacity: .9; transform: translate(-4px, 4px) scale(.95, .92) skewX(4deg); } 75% { opacity: .55; transform: translate(-14px, -22px) scale(1.12, 1.15) skewX(-3deg); } 100% { opacity: 0; transform: translate(-26px, -48px) scale(1.3, 1.35) skewX(2deg); } }
         @keyframes poc-steam { 0% { opacity: 0; transform: translate(0, 0) scale(.4); } 5% { opacity: .95; } 40% { opacity: .75; transform: translate(34px, -78px) scale(1.6); } 70% { opacity: .45; transform: translate(70px, -150px) scale(2.4); } 100% { opacity: 0; transform: translate(112px, -225px) scale(3.3); } }
         @keyframes poc-steam2 { 0% { opacity: 0; transform: translate(0, 0) scale(.35); } 5% { opacity: .9; } 40% { opacity: .7; transform: translate(52px, -66px) scale(1.5); } 70% { opacity: .4; transform: translate(84px, -140px) scale(2.2); } 100% { opacity: 0; transform: translate(130px, -205px) scale(3.1); } }
         #poc-brand { position: fixed; left: 112px; top: 30px; z-index: 2147483640; text-decoration: none; -webkit-app-region: no-drag; }
