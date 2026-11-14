@@ -1712,7 +1712,9 @@ if (isAutotunePage()) {
       if (!document.body) { setTimeout(mount, 300); return; }
       if (document.getElementById('poc-brand')) return;
       const a = document.createElement('a'); a.id = 'poc-brand'; a.href = 'https://music.youtube.com/'; a.setAttribute('aria-label', 'YouTube Music home');
-      const t = document.createElement('span'); t.className = 'poc-ntitle'; t.textContent = 'YouTube Music Studio';
+      const t = document.createElement('span'); t.className = 'poc-ntitle';
+      const logo = document.createElement('span'); logo.className = 'poc-logo';
+      logo.append(svg.cloneNode(true), txt.cloneNode(true)); t.appendChild(logo);
       a.appendChild(t); document.body.appendChild(a);
     };
     mount();
@@ -2604,7 +2606,12 @@ if (isAutotunePage()) {
         ytmusic-nav-bar ytmusic-search-box { margin-top: 0 !important; }
         ytmusic-search-box input { color: #eadfca !important; }
         #poc-brand { position: fixed; left: 112px; top: 30px; z-index: 2147483640; text-decoration: none; -webkit-app-region: no-drag; }
-        #poc-brand .poc-ntitle { margin: 0 !important; font-family: 'Cinzel Decorative', 'Oswald', serif !important; font-weight: 700 !important; font-size: 20px !important; letter-spacing: .03em; white-space: nowrap; color: #ffc46b; padding: 5px 16px !important; }
+        #poc-brand .poc-ntitle { margin: 0 !important; padding: 8px 26px !important; font-size: 0 !important; line-height: 1 !important; }
+        #poc-brand .poc-logo { display: flex !important; align-items: center; gap: 10px; text-shadow: none; }
+        #poc-brand .brandicon { width: 34px; height: 24px; flex: none; filter: drop-shadow(0 1px 2px #000); }
+        #poc-brand .brandname, #poc-brand .brandname * { font: 700 22px/1 'Oswald', 'Barlow Condensed', sans-serif !important; color: #f1e6d3 !important; white-space: nowrap; text-shadow: 0 1px 2px #000 !important; letter-spacing: -.01em; }
+        #poc-brand .brandname .bm { color: #ff6a3d !important; }
+        #poc-brand .brandsub { margin-top: 5px; font: 600 10px/1 'Oswald', 'Barlow Condensed', sans-serif !important; letter-spacing: .62em; padding-left: .62em; color: #e6d3ad !important; text-align: center; text-shadow: 0 1px 2px #000 !important; }
         ytmusic-nav-bar ytmusic-search-box { position: relative; left: clamp(0px, calc(560px - 33vw), 130px); width: min(480px, calc(100vw - 800px)) !important; min-width: 300px; }
       `;
       root.append(style, ui);
