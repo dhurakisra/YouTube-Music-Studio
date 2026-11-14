@@ -397,7 +397,7 @@ if (isAutotunePage()) {
       soloBtn.addEventListener('click', () => { state.stemFlags.solo = !state.stemFlags.solo; refreshFlags(); apply(); });
       muteBtn.addEventListener('click', () => { state.stemFlags.mute = !state.stemFlags.mute; refreshFlags(); apply(); });
       refreshFlags();
-      if (state.noSolo) soloBtn.disabled = true;
+      if (state.noSolo) soloBtn.disabled = true; // Keep MIC SOLO visible, but block self-monitoring feedback.
       const track = el.querySelector('.track'), cap = el.querySelector('.cap');
       const setPos = (pos) => {
         state.pos = Math.min(1, Math.max(0, pos));
@@ -2709,8 +2709,8 @@ if (isAutotunePage()) {
     .skin .section.tune .switches { display:block; margin:0; }
     .skin .section.tune .switches .btn { width:100%; height:100%; border:calc(30 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-cream.png')} 30 fill / calc(30 / 4344 * 100cqw) stretch; background:none; color:#422c16; font:600 .9cqw 'Barlow Condensed',sans-serif; }
     .skin .section.tune > .eqinfo { color:#ead9b2; text-align:center; font:600 .72cqw 'Barlow Condensed',sans-serif; white-space:normal; }
-    .skin .st-channels { position:absolute; inset:0; display:flex; gap:0; }
-    .skin .st-strip { position:absolute; display:flex; flex-direction:column; align-items:center; gap:0; padding:0; }
+    .skin .st-channels { position:absolute; inset:auto; display:flex; gap:calc(10 / 4344 * 100cqw); }
+    .skin .st-channels > .strip { position:relative; flex:1 1 0; min-width:0; width:auto; height:100%; display:flex; flex-direction:column; align-items:center; gap:0; padding:0; container-type:inline-size; }
     .skin .strip .btns { position:absolute; left:4%; top:0; width:92%; height:8.15%; display:flex; gap:4%; }
     .skin .strip .btns .btn { flex:1; width:48%; height:100%; border:calc(9 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-solo.png')} 9 fill / calc(9 / 4344 * 100cqw) stretch; background:none; color:#e9d6a8; font:600 .75cqw 'Barlow Condensed',sans-serif; }
     .skin .strip .btns .btn.mute { border-image:${T('sk-st-red.png')} 9 fill / calc(9 / 4344 * 100cqw) stretch; color:#f1d6bd; }
@@ -2741,7 +2741,7 @@ if (isAutotunePage()) {
     .skin .sel.st-select-wrap { position:relative; display:flex; align-items:center; overflow:hidden; padding:0 calc(62 / 4344 * 100cqw) 0 calc(20 / 4344 * 100cqw); appearance:none; -webkit-appearance:none; white-space:nowrap; line-height:1; border:0 !important; border-image:none !important; background:none; }
     .skin .st-select-wrap::before { content:''; position:absolute; inset:0; z-index:0; pointer-events:none; border:calc(20 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-select.png')} 20 62 fill / calc(20 / 4344 * 100cqw) calc(62 / 4344 * 100cqw) stretch; }
     .skin .st-select-label { position:absolute; z-index:3; left:calc(20 / 4344 * 100cqw); right:calc(62 / 4344 * 100cqw); top:0; height:100%; display:flex; align-items:center; overflow:hidden; white-space:nowrap; text-overflow:clip; color:#ead9b2; font:inherit; line-height:1; background:#15100b; pointer-events:none; }
-    .skin .st-select-native { position:absolute !important; inset:0 !important; width:100% !important; height:100% !important; min-width:0 !important; max-width:none !important; margin:0 !important; padding:0 !important; border:0 !important; opacity:.01 !important; z-index:2 !important; cursor:pointer; appearance:none !important; -webkit-appearance:none !important; }
+    .skin .st-select-native { position:absolute !important; inset:0 !important; width:100% !important; height:100% !important; min-width:0 !important; max-width:none !important; margin:0 !important; padding:0 !important; border:0 !important; opacity:1 !important; z-index:2 !important; cursor:pointer; appearance:none !important; -webkit-appearance:none !important; background:transparent !important; background-color:transparent !important; color:transparent !important; -webkit-text-fill-color:transparent !important; text-shadow:none !important; font-size:inherit !important; text-indent:0 !important; }
     .skin .txt { border:calc(18 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-input.png')} 18 fill / calc(18 / 4344 * 100cqw) stretch; border-radius:0; background:none; color:#ead9b2; font:600 .7cqw 'Barlow Condensed',sans-serif; }
     .skin .offrow .offin { width:28%; min-width:0; height:100%; }
     .skin .qrange { accent-color:#bd8640; }
@@ -2814,10 +2814,7 @@ if (isAutotunePage()) {
     /* Reference scale and fixed text fitting for the steampunk control plates. */
     .skin .section > h3.title { display:none !important; }
     .skin button, .skin .btn { box-sizing:border-box; white-space:nowrap; padding:0; line-height:1; overflow:hidden; }
-    .skin .st-label { visibility:hidden; }
-    .skin .st-label-layer { position:absolute; inset:0; z-index:2147483639; pointer-events:none; overflow:hidden; }
-    .skin .st-button-label { position:absolute; display:flex; align-items:center; justify-content:center; overflow:hidden; white-space:nowrap; padding:0; text-align:center; }
-    .skin .section.session > .bigbtn, .skin .section.session .btn.startk { display:flex; align-items:center; justify-content:center; font:700 .64cqw/1 'Barlow Condensed','Oswald',sans-serif !important; color:#422c16 !important; -webkit-text-fill-color:#422c16; letter-spacing:.08em; line-height:1; white-space:nowrap; padding:0; }
+    .skin .section.session > .bigbtn, .skin .section.session .btn.startk { display:flex; align-items:center; justify-content:center; font:700 .72cqw/1 'Barlow Condensed','Oswald',sans-serif !important; color:#422c16 !important; -webkit-text-fill-color:#422c16; letter-spacing:.08em; line-height:1; white-space:nowrap; padding:0; }
     .skin .section.session > .btn.stemb { display:flex !important; }
     .skin .section.session > .btn.startk { display:none !important; }
     .skin.m-karaoke .section.session > .btn.stemb, .skin.m-karaoke .section.session > .btn.recbig:not(.startk),
@@ -2827,13 +2824,13 @@ if (isAutotunePage()) {
     .skin .section.tune .tunevalue { font-size:.55cqw; white-space:nowrap; }
     .skin .section.tune .switches .btn, .skin .section.eq .btn, .skin .section.enh .switches > .btn,
     .skin .section.output .limiter { font-size:.4cqw; line-height:1; white-space:nowrap; padding:0; }
-    .skin .section.tune .switches .btn, .skin .section.enh .switches > .btn { display:flex; align-items:center; justify-content:center; font-size:.52cqw; }
+    .skin .section.tune .switches .btn, .skin .section.enh .switches > .btn { display:flex; align-items:center; justify-content:center; font-size:.62cqw; }
     .skin .section.eq .btn { font-size:.62cqw; }
     .skin .strip .btns { left:0; width:100%; gap:5%; }
-    .skin .strip .btns .btn { flex:0 0 47.5%; width:47.5%; font-size:.44cqw; line-height:1; white-space:nowrap; padding:0; }
+    .skin .strip .btns .btn { flex:0 0 47.5%; width:47.5%; font-size:.58cqw; line-height:1; white-space:nowrap; padding:0; }
     .skin .strip .btns .btn:disabled { opacity:1; }
     .skin .strip .name { font-size:.5cqw; line-height:1; white-space:nowrap; }
-    .skin .strip .btn.micfx { font-size:.45cqw; line-height:1; white-space:nowrap; padding:0; }
+    .skin .strip .btn.micfx { font-size:.6cqw; line-height:1; white-space:nowrap; padding:0; }
     .skin .expbtn, .skin .offrow { font-size:.38cqw; line-height:1; white-space:nowrap; padding:0; }
     .skin .eqrow .sel, .skin .st-chainbar .sel, .skin .st-chain-module .sel, .skin .sel {
       box-sizing:border-box; min-width:0; padding:0 calc(62 / 4344 * 100cqw) 0 calc(20 / 4344 * 100cqw);
@@ -2845,7 +2842,7 @@ if (isAutotunePage()) {
     .skin .section.enh .knob-box .knob { inset:auto; left:50%; top:0; width:calc(92 / 4344 * 100cqw); height:calc(92 / 4344 * 100cqw); transform:translateX(-50%); }
     .skin .section.output .knob-box { font-size:0; }
     .skin .section.output .knob-box .knob { inset:0; }
-    .skin .section.enh .switches > .btn { font-size:.4cqw; line-height:1; white-space:nowrap; padding:0; }
+    .skin .section.enh .switches > .btn { font-size:.6cqw; line-height:1; white-space:nowrap; padding:0; }
     .skin .st-chain-module {
       display:block; position:relative; padding:0; overflow:hidden; opacity:1; filter:none;
       border:0; background:none; box-shadow:none;
@@ -2877,8 +2874,8 @@ if (isAutotunePage()) {
     .skin .st-chain-module.off { filter:brightness(.8) saturate(.7); }
     .skin:not(.m-karaoke):not(.mixview):not(.practice) .st-chainrow { opacity:.55; filter:grayscale(.35); pointer-events:none; }
     /* Match the reference's bold, high contrast labels and keep native selects interactive but invisible. */
-    .skin .st-select-native { opacity:0 !important; color:transparent !important; text-shadow:none !important; font-size:0 !important; text-indent:-9999px !important; }
-    .skin .st-select-native option { font:700 14px 'Barlow Condensed','Oswald',sans-serif; color:#2a1a0c; text-indent:0; }
+    .skin .st-select-native { opacity:1 !important; color:transparent !important; -webkit-text-fill-color:transparent !important; text-shadow:none !important; font-size:inherit !important; text-indent:0 !important; }
+    .skin .st-select-native option { font:700 14px 'Barlow Condensed','Oswald',sans-serif; color:#e9d6a8; background:#1a120a; text-indent:0; }
     .skin .st-select-wrap .st-select-label { font:700 .62cqw/1 'Barlow Condensed','Oswald',sans-serif; letter-spacing:.01em; }
     .skin .st-chain-module .st-select-label { font-size:.59cqw; }
     .skin .st-chain-module .st-modtitle { font-size:.76cqw; font-weight:700; letter-spacing:.02em; }
@@ -2900,13 +2897,10 @@ if (isAutotunePage()) {
     .skin .st-chain-module.st-chain-m13 .st-module-content > .live .eqinfo { left:0; right:0; top:auto; bottom:0; height:20%; font-size:.5cqw; }
     .skin .st-chain-module.st-chain-m0 .st-module-content > .eqinfo,
     .skin .st-chain-module.st-chain-m1 .st-module-content > .eqinfo { font-size:.6cqw; }
-    .skin .section.session > .bigbtn.recbig::before { display:none; }
-    .skin .st-button-label { font-family:'Barlow Condensed','Oswald',sans-serif; font-weight:700; line-height:1; }
-    .skin .st-button-label::before, .skin .st-button-label::after { flex:none; }
-    .skin .st-button-label.st-listen::before { content:''; width:0; height:0; border-top:.42em solid transparent; border-bottom:.42em solid transparent; border-left:.62em solid currentColor; margin-right:.45em; }
-    .skin .st-button-label.st-stems::before { content:''; box-sizing:border-box; width:.78em; height:.48em; border:.09em solid currentColor; border-bottom:0; border-radius:.7em .7em 0 0; margin-right:.28em; transform:translateY(-.06em); }
-    .skin .st-button-label.st-stems::after { content:''; width:.78em; height:.32em; margin-left:-1.06em; margin-right:.28em; background:linear-gradient(to right,currentColor 0 .16em,transparent .16em calc(100% - .16em),currentColor calc(100% - .16em)); border-radius:.05em; }
-    .skin .st-button-label.st-karaoke::before { content:''; width:.55em; height:.55em; border-radius:50%; background:#bd1f0e; box-shadow:inset 0 0 0 .08em #65120a,0 0 1px #000; margin-right:.42em; }
+    .skin .section.session > .bigbtn { position:absolute; }
+    .skin .section.session > .bigbtn.recBig::before, .skin .section.session > .bigbtn.recbig::before { position:absolute; left:8%; top:50%; transform:translateY(-50%); margin:0; width:1.25cqw; height:1.25cqw; }
+    .skin .st-listen::before { content:''; position:absolute; left:8%; top:50%; transform:translateY(-50%); width:0; height:0; border-top:.42em solid transparent; border-bottom:.42em solid transparent; border-left:.62em solid currentColor; }
+    .skin .st-stems::before { content:''; position:absolute; left:7%; top:50%; transform:translateY(-50%); box-sizing:border-box; width:.78em; height:.68em; border:.09em solid currentColor; border-bottom:0; border-radius:.7em .7em 0 0; background:linear-gradient(currentColor,currentColor) left bottom/.16em .25em no-repeat,linear-gradient(currentColor,currentColor) right bottom/.16em .25em no-repeat; }
     .skin .status > span { font-size:.95cqw; }
     .skin .status > span.clock { justify-content:center; text-align:center; font:700 .7cqw/1 'Oswald',sans-serif; letter-spacing:.02em; }
     .skin .strip .name { font:700 .82cqw/1 'Barlow Condensed','Oswald',sans-serif; letter-spacing:.02em; white-space:nowrap; }
@@ -2915,7 +2909,19 @@ if (isAutotunePage()) {
     .skin:not(.m-karaoke):not(.mixview):not(.practice) .st-chainrow .st-chain-module .btn.fxon,
     .skin:not(.m-karaoke):not(.mixview):not(.practice) .st-chainrow .st-chain-module .btn.takebtn { filter:brightness(1.65); }
     .skin .st-chain-module.st-chain-m10 .st-module-content > .st-select-wrap:nth-child(2) { left:10%; right:10%; top:18%; bottom:auto; width:auto; height:calc(55 / 4344 * 100cqw); }
-    .skin .st-button-label.st-rec::before { content:''; width:.55em; height:.55em; border-radius:50%; background:#bd1f0e; box-shadow:inset 0 0 0 .08em #65120a,0 0 1px #000; margin-right:.42em; }
+    .skin .st-chain-module .btn.fxon, .skin .st-chain-module .btn.takebtn { color:#f1d6bd; text-shadow:0 1px 2px #120b05; }
+    .skin .st-channels > .strip .btn, .skin .strip .name, .skin .strip .micfx { display:flex; align-items:center; justify-content:center; font-weight:700; font-size:.82cqw; line-height:1; white-space:nowrap; padding:0; }
+    .skin .strip .btns .btn { display:flex; align-items:center; justify-content:center; font-size:clamp(12px,20cqi,24px); }
+    .skin .strip .name { font-size:clamp(12px,20cqi,24px); }
+    .skin .strip .micfx { font-size:clamp(12px,18cqi,22px); }
+    .skin .section.session .advtoggle { font:700 .68cqw/1 'Barlow Condensed','Oswald',sans-serif; }
+    .skin .section.session > .bigbtn { font-size:.78cqw !important; line-height:1 !important; }
+    .skin .section.tune .switches .btn, .skin .section.eq .btn, .skin .section.enh .switches > .btn, .skin .section.output .limiter { font-size:.62cqw; font-weight:700; }
+    .skin .section.eq .btn.on, .skin .section.enh .switches > .btn.on, .skin .section.output .limiter.on { color:#8a1a0a; }
+    .skin .st-chain-module .st-module-content > .btn.fxon, .skin .st-chain-module .st-module-content > .btn.takebtn { font-size:.7cqw; font-weight:700; line-height:1; white-space:nowrap; }
+    .skin .st-chain-module .st-module-content > .btn.fxon.on { color:#8a1a0a; text-shadow:0 1px 1px #fff4; }
+    .skin .st-chain-module .btn.fxon.on, .skin .section.eq .btn.on, .skin .section.enh .btn.on, .skin .section.output .limiter.on { color:#8a1a0a; text-shadow:0 1px 1px #fff4; }
+    .skin .st-chain-module .st-rec::before { content:''; flex:none; width:.55em; height:.55em; border-radius:50%; background:#bd1f0e; box-shadow:inset 0 0 0 .08em #65120a,0 0 1px #000; margin-right:.42em; }
     .skin .btn:not(.mute):not(.modled):active { transform:translateY(1px); }  `;
 
   async function installStudioDrawer() {
@@ -3166,11 +3172,6 @@ if (isAutotunePage()) {
       };
       const q = (root, selector) => root.querySelector(selector);
       const qa = (root, selector) => [...root.querySelectorAll(selector)];
-      qa(consoleEl, 'button').forEach((button) => {
-        [...button.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim()).forEach((node) => {
-          const labelText = node.textContent.trim(); const label = h('span', 'st-label', labelText); button.dataset.stLabel = labelText; button.replaceChild(label, node);
-        });
-      });
       const sessBtns = qa(sessSection, ':scope > .btn');
       stPlace(sessBtns[0],108,178,465,250); stPlace(sessBtns[1],108,285,465,358); stPlace(sessBtns[2],108,392,465,467); stPlace(sessBtns[3],108,392,465,467);
       stPlace(q(sessSection,'.advtoggle'),158,508,408,568); stPlace(q(sessSection,'.sessinfo'),108,572,465,618);
@@ -3182,11 +3183,8 @@ if (isAutotunePage()) {
       // Mixer controls adapt to the number of active stems while filling the reference mixer bay.
       const mixer=consoleEl.querySelector('.section.mixer'); mixer.classList.add('st-mixer');
       const channels=q(mixer,'.channels'); channels.classList.add('st-channels');
+      stPlace(channels,903,176,1420,765);
       const exp=q(mixer,'.expbtn'), off=q(mixer,'.offrow'); if(exp) exp.classList.add('st-mixer-extra'); if(off) off.classList.add('st-mixer-extra');
-      const placeChannels=()=>{
-        const strips=qa(channels,'.strip'), n=strips.length, left=903, right=1420, gap=10, w=(right-left-gap*(n-1))/n;
-        strips.forEach((el,i)=>{el.classList.add('st-strip'); el.style.left=((left+i*(w+gap))/4344*100)+'%'; el.style.width=(w/4344*100)+'%'; el.style.top=(176/1448*100)+'%'; el.style.height=(589/1448*100)+'%';});
-      }; placeChannels();
       q(mixer,'.micfx')?.classList.add('st-micfx');
       // Mix export and mic shift remain inside the mixer bay in mixview.
       stPlace(exp,1080,718,1235,765); stPlace(off,905,710,1068,765);
@@ -3217,44 +3215,14 @@ if (isAutotunePage()) {
         select.parentNode.insertBefore(wrap,select); wrap.append(select,label);
         select.className='st-select-native';
         label.setAttribute('aria-hidden','true');
-        const restoreOptions=()=>{for(const option of select.options){if(!Object.hasOwn(option.dataset,'stLabel'))option.dataset.stLabel=option.textContent;option.textContent=option.dataset.stLabel;}};
-        const hideOptions=()=>{for(const option of select.options){if(!Object.hasOwn(option.dataset,'stLabel'))option.dataset.stLabel=option.textContent;if(option.textContent)option.textContent='';}};
-        const sync=()=>{for(const option of select.options)if(!Object.hasOwn(option.dataset,'stLabel'))option.dataset.stLabel=option.textContent;label.textContent=select.selectedOptions[0]?.dataset.stLabel||select.selectedOptions[0]?.textContent||'';if(label.textContent)select.setAttribute('aria-valuetext',label.textContent);if(select.dataset.stPickerOpen!=='1')hideOptions();};
-        const openPicker=()=>{select.dataset.stPickerOpen='1';restoreOptions();};
-        const closePicker=()=>{delete select.dataset.stPickerOpen;sync();};
-        select.addEventListener('pointerdown',openPicker); select.addEventListener('keydown',(e)=>{if(['ArrowDown','ArrowUp',' ','Enter'].includes(e.key))openPicker();});
-        select.addEventListener('change',closePicker); select.addEventListener('input',closePicker); select.addEventListener('blur',closePicker);
+        const sync=()=>{label.textContent=select.selectedOptions[0]?.textContent||'';};
+        const valueDescriptor=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value');
+        const indexDescriptor=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'selectedIndex');
+        if(valueDescriptor?.get&&valueDescriptor?.set) Object.defineProperty(select,'value',{configurable:true,get(){return valueDescriptor.get.call(this);},set(value){valueDescriptor.set.call(this,value);sync();}});
+        if(indexDescriptor?.get&&indexDescriptor?.set) Object.defineProperty(select,'selectedIndex',{configurable:true,get(){return indexDescriptor.get.call(this);},set(value){indexDescriptor.set.call(this,value);sync();}});
+        select.addEventListener('change',sync); select.addEventListener('input',sync);
         new MutationObserver(sync).observe(select,{childList:true,subtree:true,characterData:true}); sync();
       });
-      const labelLayer=h('div','st-label-layer'); consoleEl.appendChild(labelLayer);
-      const labelEntries=[], registeredLabels=new WeakSet();
-      const registerButtonLabel=(button)=>{
-        if(registeredLabels.has(button)||button.classList.contains('tunebtn')||button.classList.contains('advtoggle')) return;
-        let source=button.querySelector(':scope > .st-label');
-        if(!source){
-          const node=[...button.childNodes].find(n=>n.nodeType===Node.TEXT_NODE&&n.textContent.trim());
-          if(node){const value=node.textContent.trim();source=h('span','st-label',value);button.dataset.stLabel=value;button.replaceChild(source,node);}
-        }
-        if(!source) return; registeredLabels.add(button);
-        const label=h('span','st-button-label'); button.classList.forEach((c)=>{if(c.startsWith('st-'))label.classList.add(c);}); labelLayer.appendChild(label);
-        const sync=()=>{
-          const br=button.getBoundingClientRect(), sr=consoleEl.getBoundingClientRect(), cs=getComputedStyle(button);
-          if(label.textContent!==source.textContent) label.textContent=source.textContent; label.style.left=(br.left-sr.left)+'px'; label.style.top=(br.top-sr.top)+'px'; label.style.width=br.width+'px'; label.style.height=br.height+'px';
-          const amber=button.classList.contains('on')&&!button.classList.contains('bigbtn')&&!button.classList.contains('takebtn')&&(button.classList.contains('fxon')||button.classList.contains('limiter')||!!button.closest('.section.eq')||!!button.closest('.section.enh'));
-          const chainButton=!!button.closest('.st-chain-module')&&(button.classList.contains('fxon')||button.classList.contains('takebtn'));
-          label.style.display=br.width&&br.height&&cs.display!=='none'?'flex':'none'; label.style.font=`700 ${Math.max(8,Math.min(32,br.height*(button.matches('.bigbtn,.startk')?.49:.52)))}px 'Barlow Condensed','Oswald',sans-serif`; label.style.color=button.classList.contains('mute')?'#f1d6bd':amber?'#8a1a0a':chainButton?'#f1d6bd':'#2a1a0c'; label.style.textShadow=chainButton?'0 1px 2px #120b05':'0 1px 1px #fff4'; label.style.letterSpacing='.04em';
-          let opacity=1; for(let node=button;node&&node!==consoleEl;node=node.parentElement) opacity*=Number(getComputedStyle(node).opacity)||1; label.style.opacity=String(opacity);
-        };
-        new MutationObserver(sync).observe(button,{childList:true,subtree:true,characterData:true});
-        new ResizeObserver(sync).observe(button); sync();
-        labelEntries.push(sync);
-      };
-      const syncButtonLabels=()=>{qa(consoleEl,'button').forEach(registerButtonLabel); labelEntries.forEach(sync=>sync());};
-      new ResizeObserver(syncButtonLabels).observe(consoleEl);
-      new MutationObserver(syncButtonLabels).observe(consoleEl,{attributes:true,attributeFilter:['class']});
-      new MutationObserver(syncButtonLabels).observe(consoleEl,{childList:true,subtree:true});
-      new MutationObserver(syncButtonLabels).observe(drawer,{attributes:true,attributeFilter:['class']});
-      root.querySelector('.tab').addEventListener('click',()=>requestAnimationFrame(syncButtonLabels));
       const statusEls=[...status.querySelectorAll('span')];
       [[180,1374,445,1410],[1968,1376,2182,1412],[3488,1378,3712,1410],[4035,1378,4198,1414]].forEach((r,i)=>stPlace(statusEls[i],...r));
       applyOutput();
