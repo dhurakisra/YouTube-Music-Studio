@@ -1757,11 +1757,13 @@ if (isAutotunePage()) {
           for (const side of ['l', 'r']) for (const pos of ['t', 'b']) { const k = document.createElement('i'); k.className = 'poc-hook ' + side + ' ' + pos; sh.appendChild(k); }
           hooks = sh.querySelectorAll(':scope > .poc-hook');
         }
-        const lw = Math.max(0, rc.left - (left + 19)), rw = Math.max(0, (right - 19) - rc.right);
+        const cs = getComputedStyle(sh), bl = parseFloat(cs.borderLeftWidth) || 0, br = parseFloat(cs.borderRightWidth) || 0;
+        const cl = left + 19, cr = right - 19, HW = 34; // chain centres; a clamp is centred on its chain and reaches in to just inside the shelf frame
+        const lx0 = cl - HW, lx1 = Math.max(cl + HW, rc.left + 14), rx1 = cr + HW, rx0 = Math.min(cr - HW, rc.right - 14);
         for (const k of hooks) {
-          if (k.classList.contains('l')) { k.style.width = (lw + 24) + 'px'; k.style.left = (-(lw + 14)) + 'px'; }
-          else { k.style.width = (rw + 24) + 'px'; k.style.right = (-(rw + 14)) + 'px'; }
-        }
+          if (k.classList.contains('l')) { k.style.width = (lx1 - lx0) + 'px'; k.style.left = (lx0 - rc.left - bl) + 'px'; k.style.right = ''; }
+          else { k.style.width = (rx1 - rx0) + 'px'; k.style.right = ((rc.right - br) - rx1) + 'px'; k.style.left = ''; }
+                }
       }
     };
     setInterval(place, 600); window.addEventListener('resize', place); place(); draw();
@@ -2506,7 +2508,7 @@ if (isAutotunePage()) {
         ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title > * { position: relative; }
         @property --gh { syntax: '<number>'; inherits: false; initial-value: 0; }
         @property --gw { syntax: '<number>#'; inherits: false; initial-value: 255, 157, 61; }
-        i.poc-hook { position: absolute; height: 30px; pointer-events: none; z-index: 2; box-sizing: border-box; border: solid transparent; border-width: 0 24px; border-image: ${T('sk-hook.png')} 0 60 fill / 0 24px / 0 stretch; filter: drop-shadow(0 2px 3px #000c); }
+        i.poc-hook { position: absolute; height: 36px; pointer-events: none; z-index: 2; box-sizing: border-box; border: solid transparent; border-width: 0 24px; border-image: ${T('sk-hook.png')} 0 60 fill / 0 24px / 0 stretch; filter: drop-shadow(0 2px 3px #000c); }
         i.poc-hook.t { top: 16%; } i.poc-hook.b { bottom: 16%; }
         ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title > i.poc-spark { position: absolute; z-index: 3; width: 1.5px; height: 1.5px; border-radius: 50%; pointer-events: none; opacity: 0; background: #fffbe6; box-shadow: 0 0 2px 1px #ffd27a, 0 0 5px 1px #ff7a1fcc; animation: poc-fall 1.5s linear infinite; }
         @keyframes poc-fall { 0% { opacity: 0; transform: translate(0, 0) scale(1); } 0.3% { opacity: 1; transform: translate(0, 0) scale(1.8); } 2.5% { opacity: 1; transform: translate(calc(var(--dx) * .8), calc(var(--dy) * .8)) scale(1); } 5% { opacity: .7; transform: translate(var(--dx), calc(var(--dy) + 6px)) scale(.7); } 7% { opacity: 0; transform: translate(calc(var(--dx) * 1.1), calc(var(--dy) + 12px)) scale(.4); } 100% { opacity: 0; transform: translate(calc(var(--dx) * 1.1), calc(var(--dy) + 12px)); } }
