@@ -121,6 +121,10 @@ if (isAutotunePage()) {
   }
 
   function findMedia() { return document.querySelector('video, audio'); }
+  // ONE captureStream per media element for every passive tap (VU meters, spectrum, chords): each captureStream() call hands out fresh
+  // tracks and the earlier stream goes silent, so the chord tap used to kill the VU tap.
+  const mediaStreams = new WeakMap();
+  function mediaStreamFor(m) { let st = mediaStreams.get(m); if (!st) { st = m.captureStream(); mediaStreams.set(m, st); } return st; }
 
   // Song clock. YTM can keep the same media element (and its buffer) across consecutive songs, so element.currentTime / .duration then
   // run on from the previous song (a 3:00 song followed by a 5:00 one reports 8:00). The page's own player API knows the real position and
@@ -1671,11 +1675,10 @@ if (isAutotunePage()) {
     const shuf = mk('', 'Shuffle', () => q('.shuffle')?.click(), 'shuf');
     const rpt = mk('', 'Repeat', () => q('.repeat')?.click(), 'rpt');
     const ctl = h('div', 'npctl'); ctl.append(shuf, prev, playBtn, next, rpt);
-    try { new ResizeObserver(() => { fill.style.backgroundSize = bar.clientWidth + 'px 100%'; }).observe(bar); } catch {}
     // Live spectrum over the waveform track: log-spaced frequency columns (40 Hz left .. 16 kHz right), mirrored around the centre line,
     // orange glow with a white-hot core; the played part burns brighter. Fed by the same analysers as the top VU meters.
     const cv = document.createElement('canvas'); cv.className = 'npviz'; bar.appendChild(cv);
-    const g2 = cv.getContext('2d'); let fbuf = null, lv = null;
+    const g2 = cv.getContext('2d'); let fbuf = null, lv = null, raw = null, peak = 0.2;
     const draw = () => {
       requestAnimationFrame(draw);
       if (document.hidden) return;
@@ -1688,15 +1691,20 @@ if (isAutotunePage()) {
       if (live) {
         const an = ans[0]; if (!fbuf || fbuf.length !== an.frequencyBinCount) fbuf = new Uint8Array(an.frequencyBinCount);
         const nyq = (an.context.sampleRate || 48000) / 2, bins = an.frequencyBinCount, tmp = new Uint8Array(bins);
+        for (const a of ans) if (a && a.maxDecibels !== -12) { a.minDecibels = -85; a.maxDecibels = -12; } // byte-spectrum range only (VU reads the time domain)
         an.getByteFrequencyData(fbuf); if (ans[1]) { ans[1].getByteFrequencyData(tmp); for (let i = 0; i < bins; i += 1) fbuf[i] = Math.max(fbuf[i], tmp[i]); }
+        if (!raw || raw.length !== n) raw = new Float32Array(n);
+        let fmax = 0;
         for (let i = 0; i < n; i += 1) {
           const f0 = 40 * Math.pow(400, i / n), f1 = 40 * Math.pow(400, (i + 1) / n);
           let b0 = Math.floor(f0 / nyq * bins), b1 = Math.max(b0 + 1, Math.ceil(f1 / nyq * bins)), mx = 0;
           for (let b = b0; b < b1 && b < bins; b += 1) if (fbuf[b] > mx) mx = fbuf[b];
           const tilt = 0.6 + 0.9 * i / n; // lift the highs so the right side moves too
-          const v = Math.min(0.95, Math.pow(mx / 255, 2.6) * tilt * 1.1);
-          lv[i] = v > lv[i] ? v : lv[i] * 0.86; // fast attack, slow fall
+          raw[i] = Math.pow(mx / 255, 2.8) * tilt; if (raw[i] > fmax) fmax = raw[i];
         }
+        // auto gain: whatever the source level (passive tap or capture graph), the loudest column reaches ~90 %, quiet parts stay low
+        peak = Math.max(fmax, peak * 0.997, 0.05);
+        for (let i = 0; i < n; i += 1) { const v = Math.min(0.95, Math.max(0, (raw[i] / peak - 0.15) / 0.85) * 0.92); lv[i] = v > lv[i] ? v : lv[i] * 0.86; } // fast attack, slow fall
       } else for (let i = 0; i < n; i += 1) lv[i] *= 0.9;
       g2.setTransform(dpr, 0, 0, dpr, 0, 0); g2.clearRect(0, 0, W, H);
       const cy = H / 2, half = H / 2 - 2, played = (parseFloat(fill.style.width) || 0) / 100 * W;
@@ -1889,7 +1897,7 @@ if (isAutotunePage()) {
     const ensureTap = () => {
       const m = findMedia(); if (!m || typeof m.captureStream !== 'function') return null;
       try {
-        if (m !== tapMedia) { tapMedia = m; tapStream = m.captureStream(); tapKey = ''; tapAn = null; } // ONE stream per element: captureStream() returns fresh tracks every call
+        if (m !== tapMedia) { tapMedia = m; tapStream = mediaStreamFor(m); tapKey = ''; tapAn = null; } // ONE stream per element: captureStream() returns fresh tracks every call
         const tr = tapStream.getAudioTracks()[0]; if (!tr) return tapAn;
         if (tr.id === tapKey && tapAn) return tapAn;
         if (!tapCtx || tapCtx.state === 'closed') tapCtx = new AudioContext({ latencyHint: 'playback' });
@@ -1951,7 +1959,7 @@ if (isAutotunePage()) {
       }
       const m = findMedia(); if (!m || typeof m.captureStream !== 'function') return null;
       try {
-        if (m !== tapMedia) { tapMedia = m; tapStream = m.captureStream(); tapTrack = ''; tapAn = null; }
+        if (m !== tapMedia) { tapMedia = m; tapStream = mediaStreamFor(m); tapTrack = ''; tapAn = null; }
         const tr = tapStream.getAudioTracks()[0]; if (!tr) return tapAn ? { an: tapAn, sr: tapCtx.sampleRate } : null;
         if (tr.id !== tapTrack || !tapAn) {
           if (!tapCtx || tapCtx.state === 'closed') tapCtx = new AudioContext({ latencyHint: 'playback' });
@@ -2350,8 +2358,8 @@ if (isAutotunePage()) {
     .np.float .nptitle { font: 700 19px/1.15 "Barlow Condensed", "Barlow", sans-serif; letter-spacing: .02em; }
     .np.float .npartist { font: 600 14px "Barlow Condensed", "Barlow", sans-serif; letter-spacing: .04em; color: #cdbfa9; }
     .npbar.libbar { position: relative; height: 30px; margin-top: 4px; border: 0; border-radius: 0; cursor: pointer; overflow: visible;
-      background: linear-gradient(#0503027a, #0503027a), ${T('sk-wave.png')} 0 0 / 100% 100% no-repeat !important; box-shadow: none; }
-    .npbar .libfill { position: relative; height: 100%; background: ${T('sk-wave.png')} 0 0 / 600px 100% no-repeat !important; box-shadow: none; filter: drop-shadow(0 0 4px #ff8a1f88); }
+      background: linear-gradient(transparent calc(50% - 1px), #ff9a3a59 calc(50% - 1px), #ff9a3a59 calc(50% + 1px), transparent calc(50% + 1px)) !important; box-shadow: none; }
+    .npbar .libfill { position: relative; height: 100%; background: linear-gradient(transparent calc(50% - 1px), #ffc46b calc(50% - 1px), #ffc46b calc(50% + 1px), transparent calc(50% + 1px)) !important; box-shadow: none; filter: drop-shadow(0 0 3px #ff8a1fcc); }
     .npbar .npviz { position: absolute; left: 0; top: -12px; width: 100%; height: calc(100% + 24px); pointer-events: none; z-index: 1; }
     .npbar .libfill::after { content: ""; position: absolute; right: -1px; top: 2px; bottom: 2px; width: 2px; background: #ffe2a8; box-shadow: 0 0 6px 2px #ffb347; }
     .np.float .npticks { height: 16px; margin-top: 0; } .np.float .nptick .tklbl { top: 6px; } .np.float .nptick .tkline { height: 3px; } .np.float .nptick.major .tkline { height: 5px; }
