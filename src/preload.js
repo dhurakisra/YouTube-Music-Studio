@@ -2752,7 +2752,13 @@ if (isAutotunePage()) {
     .skin .knob { position:absolute; inset:0; width:100%; height:100%; border-radius:0; background:none !important; box-shadow:none; cursor:ns-resize; }
     .skin .knob::before, .skin .knob::after { content:''; position:absolute; inset:0; background-position:center; background-size:100% 100%; background-repeat:no-repeat; }
     .skin .knob::before { background-image:${T('sk-st-kcream-base.png')}; }
-    .skin .knob::after { background-image:${T('sk-st-kcream-cap.png')}; transform:rotate(var(--a,0deg)); }
+    .skin .knob::after { background-image:${T('sk-st-kcream-cap.png')}; transform:rotate(var(--a,0deg)); transform-origin:50% 50%; }
+    .skin .knob.big::after, .skin .knob::after { top:0; left:0; width:100%; height:100%; margin:0; filter:none !important; border-radius:0; box-shadow:none; }
+    /* cap sprite size relative to its base (cut from the same reference): cream/dark 62/92, red 64/92, master 128/208 */
+    .skin .knob::after { background-size:67.4% 67.4%; }
+    .skin .knob.red::after { background-size:69.6% 69.6%; }
+    .skin .knob.big::after { background-size:61.5% 61.5%; }
+
     .skin .knob.red::before { background-image:${T('sk-st-kred-base.png')}; }
     .skin .knob.red::after { background-image:${T('sk-st-kred-cap.png')}; }
     .skin .knob.big::before { background-image:${T('sk-st-kmaster-base.png')}; }
