@@ -1747,7 +1747,7 @@ if (isAutotunePage()) {
       const guide = document.getElementById('guide');
       const gw = guide ? guide.getBoundingClientRect().right : 300;
       const left = gw + 6, right = window.innerWidth - 26; // chain strip: just right of the left panel, just left of the page scrollbar
-      l.style.left = left + 'px'; r.style.left = (right - 50) + 'px';
+      l.style.left = left + 'px'; r.style.left = (right - 38) + 'px';
       let shelves = []; try { shelves = document.querySelectorAll(sel); } catch { return; }
       for (const sh of shelves) {
         const rc = sh.getBoundingClientRect(); if (!rc.width) continue;
@@ -1757,7 +1757,7 @@ if (isAutotunePage()) {
           for (const side of ['l', 'r']) for (const pos of ['t', 'b']) { const k = document.createElement('i'); k.className = 'poc-hook ' + side + ' ' + pos; sh.appendChild(k); }
           hooks = sh.querySelectorAll(':scope > .poc-hook');
         }
-        const lw = Math.max(0, rc.left - (left + 25)), rw = Math.max(0, (right - 25) - rc.right);
+        const lw = Math.max(0, rc.left - (left + 19)), rw = Math.max(0, (right - 19) - rc.right);
         for (const k of hooks) {
           if (k.classList.contains('l')) { k.style.width = (lw + 24) + 'px'; k.style.left = (-(lw + 14)) + 'px'; }
           else { k.style.width = (rw + 24) + 'px'; k.style.right = (-(rw + 14)) + 'px'; }
@@ -2191,7 +2191,7 @@ if (isAutotunePage()) {
         .np { position: relative; flex: 1 0 100%; display: flex; align-items: center; gap: 18px; box-sizing: border-box; margin-top: 4px;
       padding: 10px 18px; border: 1px solid #0009; border-radius: 10px; box-shadow: inset 0 0 18px #000a;
       background: linear-gradient(#ffffff0d, transparent 30%, #0006), ${T('metal.jpg')} 0 0 / 256px 256px, #14110f; }
-    .chain { position: fixed; top: 158px; bottom: 112px; width: 50px; z-index: 2147483637; pointer-events: none; background: ${T('sk-chain.png')} 0 0 / 50px 97px repeat-y; filter: drop-shadow(1px 0 1px #000c); opacity: .95; }
+    .chain { position: fixed; top: 158px; bottom: 112px; width: 38px; z-index: 2147483637; pointer-events: none; background: ${T('sk-chain.png')} 0 0 / 38px 74px repeat-y; filter: drop-shadow(1px 0 1px #000c); opacity: .95; }
     .chain::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 26px; background: linear-gradient(#0d0a08, transparent); }
     .chordbox { position: fixed; left: 64px; top: 116px; height: 38px; z-index: 2147483639; display: flex; align-items: center; gap: 12px; padding: 0 14px; max-width: 560px; box-sizing: border-box; overflow: hidden;
       background: #0d0a08d9; border: 1px solid #5a4630; border-radius: 6px; box-shadow: inset 0 0 8px #000, 0 2px 6px #000a; pointer-events: none; }
