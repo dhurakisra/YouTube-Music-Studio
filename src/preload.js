@@ -1838,7 +1838,7 @@ if (isAutotunePage()) {
       if (document.hidden) return;
       const guide = document.getElementById('guide');
       const gw = guide ? guide.getBoundingClientRect().right : 300;
-      const left = gw + 6, right = window.innerWidth - 26; // chain strip: just right of the left panel, just left of the page scrollbar
+      const left = gw, right = window.innerWidth - 26; // chain strip: just right of the left panel, just left of the page scrollbar
       l.style.left = left + 'px'; r.style.left = (right - 38) + 'px'; gl.style.left = (left + 19 - 62) + 'px'; gr.style.left = (right - 19 - 62) + 'px';
       let shelves = []; try { shelves = document.querySelectorAll(sel); } catch { return; }
       for (const sh of shelves) {
@@ -2675,8 +2675,8 @@ if (isAutotunePage()) {
         /* left guide: framed metal panel with its own textured inner plate */
         ytmusic-app-layout #guide-wrapper { background: linear-gradient(#0b0806e6, #0b0806f2) !important; }
         ytmusic-app-layout, ytmusic-app { --ytmusic-guide-width: 300px !important; }
-        html.ytmpoc-open ytmusic-guide-renderer { height: max(0px, calc(100vh - 112px - min(660px, 84vh) - 22px)) !important; }
-        ytmusic-guide-renderer { box-sizing: border-box !important; margin: 6px 10px 0 !important; width: calc(100% - 20px) !important; height: calc(100vh - 112px - 134px) !important; overflow-y: auto !important; overflow-x: hidden !important;
+        html.ytmpoc-open ytmusic-guide-renderer { height: max(0px, calc(100vh - 112px - min(660px, 84vh))) !important; }
+        ytmusic-guide-renderer { box-sizing: border-box !important; margin: 0 !important; width: 100% !important; height: calc(100vh - 112px - 124px) !important; overflow-y: auto !important; overflow-x: hidden !important;
           border: 16px solid transparent !important; border-image: ${T('sk-sideplate.png')} 64 fill / 24px stretch !important; background: none !important; }
         ytmusic-guide-entry-renderer tp-yt-paper-item { background: transparent !important; border: 1px solid transparent !important; border-radius: 4px !important; color: #e9dcc2 !important; font-weight: 700 !important; letter-spacing: .05em; text-shadow: 0 1px 2px #000; }
         ytmusic-guide-entry-renderer:hover tp-yt-paper-item { background: #ffffff0f !important; color: #fff3d6 !important; }
