@@ -228,8 +228,10 @@ if (isAutotunePage()) {
     const row = (label, ...els) => { const r = h('div', 'eqinfo-row'); r.append(h('span', null, label), ...els); return r; };
     for (const el of [modelSelect, modeSelect]) { el.classList.add('sel'); for (const k of ['keydown', 'keyup', 'keypress']) el.addEventListener(k, (e) => e.stopPropagation()); }
     const listenBtn = h('button', 'btn bigbtn solo', 'LISTEN', { type: 'button', 'aria-label': 'Listen mode' });
+    listenBtn.classList.add('st-listen');
     listenBtn.title = 'Plain listening: YouTube Music as usual. Optionally listen with stem separation.';
     const karaokeBtn = h('button', 'btn bigbtn solo recbig', 'KARAOKE', { type: 'button', 'aria-label': 'Karaoke mode' });
+    karaokeBtn.classList.add('st-karaoke');
     karaokeBtn.title = 'Sing over a song. Nothing starts until you press START KARAOKE.';
     const info = h('div', 'eqinfo sessinfo', '');
     const adv = h('div', 'adv');
@@ -237,6 +239,7 @@ if (isAutotunePage()) {
     const advToggle = h('button', 'advtoggle', 'ADVANCED \u25BE', { type: 'button' });
     advToggle.addEventListener('click', () => { const o = adv.classList.toggle('open'); advToggle.textContent = o ? 'ADVANCED \u25B4' : 'ADVANCED \u25BE'; });
     const stemBtn = h('button', 'btn bigbtn solo stemb', 'LISTEN WITH STEMS', { type: 'button', 'aria-label': 'Listen with system separation' });
+    stemBtn.classList.add('st-stems');
     stemBtn.title = 'Splits the song into vocals, drums, bass and other so you can mix them live (Mixer), change the key and more. It needs about 10 seconds of buffering before you hear anything. Leave it off to listen to YouTube Music as usual, in real time.';
     const startBtn = h('button', 'btn bigbtn solo recbig startk', 'START KARAOKE', { type: 'button', 'aria-label': 'Start karaoke and recording' });
     startBtn.title = 'Starts the song from the beginning, opens the microphone and the vocal chain, and records. It needs about 10 seconds of buffering first. Press again to finish and save.';
@@ -2736,7 +2739,7 @@ if (isAutotunePage()) {
     .skin .sel { border:calc(20 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-select.png')} 20 62 fill / calc(20 / 4344 * 100cqw) calc(38 / 4344 * 100cqw) stretch; border-radius:0; background:none; color:#ead9b2; font:600 .7cqw 'Barlow Condensed',sans-serif; }
     .skin .sel.st-select-wrap { position:relative; display:flex; align-items:center; overflow:hidden; padding:0 calc(62 / 4344 * 100cqw) 0 calc(20 / 4344 * 100cqw); appearance:none; -webkit-appearance:none; white-space:nowrap; line-height:1; border:0 !important; border-image:none !important; background:none; }
     .skin .st-select-wrap::before { content:''; position:absolute; inset:0; z-index:0; pointer-events:none; border:calc(20 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-select.png')} 20 62 fill / calc(20 / 4344 * 100cqw) calc(62 / 4344 * 100cqw) stretch; }
-    .skin .st-select-label { position:absolute; z-index:1; left:calc(20 / 4344 * 100cqw); right:calc(62 / 4344 * 100cqw); top:0; height:100%; display:flex; align-items:center; overflow:hidden; white-space:nowrap; text-overflow:clip; color:#ead9b2; font:inherit; line-height:1; pointer-events:none; }
+    .skin .st-select-label { position:absolute; z-index:3; left:calc(20 / 4344 * 100cqw); right:calc(62 / 4344 * 100cqw); top:0; height:100%; display:flex; align-items:center; overflow:hidden; white-space:nowrap; text-overflow:clip; color:#ead9b2; font:inherit; line-height:1; background:#15100b; pointer-events:none; }
     .skin .st-select-native { position:absolute !important; inset:0 !important; width:100% !important; height:100% !important; min-width:0 !important; max-width:none !important; margin:0 !important; padding:0 !important; border:0 !important; opacity:.01 !important; z-index:2 !important; cursor:pointer; appearance:none !important; -webkit-appearance:none !important; }
     .skin .txt { border:calc(18 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-input.png')} 18 fill / calc(18 / 4344 * 100cqw) stretch; border-radius:0; background:none; color:#ead9b2; font:600 .7cqw 'Barlow Condensed',sans-serif; }
     .skin .offrow .offin { width:28%; min-width:0; height:100%; }
@@ -2872,6 +2875,38 @@ if (isAutotunePage()) {
     .skin .st-chain-module.st-chain-m10 .st-module-content > .modbody { top:35%; height:39%; }
     .skin .st-chain-module.off { filter:brightness(.8) saturate(.7); }
     .skin:not(.m-karaoke):not(.mixview):not(.practice) .st-chainrow { opacity:.55; filter:grayscale(.35); pointer-events:none; }
+    /* Match the reference's bold, high contrast labels and keep native selects interactive but invisible. */
+    .skin .st-select-native { opacity:0 !important; color:transparent !important; text-shadow:none !important; font-size:0 !important; text-indent:-9999px !important; }
+    .skin .st-select-native option { font:700 14px 'Barlow Condensed','Oswald',sans-serif; color:#2a1a0c; text-indent:0; }
+    .skin .st-select-wrap .st-select-label { font:700 .62cqw/1 'Barlow Condensed','Oswald',sans-serif; letter-spacing:.01em; }
+    .skin .st-chain-module .st-select-label { font-size:.59cqw; }
+    .skin .st-chain-module .st-modtitle { font-size:.76cqw; font-weight:700; letter-spacing:.02em; }
+    .skin .st-chain-module .knob-box { font:700 .65cqw/1 'Barlow Condensed','Oswald',sans-serif; letter-spacing:.01em; text-shadow:0 1px 2px #000; overflow:visible; }
+    .skin .st-chain-module .knob-box .st-knob-label { position:absolute; left:-8%; right:-8%; bottom:0; display:block; text-align:center; white-space:nowrap; line-height:1; }
+    .skin .st-chain-module .st-module-content > .sel { left:10%; right:10%; bottom:4%; height:calc(55 / 4344 * 100cqw); font-size:.59cqw; }
+    .skin .st-chain-module.st-chain-m0 .st-module-content > .st-select-wrap { left:8%; right:8%; top:18%; bottom:auto; height:13%; }
+    .skin .st-chain-module.st-chain-m0 .st-module-content > .modbody { left:8%; right:8%; top:34%; height:34%; }
+    .skin .st-chain-module.st-chain-m0 .st-module-content > .modbody > .fxon { position:absolute; left:0; right:0; top:100%; width:100%; height:44%; min-height:0; font-size:.72cqw; }
+    .skin .st-chain-module.st-chain-m0 .st-module-content > .eqinfo { bottom:2%; height:9%; font-size:.6cqw; }
+    .skin .st-chain-module.st-chain-m1 .st-module-content > .eqinfo-row { left:8%; right:8%; top:18%; height:13%; }
+    .skin .st-chain-module.st-chain-m1 .st-module-content > .eqinfo-row .sel { width:48%; height:100%; font-size:.57cqw; }
+    .skin .st-chain-module.st-chain-m1 .st-module-content > .modbody { left:8%; right:8%; top:35%; height:34%; }
+    .skin .st-chain-module.st-chain-m1 .st-module-content > .btn { left:8%; right:8%; top:69%; bottom:auto; width:auto; height:17%; font-size:.7cqw; }
+    .skin .st-chain-module.st-chain-m1 .st-module-content > .eqinfo { bottom:2%; height:9%; font-size:.6cqw; }
+    .skin .st-chain-module.st-chain-m13 .st-module-content > .btn.fxon { left:10%; right:10%; top:30%; bottom:auto; width:auto; height:14%; font-size:.68cqw; }
+    .skin .st-chain-module.st-chain-m13 .st-module-content > .live { position:absolute; left:10%; right:10%; bottom:4%; height:19%; display:block; }
+    .skin .st-chain-module.st-chain-m13 .st-module-content > .live .takebtn { left:0; right:0; top:0; bottom:auto; width:100%; height:75%; font-size:.7cqw; }
+    .skin .st-chain-module.st-chain-m13 .st-module-content > .live .eqinfo { left:0; right:0; top:auto; bottom:0; height:20%; font-size:.5cqw; }
+    .skin .st-chain-module.st-chain-m0 .st-module-content > .eqinfo,
+    .skin .st-chain-module.st-chain-m1 .st-module-content > .eqinfo { font-size:.6cqw; }
+    .skin .section.session > .bigbtn.recbig::before { display:none; }
+    .skin .st-button-label { font-family:'Barlow Condensed','Oswald',sans-serif; font-weight:700; line-height:1; }
+    .skin .st-button-label::before, .skin .st-button-label::after { flex:none; }
+    .skin .st-button-label.st-listen::before { content:''; width:0; height:0; border-top:.42em solid transparent; border-bottom:.42em solid transparent; border-left:.62em solid currentColor; margin-right:.45em; }
+    .skin .st-button-label.st-stems::before { content:''; box-sizing:border-box; width:.78em; height:.48em; border:.09em solid currentColor; border-bottom:0; border-radius:.7em .7em 0 0; margin-right:.28em; transform:translateY(-.06em); }
+    .skin .st-button-label.st-stems::after { content:''; width:.78em; height:.32em; margin-left:-1.06em; margin-right:.28em; background:linear-gradient(to right,currentColor 0 .16em,transparent .16em calc(100% - .16em),currentColor calc(100% - .16em)); border-radius:.05em; }
+    .skin .st-button-label.st-karaoke::before { content:''; width:.55em; height:.55em; border-radius:50%; background:#bd1f0e; box-shadow:inset 0 0 0 .08em #65120a,0 0 1px #000; margin-right:.42em; }
+    .skin .status > span { font-size:.95cqw; }
     .skin .btn:not(.mute):not(.modled):active { transform:translateY(1px); }  `;
 
   async function installStudioDrawer() {
@@ -3159,11 +3194,12 @@ if (isAutotunePage()) {
       const vus=q(outSection,'.vus'); qa(vus,'.vu').forEach((el,i)=>stPlace(el,...(i===0?[3368,172,3648,365]:[3675,172,3952,365])));
       const outKnobs=qa(outSection,'.knob-box'); outKnobs.forEach((el,i)=>stPlace(el,...(i===0?[3443,366,3651,574]:[3734,423,3826,515])));
       stPlace(q(outSection,'.limiter'),3553,655,3743,715);
-      const chainRow=q(chainSection,'.st-chainrow'); qa(chainRow,'.st-mod').forEach((el,i)=>{el.style.flex='0 1 calc('+[370,370,200,200,280,200,200,200,280,280,200,280,280,200][i]+' / 4344 * 100cqw)';});
+      const chainRow=q(chainSection,'.st-chainrow'); qa(chainRow,'.st-mod').forEach((el,i)=>{el.style.flex='0 1 calc('+[450,450,175,175,270,175,175,175,270,270,175,270,270,260][i]+' / 4344 * 100cqw)';});
       const chainbar=q(chainSection,'.st-chainbar'); stPlace(chainbar,973,845,2320,902); chainbar.classList.add('st-placed');
       const modules=qa(chainRow,'.st-mod'); modules.forEach((el,i)=>{
         const content=h('div','st-module-content'); while(el.firstChild) content.appendChild(el.firstChild); el.appendChild(content);
         el.classList.add('st-chain-module','st-chain-m'+i);
+        qa(content,'.knob-box').forEach((box)=>[...box.childNodes].filter(n=>n.nodeType===Node.TEXT_NODE&&n.textContent.trim()).forEach((n)=>{const label=h('span','st-knob-label',n.textContent.trim());box.replaceChild(label,n);}));
         const title=el.querySelector('.modtitle'); if(title){ title.classList.add('st-modtitle'); [...title.childNodes].filter(n=>n.nodeType===Node.TEXT_NODE&&n.textContent.trim()).forEach(n=>{const label=h('span','st-mod-label',n.textContent.trim()); title.replaceChild(label,n);}); }
       });
       qa(consoleEl,'select').forEach((select)=>{
@@ -3171,8 +3207,14 @@ if (isAutotunePage()) {
         wrap.style.cssText=select.style.cssText;
         select.parentNode.insertBefore(wrap,select); wrap.append(select,label);
         select.className='st-select-native';
-        const sync=()=>{label.textContent=select.selectedOptions[0]?.textContent||'';};
-        select.addEventListener('change',sync); select.addEventListener('input',sync);
+        label.setAttribute('aria-hidden','true');
+        const restoreOptions=()=>{for(const option of select.options){if(!Object.hasOwn(option.dataset,'stLabel'))option.dataset.stLabel=option.textContent;option.textContent=option.dataset.stLabel;}};
+        const hideOptions=()=>{for(const option of select.options){if(!Object.hasOwn(option.dataset,'stLabel'))option.dataset.stLabel=option.textContent;if(option.textContent)option.textContent='';}};
+        const sync=()=>{for(const option of select.options)if(!Object.hasOwn(option.dataset,'stLabel'))option.dataset.stLabel=option.textContent;label.textContent=select.selectedOptions[0]?.dataset.stLabel||select.selectedOptions[0]?.textContent||'';if(label.textContent)select.setAttribute('aria-valuetext',label.textContent);if(select.dataset.stPickerOpen!=='1')hideOptions();};
+        const openPicker=()=>{select.dataset.stPickerOpen='1';restoreOptions();};
+        const closePicker=()=>{delete select.dataset.stPickerOpen;sync();};
+        select.addEventListener('pointerdown',openPicker); select.addEventListener('keydown',(e)=>{if(['ArrowDown','ArrowUp',' ','Enter'].includes(e.key))openPicker();});
+        select.addEventListener('change',closePicker); select.addEventListener('input',closePicker); select.addEventListener('blur',closePicker);
         new MutationObserver(sync).observe(select,{childList:true,subtree:true,characterData:true}); sync();
       });
       const labelLayer=h('div','st-label-layer'); consoleEl.appendChild(labelLayer);
@@ -3185,11 +3227,12 @@ if (isAutotunePage()) {
           if(node){const value=node.textContent.trim();source=h('span','st-label',value);button.dataset.stLabel=value;button.replaceChild(source,node);}
         }
         if(!source) return; registeredLabels.add(button);
-        const label=h('span','st-button-label'); labelLayer.appendChild(label);
+        const label=h('span','st-button-label'); button.classList.forEach((c)=>{if(c.startsWith('st-'))label.classList.add(c);}); labelLayer.appendChild(label);
         const sync=()=>{
           const br=button.getBoundingClientRect(), sr=consoleEl.getBoundingClientRect(), cs=getComputedStyle(button);
           if(label.textContent!==source.textContent) label.textContent=source.textContent; label.style.left=(br.left-sr.left)+'px'; label.style.top=(br.top-sr.top)+'px'; label.style.width=br.width+'px'; label.style.height=br.height+'px';
-          label.style.display=br.width&&br.height&&cs.display!=='none'?'flex':'none'; label.style.font=cs.font; label.style.color=cs.color; label.style.textShadow=cs.textShadow; label.style.letterSpacing=cs.letterSpacing;
+          const amber=button.classList.contains('on')&&!button.classList.contains('bigbtn')&&!button.classList.contains('takebtn')&&(button.classList.contains('fxon')||button.classList.contains('limiter')||!!button.closest('.section.eq')||!!button.closest('.section.enh'));
+          label.style.display=br.width&&br.height&&cs.display!=='none'?'flex':'none'; label.style.font=`700 ${Math.max(8,Math.min(32,br.height*(button.matches('.bigbtn,.startk')?.49:.52)))}px 'Barlow Condensed','Oswald',sans-serif`; label.style.color=button.classList.contains('mute')?'#f1d6bd':amber?'#8a1a0a':'#2a1a0c'; label.style.textShadow='0 1px 1px #fff4'; label.style.letterSpacing='.04em';
           let opacity=1; for(let node=button;node&&node!==consoleEl;node=node.parentElement) opacity*=Number(getComputedStyle(node).opacity)||1; label.style.opacity=String(opacity);
         };
         new MutationObserver(sync).observe(button,{childList:true,subtree:true,characterData:true});
