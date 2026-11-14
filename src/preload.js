@@ -2757,7 +2757,8 @@ if (isAutotunePage()) {
     /* cap sprite size relative to its base (cut from the same reference): cream/dark 62/92, red 64/92, master 128/208 */
     .skin .knob::after { background-size:67.4% 67.4%; }
     .skin .knob.red::after { background-size:69.6% 69.6%; }
-    .skin .knob.big::after { background-size:61.5% 61.5%; }
+    .skin .knob.big::after { background-size:62.5% 62.5%; }
+    .skin .knob.dark::after { background-size:69.6% 69.6%; }
 
     .skin .knob.red::before { background-image:${T('sk-st-kred-base.png')}; }
     .skin .knob.red::after { background-image:${T('sk-st-kred-cap.png')}; }
@@ -2850,6 +2851,11 @@ if (isAutotunePage()) {
     }
     .skin .eqrow .txt, .skin .txt { box-sizing:border-box; min-width:0; padding:0 calc(20 / 4344 * 100cqw); line-height:1; font-size:.43cqw; }
     .skin .section.enh .knob-box { font-size:0; }
+    /* preset buttons rebuild the Enhancer knobs: place them by position, not once by script */
+    .skin .section.enh .fxknobs > .knob-box:nth-child(1) { position:absolute; left:64.1344%; top:11.3260%; width:2.1179%; height:6.3536%; }
+    .skin .section.enh .fxknobs > .knob-box:nth-child(2) { position:absolute; left:67.1041%; top:11.3260%; width:2.1179%; height:6.3536%; }
+    .skin .section.enh .fxknobs > .knob-box:nth-child(3) { position:absolute; left:70.0276%; top:11.3260%; width:2.1179%; height:6.3536%; }
+    .skin .section.enh .fxknobs > .knob-box:nth-child(4) { position:absolute; left:72.9052%; top:11.3260%; width:2.1179%; height:6.3536%; }
     .skin .section.enh .knob-box .knob { inset:auto; left:50%; top:0; width:calc(92 / 4344 * 100cqw); height:calc(92 / 4344 * 100cqw); transform:translateX(-50%); }
     .skin .section.output .knob-box { font-size:0; }
     .skin .section.output .knob-box .knob { inset:0; }
@@ -3241,7 +3247,7 @@ if (isAutotunePage()) {
       const enhBtns=qa(enhSection,'.switches > .btn'); stPlace(enhBtns[0],2778,333,3262,393);
       enhBtns.slice(1).forEach((el,i)=>stPlace(el,[[2780,420,2930,480],[2950,420,3097,480],[3117,420,3262,480]][i][0],420,[[2780,420,2930,480],[2950,420,3097,480],[3117,420,3262,480]][i][2],480));
       const vus=q(outSection,'.vus'); qa(vus,'.vu').forEach((el,i)=>stPlace(el,...(i===0?[3368,172,3648,365]:[3675,172,3952,365])));
-      const outKnobs=qa(outSection,'.knob-box'); outKnobs.forEach((el,i)=>stPlace(el,...(i===0?[3443,366,3651,574]:[3734,423,3826,515])));
+      const outKnobs=qa(outSection,'.knob-box'); outKnobs.forEach((el,i)=>stPlace(el,...(i===0?[3443,375,3651,583]:[3737,427,3829,519])));
       stPlace(q(outSection,'.limiter'),3553,655,3743,715);
       const chainRow=q(chainSection,'.st-chainrow'); qa(chainRow,'.st-mod').forEach((el,i)=>{el.style.flex='0 1 calc('+[450,450,175,175,270,175,175,175,270,270,260,270,270,260][i]+' / 4344 * 100cqw)';});
       const chainbar=q(chainSection,'.st-chainbar'); stPlace(chainbar,973,845,2320,902); chainbar.classList.add('st-placed');

@@ -5,5 +5,5 @@ def kn(n, cx, cy, R, rc):
     s = rc+2; c = crop((cx-s, cy-s, cx+s, cy+s)); save(c, f'sk-st-{n}-cap.png', disc_alpha(2*s,2*s,s,s,rc,1.6))
 kn('kcream', 2961, 208, 46, 29)
 kn('kred', 3213, 210, 46, 30)
-kn('kdark', 3780, 469, 46, 29)
-kn('kmaster', 3547, 470, 104, 62)
+kn('kdark', 3783, 473, 46, 30)
+kn('kmaster', 3547, 479, 104, 63)
