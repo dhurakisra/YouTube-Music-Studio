@@ -1703,7 +1703,7 @@ if (isAutotunePage()) {
     const tri = document.createElementNS(NS, 'path'); tri.setAttribute('d', 'M16 8l11 6-11 6z'); tri.setAttribute('fill', '#fff');
     svg.append(rect, tri);
     const name = h('div', 'brandname'); name.append(h('span', 'by', 'YouTube'), h('span', 'bm', ' Music'));
-    const sub = h('div', 'brandsub', '/// STUDIO EDITION ///');
+    const sub = h('div', 'brandsub', 'STUDIO');
     const txt = h('div', 'brandtxt'); txt.append(name, sub);
     plate.append(svg, txt);
     ui.appendChild(plate);
@@ -2243,6 +2243,13 @@ if (isAutotunePage()) {
     .brandsub { margin-top: 5px; font: italic 700 9px/1 "Barlow Condensed", "Bahnschrift", system-ui, sans-serif; letter-spacing: .18em; color: var(--brass); white-space: nowrap; } .topvu .knob.big::after { top: 9px; height: 16px; width: 4px; margin-left: -2px; transform-origin: 50% 21px; }
     .np.float { position: fixed; left: 12px; right: 12px; bottom: 10px; z-index: 2147483643; margin: 0; border-radius: 10px; height: 104px; padding: 6px 24px; }
     .tab.np-up { bottom: 112px; }
+    /* header: rounded brass logo plate (same pill frame as the search box), spaced STUDIO line, two glass lamps hanging over the pipe strip */
+    .brand { top: 16px; height: 76px; border-width: 20px 26px; border-image: ${T('sk-pill.png')} 72 / 20px 26px stretch; border-radius: 38px; padding: 0 4px; box-shadow: 0 4px 12px #000b; }
+    .brandname { font-size: 24px; }
+    .brandsub { margin-top: 6px; font: 600 11px/1 "Oswald", "Barlow Condensed", sans-serif; letter-spacing: .62em; color: #e6d3ad; text-align: center; padding-left: .62em; }
+    .steam::before, .steam::after { content: ""; position: absolute; top: -14px; width: 26px; height: 64px; background: ${T('sk-lamp.png')} center / contain no-repeat; filter: drop-shadow(0 0 8px #ff9a3acc) drop-shadow(0 3px 3px #000c); animation: poc-lamp 5.3s linear infinite; }
+    .steam::before { left: calc(50% - 250px); } .steam::after { right: calc(50% - 250px); animation-delay: -2.1s; }
+    @keyframes poc-lamp { 0%, 40%, 44%, 100% { opacity: 1; } 41% { opacity: .55; } 42% { opacity: .95; } 43% { opacity: .7; } }
     .npticks { position: relative; height: 22px; margin-top: 1px; }
     .nptick { position: absolute; top: 0; transform: translateX(-50%); width: 28px; height: 22px; padding: 0; border: 0; background: none; cursor: pointer; color: var(--ink-dim); font: 700 9px "Barlow Condensed", "Bahnschrift", system-ui, sans-serif; letter-spacing: .06em; }
     .nptick .tkline { position: absolute; left: 50%; top: 0; width: 1px; height: 5px; background: var(--brass); opacity: .6; }
