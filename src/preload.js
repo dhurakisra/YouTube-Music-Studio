@@ -375,6 +375,13 @@ if (isAutotunePage()) {
       for (let i = 0; i < 16; i += 1) meter.appendChild(h('i', i > 12 ? 'r' : i > 9 ? 'y' : 'g'));
       faderWrap.append(scale, trackEl, meter);
       el.append(btns, faderWrap, h('div', 'name', name));
+      if (nodeKey === 'mic' && !libPlayer.mix) { // practice: sing over the stems with the vocal chain, no recording
+        const fxb = h('button', 'btn micfx', 'MIC + FX', { type: 'button', 'aria-label': 'Practice: microphone with the vocal chain' });
+        fxb.title = 'Hear yourself through the vocal chain while listening (nothing is recorded).';
+        const sync = () => { fxb.classList.toggle('on', !!practice.on); fxb.setAttribute('aria-pressed', String(!!practice.on)); };
+        fxb.addEventListener('click', () => { practiceToggle().then(sync, sync); });
+        practice.sync = sync; sync(); el.appendChild(fxb);
+      }
       wrap.appendChild(el);
       const soloBtn = el.querySelector('.solo'), muteBtn = el.querySelector('.mute');
       const refreshFlags = () => {
@@ -2167,7 +2174,16 @@ if (isAutotunePage()) {
       list.textContent = ''; lineEls = [];
       const d = lyrState.data;
       if (!d || d.notFound || d.error) { list.appendChild(h('div', 'libempty', lyrState.status || 'No lyrics.')); return; }
-      if (d.synced?.length) { lyrState.lines = d.synced; for (const l of d.synced) { const e = h('div', 'lyrline', l.text || '\u266A'); list.appendChild(e); lineEls.push(e); } }
+      if (d.synced?.length) {
+        lyrState.lines = d.synced;
+        for (const l of d.synced) {
+          const e = h('div', 'lyrline sync', l.text || '\u266A', { role: 'button', tabindex: '0', title: 'Jump the song to this line' });
+          // click = jump the song to this line (lyric time minus the user's SYNC offset is the song position)
+          const go = () => { songSeek(Math.max(0, l.t - lyrState.offset)); lyrState.idx = -2; };
+          e.addEventListener('click', go); e.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go(); } });
+          list.appendChild(e); lineEls.push(e);
+        }
+      }
       else { lyrState.lines = []; for (const t of d.plain.split(/\r?\n/)) list.appendChild(h('div', 'lyrline plain', t || '\u00A0')); }
       lyrState.idx = -2;
     };
@@ -2213,9 +2229,26 @@ if (isAutotunePage()) {
 
   // Karaoke: one click = capture on, Stems mode, vocal stem muted, mic on, Vocal Lab on. Clicking again restores the previous mode, vocal mute/solo and Vocal Lab state.
   let karaoke = null;
+  // Practice (Listen mode): microphone + Vocal Chain on, nothing recorded. The chain section is shown so it can be tweaked.
+  const practice = { on: false, prevLab: false, sync: null };
+  async function practiceToggle() {
+    if (practice.on) { practiceOff(); return; }
+    if (appMode !== 'listen' || karaoke) return;
+    practice.prevLab = fxState.voc.on;
+    await startMic();
+    fxState.voc.on = true; saveFx(); applyVocalFxAll(); studio.syncVocalLab?.();
+    practice.on = true; studio.consoleEl?.classList.add('practice');
+  }
+  function practiceOff() {
+    if (!practice.on) return;
+    practice.on = false; studio.consoleEl?.classList.remove('practice');
+    if (!karaoke) { stopMic(); fxState.voc.on = practice.prevLab; saveFx(); applyVocalFxAll(); studio.syncVocalLab?.(); }
+    practice.sync?.();
+  }
   // LISTEN and KARAOKE are interlocked modes: the console shows only what the current mode needs ('idle' until one is chosen).
   let appMode = 'listen'; // the program opens in LISTEN (plain YouTube Music playback)
   function setAppMode(m) {
+    if (m !== 'listen') practiceOff();
     appMode = m;
     studio.consoleEl?.classList.toggle('m-karaoke', m === 'karaoke');
     studio.consoleEl?.classList.toggle('m-listen', m === 'listen');
@@ -2337,7 +2370,10 @@ if (isAutotunePage()) {
     .tunelbl { width: 48px; font-size: 10px; font-weight: 800; letter-spacing: .14em; color: var(--ink-dim); text-shadow: 0 1px 2px #000; }
     .btn.tunebtn { width: 30px; height: 28px; font-size: 16px; }
     .tunevalue { flex: 1; min-width: 44px; text-align: center; font: 700 16px Consolas, monospace; color: var(--amber); text-shadow: 0 0 6px #ffb34766; background: #031003; border-radius: 4px; padding: 3px 0; box-shadow: inset 0 0 8px #000; }
-    .console.m-karaoke > .section.chain, .console.mixview > .section.chain { display: block; }
+    .console.m-karaoke > .section.chain, .console.mixview > .section.chain, .console.m-listen.practice > .section.chain { display: block; }
+    .console.m-listen.practice { --fh: clamp(150px, calc(var(--dh) - 430px), 330px); }
+    .btn.micfx { display: none; margin: 4px auto 0; width: 92%; font-size: 9px; letter-spacing: .08em; }
+    .console.m-listen .btn.micfx { display: block; }
     .console.mixview .live { display: none; }
     .console:not(.mixview) .offrow, .console:not(.mixview) .expbtn { display: none; }
     .offrow .offin { flex: none; width: 64px; }
@@ -2569,6 +2605,9 @@ if (isAutotunePage()) {
     .lyrline.past { color: #b9ab95; }
     .lyrline.cur { color: var(--amber); font-weight: 800; font-size: 17px; text-shadow: 0 0 10px #ffb34755; }
     .lyrline.plain { color: #d6c9b3; }
+    .lyrline.sync { cursor: pointer; border-radius: 4px; padding-left: 6px; padding-right: 6px; }
+    .lyrline.sync:hover { color: #f3e3c6; background: #ffb34714; box-shadow: inset 2px 0 0 var(--amber); }
+    .lyrline.sync:focus-visible { outline: 1px solid var(--amber); }
     .lyrsync { display: flex; justify-content: center; align-items: center; gap: 10px; padding-top: 6px; }
     .libtab.open { left: 320px; }
     .lib { position: fixed; left: 0; top: 166px; bottom: 126px; width: 320px; z-index: 2147483643; display: flex; flex-direction: column; padding: 10px 8px 8px;
