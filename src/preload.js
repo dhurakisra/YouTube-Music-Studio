@@ -257,7 +257,7 @@ if (isAutotunePage()) {
     const enter = async (target) => {
       if (busy || rec.saving || takePrep) return;
       const fromMixer = !!libPlayer.mix;
-      if (appMode === target && !fromMixer) return;
+      if (appMode === target && !fromMixer && !(target === 'listen' && captureActive)) return; // LISTEN also leaves Listen with stems
       busy = true;
       try {
         if (rec.active) await stopTake(info);
@@ -2749,7 +2749,7 @@ if (isAutotunePage()) {
     .skin .section.session > .st-stems.on { background-image:${T('sk-st-ses-stems-on.png')} !important; }
     .skin .section.session > .st-karaoke { background-image:${T('sk-st-ses-karaoke-off.png')} !important; }
     .skin .section.session > .st-karaoke.on { background-image:${T('sk-st-ses-karaoke-on.png')} !important; }
-    .skin .section.session > .startk { background-image:${T('sk-st-ses-start-off.png')} !important; box-sizing:border-box !important; padding:0 4% 0 14% !important;
+    .skin .section.session > .startk { background-image:${T('sk-st-ses-start-off.png')} !important; box-sizing:border-box !important; padding:0 calc(18 / 4344 * 100cqw) 0 calc(62 / 4344 * 100cqw) !important; /* % padding would follow the whole artboard */
       justify-content:center !important; white-space:nowrap; overflow:hidden;
       color:#2a1a0c !important; -webkit-text-fill-color:#2a1a0c !important; text-shadow:0 1px 1px #fff4 !important; }
     .skin .section.session > .startk.on { background-image:${T('sk-st-ses-start-on.png')} !important;
