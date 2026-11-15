@@ -83,10 +83,14 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "REPO_OWNER",
-        "repo": "REPO_NAME",
+        "owner": "dhurakisra",
+        "repo": "YouTube-Music-Studio",
         "releaseType": "release"
       }
     ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dhurakisra/YouTube-Music-Studio.git"
   }
 }
