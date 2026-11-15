@@ -1830,8 +1830,7 @@ if (isAutotunePage()) {
           const rc = sh0.getBoundingClientRect();
           if (rc.width) {
             const x0 = left + 19 + 44, x1 = rc.left, hw = Math.max(200, Math.min(300, x1 - x0 - 24));
-            const thb = rc.top + rc.height * 0.16 + 46; // bottom edge of the top clamp
-            const hy = rc.height <= window.innerHeight ? Math.max(120, Math.min(thb + 8, window.innerHeight - 470)) : 130; // short list: sit between the two clamps; long list: the clamps scroll away, so stay at the top
+            const hy = Math.round(window.innerHeight * 0.27); // fixed spot between the background clamps (no scroll-following)
             hd.style.setProperty('--poc-hx', Math.round(x0 + (x1 - x0 - hw) / 2) + 'px');
             hd.style.setProperty('--poc-hy', Math.round(hy) + 'px');
             hd.style.setProperty('--poc-hw', Math.round(hw) + 'px');
@@ -1839,7 +1838,6 @@ if (isAutotunePage()) {
         }
       } catch {}
     };
-    let pf = 0; window.addEventListener('scroll', () => { if (!pf) pf = requestAnimationFrame(() => { pf = 0; place(); }); }, { capture: true, passive: true });
     setInterval(place, 600); window.addEventListener('resize', place); place(); draw();
   }
 
