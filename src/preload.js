@@ -1852,20 +1852,20 @@ if (isAutotunePage()) {
     const TV = { w: 1217, h: 883, gx: 128, gy: 120, gw: 960, gh: 618 }; // sk-tv.png (px) and its glass opening
     const placeTv = () => {
       const pl = document.querySelector('ytmusic-player#player');
-      const on = pl && !document.hidden && pl.getAttribute('playback-mode') === 'OMV_PREFERRED' && pl.hasAttribute('player-page-open') && pl.offsetWidth > 200;
+      const on = pl && !document.hidden && pl.hasAttribute('player-page-open') && pl.offsetWidth > 200;
       if (!on) { tv.style.display = 'none'; tvb.style.display = 'none'; tvl.style.display = 'none'; document.documentElement.classList.remove('poc-tvon'); if (pl && pl.style.transform) { pl.style.transform = ''; } return; }
       const w0 = pl.offsetWidth, h0 = pl.offsetHeight, cur = pl.getBoundingClientRect();
       const k0 = parseFloat(pl.dataset.pocK) || 1, cx = cur.left + cur.width / 2, cy = cur.top + cur.height / 2;
       const guide = document.getElementById('guide'), side = document.querySelector('ytmusic-player-page #side-panel');
       const AL = (guide ? guide.getBoundingClientRect().right : 0) + 40, AR = (side ? side.getBoundingClientRect().left : window.innerWidth) - 10;
       const AT = 120, AB = window.innerHeight - 130;
-      const fw = TV.w / TV.gw * 1.03, fh = TV.h / TV.gh * 1.03; // frame size per unit of video size
+      const gsc = Math.max(w0 / TV.gw, h0 / TV.gh) * 1.03, fw = TV.w * gsc, fh = TV.h * gsc; // frame size at k = 1 (a square cover is height-bound, a 16:9 video width-bound)
       const hw = Math.min(cx - AL, AR - cx), hh = Math.min(cy - AT, AB - cy);
-      const k = Math.max(0.3, Math.min(1, (2 * hw) / (w0 * fw), (2 * hh) / (h0 * fh)));
+      const k = Math.max(0.3, Math.min(1, (2 * hw) / fw, (2 * hh) / fh));
       pl.dataset.pocK = String(k); pl.style.transform = 'scale(' + k + ')'; pl.style.transformOrigin = 'center center';
       const vw = w0 * k, vh = h0 * k, sc = Math.max(vw * 1.03 / TV.gw, vh * 1.03 / TV.gh);
       tv.style.display = 'block'; tvl.style.display = 'block'; document.documentElement.classList.add('poc-tvon');
-      { const t = document.querySelector('ytmusic-av-toggle'), vsel = !t || t.getAttribute('is-video-playback-mode-selected') !== 'false'; tvB.video.classList.toggle('on', vsel); tvB.song.classList.toggle('on', !vsel); tvbt.style.fontSize = Math.max(6, Math.round(17 * sc)) + 'px'; }
+      { const t = document.querySelector('ytmusic-av-toggle'), vsel = !t || t.getAttribute('is-video-playback-mode-selected') !== 'false'; tvB.video.classList.toggle('on', vsel); tvB.song.classList.toggle('on', !vsel); tvbt.style.display = t ? 'flex' : 'none'; tvbt.style.fontSize = Math.max(6, Math.round(17 * sc)) + 'px'; }
       { // name plate: scrolling "title - artist" of the playing song (plate slot is 350x50 at (438,18) in the frame image)
         let ti = '', artist = '';
         try { const m = navigator.mediaSession.metadata; if (m) { ti = m.title || ''; artist = m.artist || ''; } } catch {}
