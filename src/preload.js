@@ -1865,13 +1865,13 @@ if (isAutotunePage()) {
       pl.dataset.pocK = String(k); pl.style.transform = 'scale(' + k + ')'; pl.style.transformOrigin = 'center center';
       const vw = w0 * k, vh = h0 * k, sc = Math.max(vw * 1.03 / TV.gw, vh * 1.03 / TV.gh);
       tv.style.display = 'block'; tvl.style.display = 'block'; document.documentElement.classList.add('poc-tvon');
-      { const t = document.querySelector('ytmusic-av-toggle'), vsel = !t || t.getAttribute('is-video-playback-mode-selected') !== 'false'; tvB.video.classList.toggle('on', vsel); tvB.song.classList.toggle('on', !vsel); tvbt.style.fontSize = Math.max(7, Math.round(24 * sc)) + 'px'; }
+      { const t = document.querySelector('ytmusic-av-toggle'), vsel = !t || t.getAttribute('is-video-playback-mode-selected') !== 'false'; tvB.video.classList.toggle('on', vsel); tvB.song.classList.toggle('on', !vsel); tvbt.style.fontSize = Math.max(6, Math.round(17 * sc)) + 'px'; }
       { // name plate: scrolling "title - artist" of the playing song (plate slot is 350x50 at (438,18) in the frame image)
         let ti = '', artist = '';
         try { const m = navigator.mediaSession.metadata; if (m) { ti = m.title || ''; artist = m.artist || ''; } } catch {}
         if (!ti) { try { const vd = document.getElementById('movie_player').getVideoData(); ti = vd.title || ''; artist = vd.author || ''; } catch {} }
         const txt = (ti + (artist ? '  •  ' + artist : '')).trim() || 'YouTube Music Studio';
-        if (tvs.textContent !== txt) { tvs.textContent = txt; tvs.style.animationDuration = Math.max(9, 7 + txt.length * 0.32) + 's'; tvs.style.animation = 'none'; void tvs.offsetWidth; tvs.style.animation = ''; tvs.style.animationDuration = Math.max(9, 7 + txt.length * 0.32) + 's'; }
+        if (tvs.textContent !== txt) { tvs.textContent = txt; tvs.style.animationDuration = Math.max(9, 7 + txt.length * 0.32) + 's, 3.1s'; tvs.style.animation = 'none'; void tvs.offsetWidth; tvs.style.animation = ''; tvs.style.animationDuration = Math.max(9, 7 + txt.length * 0.32) + 's, 3.1s'; }
         tvt.style.fontSize = Math.max(7, Math.round(26 * sc)) + 'px';
       }
       { const ins = 14 * sc; // black backing just inside the glass opening, never outside the frame
@@ -3304,8 +3304,9 @@ if (isAutotunePage()) {
         ytmusic-two-column-browse-results-renderer ytmusic-responsive-header-renderer ytmusic-thumbnail-renderer.thumbnail { width: 190px !important; height: 190px !important; margin-left: auto !important; margin-right: auto !important; align-self: center !important; }
         ytmusic-player-page#player-page { background: transparent !important; }
         ytmusic-player-page #side-panel { box-sizing: border-box !important; height: calc(100vh - 290px) !important; padding: 8px 14px 12px !important; border: 26px solid transparent !important; border-image: ${T('sk-shelf-body.png')} 34 / 8px stretch !important; background: ${T('sk-listtex.jpg')} 0 0 / auto auto repeat !important; }
-        #poc-tvtick { position: absolute; left: 38.2%; top: 2.1%; width: 24.6%; height: 5.6%; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent); border-radius: 4px; white-space: nowrap; display: flex; align-items: center; font: 400 26px/1 'VT323', 'Barlow Condensed', monospace; letter-spacing: .08em; text-transform: uppercase; color: #ffb52e; text-shadow: 0 0 5px #ff9a1f, 0 0 12px #ff7a0f, 0 0 24px #e65a00bb; }
-        #poc-tvtick span { display: inline-block; padding-left: 100%; animation: poc-tick 14s linear infinite; will-change: transform; }
+        #poc-tvtick { position: absolute; left: 38.2%; top: 2.1%; width: 24.6%; height: 5.6%; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent); background: repeating-linear-gradient(0deg, #ff8a1f14 0 1px, transparent 1px 3px); border-radius: 4px; white-space: nowrap; display: flex; align-items: center; font: 400 26px/1 'VT323', 'Barlow Condensed', monospace; letter-spacing: .08em; text-transform: uppercase; color: #ffb52e; text-shadow: 0 0 5px #ff9a1f, 0 0 12px #ff7a0f, 0 0 24px #e65a00bb; }
+        #poc-tvtick span { display: inline-block; padding-left: 100%; animation: poc-tick 14s linear infinite, poc-tkfl 3.1s step-end infinite; will-change: transform; }
+        @keyframes poc-tkfl { 0% { opacity: 1; } 7% { opacity: .4; } 7.6% { opacity: 1; } 8.4% { opacity: .65; } 9% { opacity: 1; } 41% { opacity: .3; } 41.7% { opacity: 1; } 73% { opacity: .55; } 73.6% { opacity: 1; } 74.4% { opacity: .35; } 75% { opacity: 1; } 100% { opacity: 1; } }
         @keyframes poc-tick { from { transform: translateX(0); } to { transform: translateX(-100%); } }
         #poc-tvlamps { position: fixed; display: none; pointer-events: none; z-index: 7; }
         #poc-tvlamps .tube { position: absolute; top: 33.9%; height: 16.2%; width: 4.5%; border-radius: 40% / 18%; mix-blend-mode: screen; background: radial-gradient(ellipse 60% 55% at 50% 50%, #ffe9a8 0, #ffb534cc 30%, #ff7d0f66 60%, transparent 85%); box-shadow: 0 0 10px 2px #ff8a1f88; animation: poc-flick 3.7s linear infinite; }
@@ -3313,7 +3314,7 @@ if (isAutotunePage()) {
         #poc-tvlamps .tube b { position: absolute; left: 36%; width: 28%; top: 18%; height: 54%; border-radius: 40%; background: linear-gradient(#fff6d0, #ffd35a 60%, #ffb02a); filter: blur(1.2px); box-shadow: 0 0 8px 2px #ffc04acc; }
         @keyframes poc-flick { 0% { opacity: .95; } 6% { opacity: .55; } 8% { opacity: .98; } 17% { opacity: .85; } 19% { opacity: .35; } 21% { opacity: .9; } 34% { opacity: 1; } 47% { opacity: .78; } 49% { opacity: .96; } 58% { opacity: .5; } 60% { opacity: .92; } 62% { opacity: .42; } 64% { opacity: .95; } 80% { opacity: .88; } 91% { opacity: 1; } 93% { opacity: .6; } 95% { opacity: .97; } 100% { opacity: .95; } }
         html.poc-tvon ytmusic-player-page #av-id { display: none !important; }
-        #poc-tvbtns { position: absolute; left: 33%; width: 34%; top: 88.2%; height: 5.6%; display: flex; gap: 6%; pointer-events: none; }
+        #poc-tvbtns { position: absolute; left: 38.5%; width: 23%; top: 85.9%; height: 3.9%; display: flex; gap: 6%; pointer-events: none; }
         #poc-tvbtns button { flex: 1; pointer-events: auto; cursor: pointer; border: 1px solid #c98a3a; border-radius: 999px; font: 600 1em/1 'Oswald', 'Barlow Condensed', sans-serif; letter-spacing: .14em; color: #9a6a30; background: linear-gradient(#3a2412, #1a0e06); box-shadow: inset 0 1px 0 #e0a45855, inset 0 -2px 3px #000a, 0 1px 3px #000c; transition: color .15s, box-shadow .15s; }
         #poc-tvbtns button:hover { color: #e0a458; }
         #poc-tvbtns button.on { color: #ffb52e; background: linear-gradient(#2a1608, #0e0703); text-shadow: 0 0 6px #ff9a1f, 0 0 12px #ff7a0f; box-shadow: inset 0 2px 5px #000d, 0 0 8px #ff8a1f77, 0 1px 3px #000c; }
