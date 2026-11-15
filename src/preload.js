@@ -2757,6 +2757,20 @@ if (isAutotunePage()) {
     .skin .section.session > .advtoggle { background-image:${T('sk-st-ses-adv-off.png')} !important; }
     .skin .section.session > .advtoggle.on { background-image:${T('sk-st-ses-adv-on.png')} !important; }
     .skin .section.session > .bigbtn:active, .skin .section.session > .advtoggle:active { transform:translateY(1px); }
+    /* ADVANCED overlay: a plain stacked form over the three big buttons (label left, control right) */
+    .skin .section.session .adv.open { display:flex !important; flex-direction:column; justify-content:center; gap:calc(14 / 4344 * 100cqw); box-sizing:border-box;
+      padding:calc(40 / 4344 * 100cqw) calc(22 / 4344 * 100cqw) !important; pointer-events:auto; }
+    .skin .section.session .adv .eqinfo-row { position:static !important; display:grid !important; grid-template-columns:calc(64 / 4344 * 100cqw) 1fr auto; align-items:center;
+      column-gap:calc(10 / 4344 * 100cqw); width:auto !important; height:calc(46 / 4344 * 100cqw) !important; margin:0 !important; left:auto !important; top:auto !important;
+      color:#e9d6a8; font:700 calc(22 / 4344 * 100cqw)/1 'Barlow Condensed','Oswald',sans-serif !important; letter-spacing:.06em; }
+    .skin .section.session .adv .eqinfo-row > * { position:relative !important; left:auto !important; top:auto !important; transform:none !important; min-width:0; }
+    .skin .section.session .adv .eqinfo-row > span:first-child { grid-column:1; }
+    .skin .section.session .adv .eqinfo-row > :nth-child(2) { grid-column:2; width:100% !important; height:calc(40 / 4344 * 100cqw) !important; }
+    .skin .section.session .adv .eqinfo-row > span:nth-child(3) { grid-column:3; font-size:calc(20 / 4344 * 100cqw) !important; }
+    .skin .section.session .adv .st-select-label { font-size:calc(19 / 4344 * 100cqw) !important; right:calc(40 / 4344 * 100cqw) !important; text-overflow:ellipsis; }
+    .skin .section.session .adv input.qrange { height:calc(14 / 4344 * 100cqw) !important; align-self:center; }
+    .skin .section.session .adv .btn.capture { grid-column:2; justify-self:start; width:calc(150 / 4344 * 100cqw) !important; height:calc(44 / 4344 * 100cqw) !important;
+      display:flex !important; align-items:center; justify-content:center; font:700 calc(20 / 4344 * 100cqw)/1 'Barlow Condensed','Oswald',sans-serif !important; }
     .skin .status { position:absolute; inset:0; pointer-events:none; display:block; padding:0; font:600 .68cqw 'Barlow Condensed',sans-serif; color:#ead9b2; letter-spacing:.08em; text-shadow:0 1px 2px #000; }
     .skin .status > span { position:absolute; display:flex; align-items:center; overflow:hidden; white-space:nowrap; }
     .skin .clock { justify-content:center; font:600 .78cqw 'Oswald',sans-serif; color:#ead9b2; }
