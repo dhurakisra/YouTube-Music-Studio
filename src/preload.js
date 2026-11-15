@@ -245,7 +245,7 @@ if (isAutotunePage()) {
     const adv = h('div', 'adv');
     adv.append(row('MODEL', modelSelect), row('MODE', modeSelect), row('GAIN', gainSlider), row('BUFFER', sessionEls.bufSlider, sessionEls.bufValue), row('', button));
     const advToggle = h('button', 'advtoggle', 'ADVANCED \u25BE', { type: 'button' });
-    advToggle.addEventListener('click', () => { const o = adv.classList.toggle('open'); advToggle.textContent = o ? 'ADVANCED \u25B4' : 'ADVANCED \u25BE'; });
+    advToggle.addEventListener('click', () => { const o = adv.classList.toggle('open'); advToggle.classList.toggle('on', o); advToggle.textContent = o ? 'ADVANCED \u25B4' : 'ADVANCED \u25BE'; });
     const stemBtn = h('button', 'btn bigbtn solo stemb', 'LISTEN WITH STEMS', { type: 'button', 'aria-label': 'Listen with system separation' });
     stemBtn.classList.add('st-stems');
     stemBtn.title = 'Splits the song into vocals, drums, bass and other so you can mix them live (Mixer), change the key and more. It needs about 10 seconds of buffering before you hear anything. Leave it off to listen to YouTube Music as usual, in real time.';
@@ -2737,6 +2737,25 @@ if (isAutotunePage()) {
     .skin .strip .micsw .micsw-on { color:#5dff7a; text-shadow:0 0 5px #5dff7acc; }
     .skin .strip .micsw .micsw-off { color:#ff4a3a; text-shadow:0 0 5px #ff4a3acc; }
     .skin .strip .micsw.on .micsw-on, .skin .strip .micsw:not(.on) .micsw-off { display:block; }
+    /* Session buttons: whole plates from design/ref/session-{off,on}-ref.png (icon + text baked in); off = not pressed, on = pressed.
+       START KARAOKE keeps live text (it changes) on the KARAOKE plate with the text cleared. */
+    .skin .section.session > .bigbtn, .skin .section.session > .advtoggle { border:0 !important; border-image:none !important; padding:0 !important;
+      background:transparent center / 100% 100% no-repeat !important; filter:none !important; box-shadow:none !important; }
+    .skin .section.session > .bigbtn:not(.startk), .skin .section.session > .advtoggle { color:transparent !important; -webkit-text-fill-color:transparent !important; text-shadow:none !important; font-size:0 !important; }
+    .skin .section.session > .bigbtn::before { content:none !important; }
+    .skin .section.session > .st-listen { background-image:${T('sk-st-ses-listen-off.png')} !important; }
+    .skin .section.session > .st-listen.on { background-image:${T('sk-st-ses-listen-on.png')} !important; }
+    .skin .section.session > .st-stems { background-image:${T('sk-st-ses-stems-off.png')} !important; }
+    .skin .section.session > .st-stems.on { background-image:${T('sk-st-ses-stems-on.png')} !important; }
+    .skin .section.session > .st-karaoke { background-image:${T('sk-st-ses-karaoke-off.png')} !important; }
+    .skin .section.session > .st-karaoke.on { background-image:${T('sk-st-ses-karaoke-on.png')} !important; }
+    .skin .section.session > .startk { background-image:${T('sk-st-ses-start-off.png')} !important; padding-left:12% !important;
+      color:#2a1a0c !important; -webkit-text-fill-color:#2a1a0c !important; text-shadow:0 1px 1px #fff4 !important; }
+    .skin .section.session > .startk.on { background-image:${T('sk-st-ses-start-on.png')} !important;
+      color:#ffd98a !important; -webkit-text-fill-color:#ffd98a !important; text-shadow:0 0 6px #ffb347, 0 0 2px #ff9a2a !important; }
+    .skin .section.session > .advtoggle { background-image:${T('sk-st-ses-adv-off.png')} !important; }
+    .skin .section.session > .advtoggle.on { background-image:${T('sk-st-ses-adv-on.png')} !important; }
+    .skin .section.session > .bigbtn:active, .skin .section.session > .advtoggle:active { transform:translateY(1px); }
     .skin .status { position:absolute; inset:0; pointer-events:none; display:block; padding:0; font:600 .68cqw 'Barlow Condensed',sans-serif; color:#ead9b2; letter-spacing:.08em; text-shadow:0 1px 2px #000; }
     .skin .status > span { position:absolute; display:flex; align-items:center; overflow:hidden; white-space:nowrap; }
     .skin .clock { justify-content:center; font:600 .78cqw 'Oswald',sans-serif; color:#ead9b2; }
