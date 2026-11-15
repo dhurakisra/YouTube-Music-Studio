@@ -1839,12 +1839,12 @@ if (isAutotunePage()) {
       } catch {}
     };
     // video mode: a steampunk TV frame (glass opening = the video) around the player; the player is scaled down so the whole frame fits between the guide and the side panel
-    const tv = document.createElement('div'); tv.id = 'poc-tv'; document.documentElement.appendChild(tv);
+    const tv = document.createElement('div'); tv.id = 'poc-tv'; document.documentElement.appendChild(tv); const tvb = document.createElement('div'); tvb.id = 'poc-tvbg'; document.documentElement.appendChild(tvb);
     const TV = { w: 1224, h: 869, gx: 125, gy: 125, gw: 980, gh: 610 }; // sk-tv.png (px) and its glass opening
     const placeTv = () => {
       const pl = document.querySelector('ytmusic-player#player');
       const on = pl && !document.hidden && pl.getAttribute('playback-mode') === 'OMV_PREFERRED' && pl.hasAttribute('player-page-open') && pl.offsetWidth > 200;
-      if (!on) { tv.style.display = 'none'; if (pl && pl.style.transform) { pl.style.transform = ''; } return; }
+      if (!on) { tv.style.display = 'none'; tvb.style.display = 'none'; if (pl && pl.style.transform) { pl.style.transform = ''; } return; }
       const w0 = pl.offsetWidth, h0 = pl.offsetHeight, cur = pl.getBoundingClientRect();
       const k0 = parseFloat(pl.dataset.pocK) || 1, cx = cur.left + cur.width / 2, cy = cur.top + cur.height / 2;
       const guide = document.getElementById('guide'), side = document.querySelector('ytmusic-player-page #side-panel');
@@ -1856,6 +1856,9 @@ if (isAutotunePage()) {
       pl.dataset.pocK = String(k); pl.style.transform = 'scale(' + k + ')'; pl.style.transformOrigin = 'center center';
       const vw = w0 * k, vh = h0 * k, sc = Math.max(vw * 1.03 / TV.gw, vh * 1.03 / TV.gh);
       tv.style.display = 'block';
+      { const ins = 14 * sc; // black backing just inside the glass opening, never outside the frame
+        tvb.style.display = 'block'; tvb.style.left = Math.round(cx - (TV.gw / 2) * sc + ins) + 'px'; tvb.style.top = Math.round(cy - (TV.gh / 2) * sc + ins) + 'px';
+        tvb.style.width = Math.round(TV.gw * sc - 2 * ins) + 'px'; tvb.style.height = Math.round(TV.gh * sc - 2 * ins) + 'px'; tvb.style.borderRadius = Math.round(70 * sc) + 'px'; }
       tv.style.width = Math.round(TV.w * sc) + 'px'; tv.style.height = Math.round(TV.h * sc) + 'px';
       tv.style.left = Math.round(cx - (TV.gx + TV.gw / 2) * sc) + 'px'; tv.style.top = Math.round(cy - (TV.gy + TV.gh / 2) * sc) + 'px';
     };
@@ -3282,6 +3285,7 @@ if (isAutotunePage()) {
         ytmusic-two-column-browse-results-renderer ytmusic-responsive-header-renderer ytmusic-thumbnail-renderer.thumbnail { width: 190px !important; height: 190px !important; margin-left: auto !important; margin-right: auto !important; align-self: center !important; }
         ytmusic-player-page#player-page { background: transparent !important; }
         ytmusic-player-page #side-panel { box-sizing: border-box !important; height: calc(100vh - 290px) !important; padding: 8px 14px 12px !important; border: 26px solid transparent !important; border-image: ${T('sk-shelf-body.png')} 120 / 26px stretch !important; background: ${T('sk-listtex.jpg')} 0 0 / auto auto repeat !important; }
+        #poc-tvbg { position: fixed; display: none; pointer-events: none; z-index: 1; background: #000; }
         #poc-tv { position: fixed; display: none; pointer-events: none; z-index: 6; background: ${T('sk-tv.png')} center / 100% 100% no-repeat; filter: saturate(.62) brightness(.78); }
         i.poc-hook { position: absolute; height: 46px; pointer-events: none; z-index: 2; box-sizing: border-box; border: solid transparent; border-width: 0 24px; border-image: ${T('sk-hook.png')} 0 60 fill / 0 24px / 0 stretch; filter: drop-shadow(0 2px 3px #000c);
  }
