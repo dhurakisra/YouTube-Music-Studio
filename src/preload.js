@@ -1850,10 +1850,17 @@ if (isAutotunePage()) {
     tvl.appendChild(tvbt); document.documentElement.appendChild(tvl);
     const tvb = document.createElement('div'); tvb.id = 'poc-tvbg'; document.documentElement.appendChild(tvb);
     const TV = { w: 1217, h: 883, gx: 128, gy: 120, gw: 960, gh: 618 }; // sk-tv.png (px) and its glass opening
+    let tvWait = 0, tvWas = false;
     const placeTv = () => {
       const pl = document.querySelector('ytmusic-player#player');
-      const on = pl && !document.hidden && pl.hasAttribute('player-page-open') && pl.offsetWidth > 200;
-      if (!on) { tv.style.display = 'none'; tvb.style.display = 'none'; tvl.style.display = 'none'; document.documentElement.classList.remove('poc-tvon'); if (pl && pl.style.transform) { pl.style.transform = ''; } return; }
+      const laid = !!pl && pl.offsetWidth > 200, on = !!pl && !document.hidden && pl.hasAttribute('player-page-open') && (laid || tvWas); // mid-transition (not laid out for a moment) keeps the last frame instead of flashing it off
+      if (!on) {
+        tvWas = false; tv.style.display = 'none'; tvb.style.display = 'none'; tvl.style.display = 'none'; document.documentElement.classList.remove('poc-tvon'); if (pl && pl.style.transform) { pl.style.transform = ''; }
+        // player page open but not laid out yet: the CSS keeps the player hidden until the TV is placed; give up after 1.5 s so it can never stay hidden
+        if (pl && pl.hasAttribute('player-page-open') && !document.hidden) { tvWait = tvWait || performance.now(); if (performance.now() - tvWait > 1500) pl.classList.add('poc-tvok'); } else { tvWait = 0; if (pl) pl.classList.remove('poc-tvok'); }
+        return;
+      }
+      tvWait = 0; if (!laid) return; tvWas = true;
       const w0 = pl.offsetWidth, h0 = pl.offsetHeight, cur = pl.getBoundingClientRect();
       const k0 = parseFloat(pl.dataset.pocK) || 1, cx = cur.left + cur.width / 2, cy = cur.top + cur.height / 2;
       const guide = document.getElementById('guide'), side = document.querySelector('ytmusic-player-page #side-panel');
@@ -1880,8 +1887,9 @@ if (isAutotunePage()) {
       tv.style.width = Math.round(TV.w * sc) + 'px'; tv.style.height = Math.round(TV.h * sc) + 'px';
       tv.style.left = Math.round(cx - (TV.gx + TV.gw / 2) * sc) + 'px'; tv.style.top = Math.round(cy - (TV.gy + TV.gh / 2) * sc) + 'px';
       for (const k2 of ['left', 'top', 'width', 'height']) tvl.style[k2] = tv.style[k2];
+      pl.classList.add('poc-tvok'); // frame, backing, buttons and player are all in place: show them together
     };
-    setInterval(placeTv, 400); window.addEventListener('resize', placeTv);
+    const tvLoop = () => { placeTv(); requestAnimationFrame(tvLoop); }; requestAnimationFrame(tvLoop); // every frame: the frame follows the player with no visible lag (it is a few cheap reads)
     setInterval(place, 600); window.addEventListener('resize', place); place(); draw();
   }
 
@@ -3314,6 +3322,9 @@ if (isAutotunePage()) {
         #poc-tvlamps .tube b { position: absolute; left: 36%; width: 28%; top: 18%; height: 54%; border-radius: 40%; background: linear-gradient(#fff6d0, #ffd35a 60%, #ffb02a); filter: blur(1.2px); box-shadow: 0 0 8px 2px #ffc04acc; }
         @keyframes poc-flick { 0% { opacity: .95; } 6% { opacity: .55; } 8% { opacity: .98; } 17% { opacity: .85; } 19% { opacity: .35; } 21% { opacity: .9; } 34% { opacity: 1; } 47% { opacity: .78; } 49% { opacity: .96; } 58% { opacity: .5; } 60% { opacity: .92; } 62% { opacity: .42; } 64% { opacity: .95; } 80% { opacity: .88; } 91% { opacity: 1; } 93% { opacity: .6; } 95% { opacity: .97; } 100% { opacity: .95; } }
         html.poc-tvon ytmusic-player-page #av-id { display: none !important; }
+        ytmusic-player#player[player-page-open]:not(.poc-tvok) { visibility: hidden !important; }
+        ytmusic-player#player.poc-tvok, #poc-tv, #poc-tvbg, #poc-tvlamps { animation: poc-tvin .28s ease-out; }
+        @keyframes poc-tvin { from { opacity: 0; } to { opacity: 1; } }
         #poc-tvbtns { position: absolute; left: 38.5%; width: 23%; top: 85.9%; height: 3.9%; display: flex; gap: 6%; pointer-events: none; }
         #poc-tvbtns button { flex: 1; pointer-events: auto; cursor: pointer; border: 1px solid #c98a3a; border-radius: 999px; font: 600 1em/1 'Oswald', 'Barlow Condensed', sans-serif; letter-spacing: .14em; color: #9a6a30; background: linear-gradient(#3a2412, #1a0e06); box-shadow: inset 0 1px 0 #e0a45855, inset 0 -2px 3px #000a, 0 1px 3px #000c; transition: color .15s, box-shadow .15s; }
         #poc-tvbtns button:hover { color: #e0a458; }
