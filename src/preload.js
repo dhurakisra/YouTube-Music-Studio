@@ -715,7 +715,7 @@ if (isAutotunePage()) {
       return s > 0 ? 10 * Math.log10(s / buf.length) : -100;
     };
     // Needle: 0 VU (= -18 dBFS RMS) sits at the start of the red zone (+20 deg); ends at +-39 deg.
-    const angleOf = (db) => Math.max(-39, Math.min(39, db <= -18 ? 20 + (db + 18) * 2.95 : 20 + (db + 18) * 1.9));
+    const angleOf = (db) => Math.max(-44, Math.min(44, db <= -18 ? 25.5 + (db + 18) * 3.48 : 25.5 + (db + 18) * 2.1)) // dial: ends +-44 deg, 0 VU (red zone) at +25.5;
     studio.vuDraw = () => {
       const ans = masterEq?.anL ? [masterEq.anL, masterEq.anR] : null;
       needles.forEach((n, i) => {
@@ -2681,6 +2681,11 @@ if (isAutotunePage()) {
     .skin .section.output .vu:first-child { background-image:${T('sk-st-vu-l.png')}; }
     .skin .section.output .vu:last-child { background-image:${T('sk-st-vu-r.png')}; }
     .skin .section.output .vu .lbl { display:none; }
+    /* new dials: pivot at the bottom centre (behind the L/R bezel); the bezel cover sprite sits above the needle */
+    .skin .section.output .vu .nd { bottom:-1% !important; height:70% !important; width:.9% !important; transform-origin:50% 97% !important; z-index:1; }
+    .skin .section.output .vu::after { content:''; position:absolute; inset:0; z-index:2; pointer-events:none; background:center / 100% 100% no-repeat; }
+    .skin .section.output .vu:first-child::after { background-image:${T('sk-st-vu-l-cover.png')}; }
+    .skin .section.output .vu:last-child::after { background-image:${T('sk-st-vu-r-cover.png')}; }
     .skin .section.output .vu .nd { position:absolute; left:50%; bottom:5%; width:1.1%; height:55%; margin:0; border-radius:100% 100% 0 0; transform-origin:50% 95%; background:linear-gradient(90deg,#1b1009,#e0bd75 48%,#2b1a0d); box-shadow:0 1px 2px #000; z-index:2; }
     .skin .section.output .master { position:absolute; inset:0; width:auto; display:block; }
     .skin .section.output .master .row { position:absolute; inset:0; display:block; }
