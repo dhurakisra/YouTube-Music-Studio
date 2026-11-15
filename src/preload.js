@@ -1839,8 +1839,8 @@ if (isAutotunePage()) {
       } catch {}
     };
     // video mode: a steampunk TV frame (glass opening = the video) around the player; the player is scaled down so the whole frame fits between the guide and the side panel
-    const tv = document.createElement('div'); tv.id = 'poc-tv'; document.documentElement.appendChild(tv); const tvt = document.createElement('div'); tvt.id = 'poc-tvtick'; const tvs = document.createElement('span'); tvt.appendChild(tvs); tv.appendChild(tvt);
-    const tvl = document.createElement('div'); tvl.id = 'poc-tvlamps'; for (const sd of ['l', 'r']) { const t = document.createElement('i'); t.className = 'tube ' + sd; const f = document.createElement('b'); t.appendChild(f); tvl.appendChild(t); } document.documentElement.appendChild(tvl);
+    const tv = document.createElement('div'); tv.id = 'poc-tv'; document.documentElement.appendChild(tv); const tvt = document.createElement('div'); tvt.id = 'poc-tvtick'; const tvs = document.createElement('span'); tvt.appendChild(tvs);
+    const tvl = document.createElement('div'); tvl.id = 'poc-tvlamps'; for (const sd of ['l', 'r']) { const t = document.createElement('i'); t.className = 'tube ' + sd; const f = document.createElement('b'); t.appendChild(f); tvl.appendChild(t); } tvl.appendChild(tvt); document.documentElement.appendChild(tvl);
     const tvb = document.createElement('div'); tvb.id = 'poc-tvbg'; document.documentElement.appendChild(tvb);
     const TV = { w: 1217, h: 883, gx: 128, gy: 120, gw: 960, gh: 618 }; // sk-tv.png (px) and its glass opening
     const placeTv = () => {
@@ -3296,7 +3296,7 @@ if (isAutotunePage()) {
         ytmusic-two-column-browse-results-renderer ytmusic-responsive-header-renderer ytmusic-thumbnail-renderer.thumbnail { width: 190px !important; height: 190px !important; margin-left: auto !important; margin-right: auto !important; align-self: center !important; }
         ytmusic-player-page#player-page { background: transparent !important; }
         ytmusic-player-page #side-panel { box-sizing: border-box !important; height: calc(100vh - 290px) !important; padding: 8px 14px 12px !important; border: 26px solid transparent !important; border-image: ${T('sk-shelf-body.png')} 34 / 8px stretch !important; background: ${T('sk-listtex.jpg')} 0 0 / auto auto repeat !important; }
-        #poc-tvtick { position: absolute; left: 38.2%; top: 2.1%; width: 24.6%; height: 5.6%; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent); border-radius: 4px; white-space: nowrap; display: flex; align-items: center; font: 400 26px/1 'VT323', 'Barlow Condensed', monospace; letter-spacing: .08em; text-transform: uppercase; color: #fbd851; text-shadow: 0 0 5px #f9b82a, 0 0 13px #e67c12cc; }
+        #poc-tvtick { position: absolute; left: 38.2%; top: 2.1%; width: 24.6%; height: 5.6%; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent); border-radius: 4px; white-space: nowrap; display: flex; align-items: center; font: 400 26px/1 'VT323', 'Barlow Condensed', monospace; letter-spacing: .08em; text-transform: uppercase; color: #ffb52e; text-shadow: 0 0 5px #ff9a1f, 0 0 12px #ff7a0f, 0 0 24px #e65a00bb; }
         #poc-tvtick span { display: inline-block; padding-left: 100%; animation: poc-tick 14s linear infinite; will-change: transform; }
         @keyframes poc-tick { from { transform: translateX(0); } to { transform: translateX(-100%); } }
         #poc-tvlamps { position: fixed; display: none; pointer-events: none; z-index: 7; }
