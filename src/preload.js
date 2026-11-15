@@ -1838,6 +1838,28 @@ if (isAutotunePage()) {
         }
       } catch {}
     };
+    // video mode: a steampunk TV frame (glass opening = the video) around the player; the player is scaled down so the whole frame fits between the guide and the side panel
+    const tv = document.createElement('div'); tv.id = 'poc-tv'; document.documentElement.appendChild(tv);
+    const TV = { w: 1224, h: 869, gx: 125, gy: 125, gw: 980, gh: 610 }; // sk-tv.png (px) and its glass opening
+    const placeTv = () => {
+      const pl = document.querySelector('ytmusic-player#player');
+      const on = pl && !document.hidden && pl.getAttribute('playback-mode') === 'OMV_PREFERRED' && pl.hasAttribute('player-page-open') && pl.offsetWidth > 200;
+      if (!on) { tv.style.display = 'none'; if (pl && pl.style.transform) { pl.style.transform = ''; } return; }
+      const w0 = pl.offsetWidth, h0 = pl.offsetHeight, cur = pl.getBoundingClientRect();
+      const k0 = parseFloat(pl.dataset.pocK) || 1, cx = cur.left + cur.width / 2, cy = cur.top + cur.height / 2;
+      const guide = document.getElementById('guide'), side = document.querySelector('ytmusic-player-page #side-panel');
+      const AL = (guide ? guide.getBoundingClientRect().right : 0) + 40, AR = (side ? side.getBoundingClientRect().left : window.innerWidth) - 10;
+      const AT = 120, AB = window.innerHeight - 130;
+      const fw = TV.w / TV.gw * 1.03, fh = TV.h / TV.gh * 1.03; // frame size per unit of video size
+      const hw = Math.min(cx - AL, AR - cx), hh = Math.min(cy - AT, AB - cy);
+      const k = Math.max(0.3, Math.min(1, (2 * hw) / (w0 * fw), (2 * hh) / (h0 * fh)));
+      pl.dataset.pocK = String(k); pl.style.transform = 'scale(' + k + ')'; pl.style.transformOrigin = 'center center';
+      const vw = w0 * k, vh = h0 * k, sc = Math.max(vw * 1.03 / TV.gw, vh * 1.03 / TV.gh);
+      tv.style.display = 'block';
+      tv.style.width = Math.round(TV.w * sc) + 'px'; tv.style.height = Math.round(TV.h * sc) + 'px';
+      tv.style.left = Math.round(cx - (TV.gx + TV.gw / 2) * sc) + 'px'; tv.style.top = Math.round(cy - (TV.gy + TV.gh / 2) * sc) + 'px';
+    };
+    setInterval(placeTv, 400); window.addEventListener('resize', placeTv);
     setInterval(place, 600); window.addEventListener('resize', place); place(); draw();
   }
 
@@ -3258,6 +3280,7 @@ if (isAutotunePage()) {
         @property --gw { syntax: '<number>#'; inherits: false; initial-value: 255, 157, 61; }
         ytmusic-two-column-browse-results-renderer ytmusic-responsive-header-renderer { position: fixed !important; left: var(--poc-hx, auto) !important; top: var(--poc-hy, auto) !important; width: var(--poc-hw, 330px) !important; box-sizing: border-box; z-index: 3; }
         ytmusic-two-column-browse-results-renderer ytmusic-responsive-header-renderer ytmusic-thumbnail-renderer.thumbnail { width: 190px !important; height: 190px !important; margin-left: auto !important; margin-right: auto !important; align-self: center !important; }
+        #poc-tv { position: fixed; display: none; pointer-events: none; z-index: 6; background: ${T('sk-tv.png')} center / 100% 100% no-repeat; }
         i.poc-hook { position: absolute; height: 46px; pointer-events: none; z-index: 2; box-sizing: border-box; border: solid transparent; border-width: 0 24px; border-image: ${T('sk-hook.png')} 0 60 fill / 0 24px / 0 stretch; filter: drop-shadow(0 2px 3px #000c);
  }
         i.poc-hook.t { top: 16%; } i.poc-hook.b { bottom: 16%; }
