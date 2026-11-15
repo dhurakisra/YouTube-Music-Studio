@@ -18,7 +18,8 @@ def quilt(b, T=48, ov=16):
             acc[y:y + T, x:x + T] += t * win; wt[y:y + T, x:x + T] += win
     fill = acc[:h, :w] / np.maximum(wt[:h, :w], 1e-3)
     yy, xx = np.mgrid[0:h, 0:w]; f = np.minimum.reduce([xx, yy, w - 1 - xx, h - 1 - yy]).astype(np.float32)
-    al = np.clip(f / 14, 0, 1)[..., None]
+    al = np.clip(f / 26, 0, 1)[..., None]
     a[y0:y1, x0:x1] = a[y0:y1, x0:x1] * (1 - al) + fill * al
-quilt((3425, 360, 3672, 640)); quilt((3715, 405, 3850, 590))
+quilt((3425, 360, 3672, 640)); quilt((3690, 390, 3875, 610))
+quilt((3500, 615, 3800, 760), T=40, ov=14)   # baked LIMITER plate (the live button sits elsewhere)
 Image.fromarray(np.clip(a, 0, 255).astype(np.uint8)).save(sys.argv[2], quality=86)

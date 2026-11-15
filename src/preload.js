@@ -2707,6 +2707,7 @@ if (isAutotunePage()) {
     .skin .section.output .limiter { display:flex; align-items:center; justify-content:center; border:calc(30 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-cream.png')} 30 fill / calc(30 / 4344 * 100cqw) stretch; background:none; color:#422c16; font:600 .9cqw 'Barlow Condensed',sans-serif; }
     .skin .section.output .limiter.on { border-image:${T('sk-st-amber.png')} 28 fill / calc(28 / 4344 * 100cqw) stretch; }
     .skin .section.output .limiter .led { display:none; }
+    .skin .section.output .limiter { font-size:clamp(9px,.52cqw,16px) !important; }
     .skin .section.chain { display:block !important; left:0; top:0; width:100%; height:100%; }
     .skin .st-chainbar { display:flex; align-items:center; gap:1%; padding:0; color:#ead9b2; font:600 .62cqw 'Barlow Condensed',sans-serif; }
     .skin .st-chainbar .offlbl:first-child { display:none; }
@@ -3233,7 +3234,7 @@ if (isAutotunePage()) {
       enhBtns.slice(1).forEach((el,i)=>stPlace(el,[[2780,420,2930,480],[2950,420,3097,480],[3117,420,3262,480]][i][0],420,[[2780,420,2930,480],[2950,420,3097,480],[3117,420,3262,480]][i][2],480));
       const vus=q(outSection,'.vus'); qa(vus,'.vu').forEach((el,i)=>stPlace(el,...(i===0?[3368,172,3648,365]:[3675,172,3952,365])));
       const outKnobs=qa(outSection,'.knob-box'); outKnobs.forEach((el,i)=>stPlace(el,...(i===0?[3556,404,3764,612]:[3842,566,3934,658])));
-      stPlace(q(outSection,'.limiter'),3553,655,3743,715);
+      stPlace(q(outSection,'.limiter'),3580,688,3740,738); // centred in the module (x 3660), lower, smaller
       const chainRow=q(chainSection,'.st-chainrow'); qa(chainRow,'.st-mod').forEach((el,i)=>{el.style.flex='0 1 calc('+[450,450,175,175,270,175,175,175,270,270,260,270,270,260][i]+' / 4344 * 100cqw)';});
       const chainbar=q(chainSection,'.st-chainbar'); stPlace(chainbar,973,845,2320,902); chainbar.classList.add('st-placed');
       const modules=qa(chainRow,'.st-mod'); modules.forEach((el,i)=>{
