@@ -94,6 +94,10 @@ if (isAutotunePage()) {
   let activeContext = null;
   let captureStarting = false;
   let captureActive = false;
+  // Studio is "on" while capture runs OR while the Studio drawer is open: its EQ, Enhancer, Key & Tempo and Output then own the sound
+  // and the top graphic EQ is locked flat. The mixer is live only with capture (stems) or a loaded layered recording.
+  let studioOpen = false;
+  const studioActive = () => captureActive || studioOpen;
   let autoCycleRunning = false;
   let scanQueued = false;
   let lastMetricsAt = 0;
@@ -460,6 +464,7 @@ if (isAutotunePage()) {
 
   function studioSetOpen(open) {
     studio.open = open;
+    studioOpen = !!open; captureModeChanged(); if (open) { geqGesture = true; ensurePassiveGraph(); } // opening Studio = Studio sound on
     try { document.documentElement.classList.toggle('ytmpoc-open', open); } catch {}
     studio.root.querySelector('.drawer').classList.toggle('open', open);
     const tab = studio.root.querySelector('.tab');
@@ -1663,7 +1668,7 @@ if (isAutotunePage()) {
       keyV.textContent = (tuneState.semis > 0 ? '+' : '') + tuneState.semis;
       tempoV.textContent = Math.round(tuneState.tempo * 100) + '%';
     };
-    const setKey = (v) => { tuneState.semis = Math.max(-8, Math.min(8, v)); show(); stemNodes?.pitch?.route?.(); };
+    const setKey = (v) => { tuneState.semis = Math.max(-8, Math.min(8, v)); show(); stemNodes?.pitch?.route?.(); masterEq?.mixPitch?.route(); };
     const setTempo = (v) => { tuneState.tempo = Math.max(0.5, Math.min(1.5, Math.round(v * 100) / 100)); show(); applyTempo(); };
     const keyRow = h('div', 'tunerow'); keyRow.append(h('span', 'tunelbl', 'KEY'), step('\u2212', () => setKey(tuneState.semis - 1)), keyV, step('+', () => setKey(tuneState.semis + 1)));
     const tempoRow = h('div', 'tunerow'); tempoRow.append(h('span', 'tunelbl', 'TEMPO'), step('\u2212', () => setTempo(tuneState.tempo - 0.05)), tempoV, step('+', () => setTempo(tuneState.tempo + 0.05)));
@@ -1969,7 +1974,7 @@ if (isAutotunePage()) {
     tab.addEventListener('click', () => setOpen(!pan.classList.contains('open')));
     // the panel stays open until the EQ button is pressed again (no outside-click / Esc close)
     const draw = () => {
-      for (const el of [box, pan]) { el.classList.toggle('off', !geqState.on); el.classList.toggle('locked', captureActive); }
+      for (const el of [box, pan]) { el.classList.toggle('off', !geqState.on); el.classList.toggle('locked', studioActive()); }
       for (const pw of pwEls) pw.setAttribute('aria-pressed', String(geqState.on));
       for (const pn of nameEls) pn.textContent = geqState.preset || 'Custom';
       for (const v of views) geqState.gains.forEach((g, i) => {
@@ -2816,6 +2821,9 @@ if (isAutotunePage()) {
       .skin .st-chainrow, .skin .st-chain-module, .skin .st-module-content, .skin .st-select-label, .skin .status { pointer-events:none; }
     .skin .section :is(button, select, input, textarea, canvas, .knob, .track, [role=slider], .lyrline) { pointer-events:auto; }
     .skin:not(.m-karaoke):not(.mixview):not(.practice) .st-chainrow * { pointer-events:none !important; }
+    /* mixer is live only with capture (stems) or a loaded layered recording: otherwise dimmed and locked like the chain */
+    .skin:not(.st-capture):not(.mixview) .section.mixer .channels, .skin:not(.st-capture):not(.mixview) .section.mixer .st-mixer-extra { opacity:.55; filter:grayscale(.35); }
+    .skin:not(.st-capture):not(.mixview) .section.mixer * { pointer-events:none !important; }
     .skin .status { position:absolute; inset:0; pointer-events:none; display:block; padding:0; font:600 .68cqw 'Barlow Condensed',sans-serif; color:#ead9b2; letter-spacing:.08em; text-shadow:0 1px 2px #000; }
     .skin .status > span { position:absolute; display:flex; align-items:center; overflow:hidden; white-space:nowrap; }
     .skin .clock { justify-content:center; font:600 .78cqw 'Oswald',sans-serif; color:#ead9b2; }
@@ -3470,7 +3478,7 @@ if (isAutotunePage()) {
     return fresh;
   })();
   function saveGeq() { try { localStorage.setItem(GEQ_KEY, JSON.stringify(geqState)); } catch {} }
-  function geqLive() { return geqState.on && !captureActive; }
+  function geqLive() { return geqState.on && !studioActive(); }
   function applyGeq() {
     if (!masterEq || !masterEq.geq) return;
     const t = masterEq.context.currentTime;
@@ -3480,7 +3488,7 @@ if (isAutotunePage()) {
   // no stems) into the master stage, the same graph capture reuses later. Only after a user gesture: a media element wired into a
   // still-suspended AudioContext would go silent.
   let geqGesture = false;
-  function geqNeedsGraph() { return geqState.on && geqState.gains.some((g) => g !== 0); }
+  function geqNeedsGraph() { return studioOpen || (geqState.on && geqState.gains.some((g) => g !== 0)); }
   function ensurePassiveGraph() {
     if (!geqGesture || !geqNeedsGraph()) return;
     const media = findMedia(); if (!media || wiredElements.has(media)) return;
@@ -3496,7 +3504,7 @@ if (isAutotunePage()) {
   }
   for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, () => { geqGesture = true; ensurePassiveGraph(); }, { capture: true });
   setInterval(ensurePassiveGraph, 2000);
-  function captureModeChanged() { applyEq(); applyGeq(); routeEnhancer(); studio.geqSync?.(); }
+  function captureModeChanged() { applyEq(); applyGeq(); routeEnhancer(); masterEq?.mixPitch?.route(); studio.geqSync?.(); studio.consoleEl?.classList.toggle('st-capture', captureActive); }
 
   function saveEqState() { try { localStorage.setItem(EQ_STORE_KEY, JSON.stringify(eqState)); } catch {} }
 
@@ -3507,7 +3515,7 @@ if (isAutotunePage()) {
       const f = masterEq.filters[i];
       f.frequency.setTargetAtTime(b.freq, t, 0.01);
       f.Q.setTargetAtTime(b.q, t, 0.01);
-      f.gain.setTargetAtTime(eqState.enabled && captureActive ? b.gain : 0, t, 0.01); // disabled (or plain listening: graphic EQ's turn) = 0 dB on every band
+      f.gain.setTargetAtTime(eqState.enabled && studioActive() ? b.gain : 0, t, 0.01); // disabled (or plain listening: graphic EQ's turn) = 0 dB on every band
     });
   }
 
@@ -3532,11 +3540,42 @@ if (isAutotunePage()) {
     masterEq.limiterOn = eqState.limiter;
   }
 
+  // Stereo KEY shifter on the whole mix for plain listening. Like the stem shifter: a 'direct' path that never touches the
+  // main-thread ScriptProcessor (KEY 0, or capture running) and a 'wet' path, crossfaded; the processor idles (copies) when unused.
+  function buildMixPitch(context, input) {
+    const output = fxGain(context), direct = fxGain(context), wet = fxGain(context);
+    const proc = context.createScriptProcessor(4096, 2, 2);
+    input.connect(direct); direct.connect(output);
+    input.connect(proc); proc.connect(wet); wet.connect(output);
+    direct.gain.value = 1; wet.gain.value = 0;
+    const ps = new PairShifter();
+    let shifted = false, active = false;
+    const route = () => {
+      const want = tuneState.semis !== 0 && !captureActive && studioOpen;
+      if (want === shifted) return;
+      shifted = want;
+      const t = context.currentTime;
+      direct.gain.setTargetAtTime(want ? 0 : 1, t, 0.02); wet.gain.setTargetAtTime(want ? 1 : 0, t, 0.02);
+    };
+    setInterval(route, 150);
+    proc.onaudioprocess = (e) => {
+      const iL = e.inputBuffer.getChannelData(0), iR = e.inputBuffer.getChannelData(e.inputBuffer.numberOfChannels > 1 ? 1 : 0);
+      const oL = e.outputBuffer.getChannelData(0), oR = e.outputBuffer.getChannelData(1);
+      if (!shifted) { active = false; oL.set(iL); oR.set(iR); return; }
+      if (!active) { ps.reset(); active = true; }
+      ps.setFactor(2 ** (tuneState.semis / 12));
+      ps.process(iL, iR, oL, oR, iL.length);
+    };
+    return { output, route };
+  }
+
   function getEqInput(context) {
     if (masterEq && masterEq.context === context) return masterEq.input;
     const input = context.createGain();
     setChannelFormat(input);
     let prev = input;
+    const mixPitch = buildMixPitch(context, input); // KEY for plain listening (passive graph); capture shifts the stems instead
+    prev = mixPitch.output;
     const geq = GEQ_FREQS.map((fq, i) => {
       const f = context.createBiquadFilter();
       f.type = i === 0 ? 'lowshelf' : i === GEQ_FREQS.length - 1 ? 'highshelf' : 'peaking';
@@ -3572,11 +3611,11 @@ if (isAutotunePage()) {
     analyser.fftSize = 4096; analyser.smoothingTimeConstant = 0.8;
     prev.connect(analyser); // tap only: drives the EQ screen spectrum
     enhancer = buildEnhancer(context); // wired in routeEnhancer(): while off, none of its nodes are connected to the destination
-    masterEq = { context, input, geq, filters, analyser, limiter, eqOut, master, outNode, anL, anR, limiterOn: null, enhOn: null };
+    masterEq = { context, input, mixPitch, geq, filters, analyser, limiter, eqOut, master, outNode, anL, anR, limiterOn: null, enhOn: null };
     routeEnhancer(); applyEnhancer(); // Enhancer off = eqOut goes straight to master (clean bypass)
     routeLimiter();
     for (const [i, b] of eqState.bands.entries()) {
-      filters[i].frequency.value = b.freq; filters[i].Q.value = b.q; filters[i].gain.value = eqState.enabled && captureActive ? b.gain : 0;
+      filters[i].frequency.value = b.freq; filters[i].Q.value = b.q; filters[i].gain.value = eqState.enabled && studioActive() ? b.gain : 0;
     }
     return input;
   }
@@ -3654,7 +3693,7 @@ if (isAutotunePage()) {
 
   function routeEnhancer() {
     if (!masterEq || !enhancer) return;
-    const want = fxState.enh.on && captureActive; // the Enhancer is a Studio tool: plain listening stays clean
+    const want = fxState.enh.on && studioActive(); // the Enhancer is a Studio tool: plain listening stays clean
     if (masterEq.enhOn === want) return;
     const { eqOut, master } = masterEq;
     try { eqOut.disconnect(master); } catch {}
