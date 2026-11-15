@@ -2757,6 +2757,19 @@ if (isAutotunePage()) {
     .skin .section.session > .advtoggle { background-image:${T('sk-st-ses-adv-off.png')} !important; }
     .skin .section.session > .advtoggle.on { background-image:${T('sk-st-ses-adv-on.png')} !important; }
     .skin .section.session > .bigbtn:active, .skin .section.session > .advtoggle:active { transform:translateY(1px); }
+    /* Enhancer buttons: whole plates from design/ref/enh-{off,on}-ref.png (text baked in); off = not pressed, on = active */
+    .skin .section.enh .switches > .btn { border:0 !important; border-image:none !important; padding:0 !important; box-shadow:none !important; filter:none !important;
+      background:transparent center / 100% 100% no-repeat !important; color:transparent !important; -webkit-text-fill-color:transparent !important; text-shadow:none !important; font-size:0 !important; }
+    .skin .section.enh .switches > .btn .led, .skin .section.enh .switches > .btn .st-label { display:none !important; }
+    .skin .section.enh .switches > .btn:nth-child(1) { background-image:${T('sk-st-enh-main-off.png')} !important; }
+    .skin .section.enh .switches > .btn:nth-child(1).on { background-image:${T('sk-st-enh-main-on.png')} !important; }
+    .skin .section.enh .switches > .btn:nth-child(2) { background-image:${T('sk-st-enh-analog-off.png')} !important; }
+    .skin .section.enh .switches > .btn:nth-child(2).on { background-image:${T('sk-st-enh-analog-on.png')} !important; }
+    .skin .section.enh .switches > .btn:nth-child(3) { background-image:${T('sk-st-enh-vinyl-off.png')} !important; }
+    .skin .section.enh .switches > .btn:nth-child(3).on { background-image:${T('sk-st-enh-vinyl-on.png')} !important; }
+    .skin .section.enh .switches > .btn:nth-child(4) { background-image:${T('sk-st-enh-tape-off.png')} !important; }
+    .skin .section.enh .switches > .btn:nth-child(4).on { background-image:${T('sk-st-enh-tape-on.png')} !important; }
+    .skin .section.enh .switches > .btn:active { transform:translateY(1px); }
     /* ADVANCED overlay: a plain stacked form over the three big buttons (label left, control right) */
     .skin .section.session .adv.open { display:flex !important; flex-direction:column; justify-content:center; gap:calc(14 / 4344 * 100cqw); box-sizing:border-box;
       padding:calc(40 / 4344 * 100cqw) calc(22 / 4344 * 100cqw) !important; pointer-events:auto; }
