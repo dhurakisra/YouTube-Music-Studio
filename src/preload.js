@@ -388,8 +388,10 @@ if (isAutotunePage()) {
       faderWrap.append(scale, trackEl, meter);
       el.append(btns, faderWrap, h('div', 'name', name));
       if (nodeKey === 'mic' && !libPlayer.mix) { // practice: sing over the stems with the vocal chain, no recording
-        const fxb = h('button', 'btn micfx', 'MIC + FX', { type: 'button', 'aria-label': 'Practice: microphone with the vocal chain' });
-        fxb.title = 'Hear yourself through the vocal chain while listening (nothing is recorded).';
+        // practice switch (brass toggle): lever up = ON (green label above), down = OFF (red label below); mic + vocal chain, never recorded
+        const fxb = h('button', 'micsw', null, { type: 'button', 'aria-label': 'Activate mic: practice with the vocal chain (not recorded)' });
+        fxb.append(h('span', 'micsw-on', 'ON'), h('i', 'micsw-lever'), h('span', 'micsw-off', 'OFF'));
+        fxb.title = 'Activate mic: sing over the song through the vocal chain while listening. Nothing is recorded.';
         const sync = () => { fxb.classList.toggle('on', !!practice.on); fxb.setAttribute('aria-pressed', String(!!practice.on)); };
         fxb.addEventListener('click', () => { practiceToggle().then(sync, sync); });
         practice.sync = sync; sync(); el.appendChild(fxb);
@@ -2720,7 +2722,19 @@ if (isAutotunePage()) {
     .skin:not(.m-karaoke):not(.mixview):not(.practice) .st-chainrow * { pointer-events:none !important; }
     /* mixer is live only with capture (stems) or a loaded layered recording: otherwise dimmed and locked like the chain */
     .skin:not(.st-capture):not(.mixview) .section.mixer .channels, .skin:not(.st-capture):not(.mixview) .section.mixer .st-mixer-extra { opacity:.55; filter:grayscale(.35); }
-    .skin:not(.st-capture):not(.mixview) .section.mixer * { pointer-events:none !important; }
+    .skin:not(.st-capture):not(.mixview) .section.mixer .channels, .skin:not(.st-capture):not(.mixview) .section.mixer .st-mixer-extra { opacity:1; filter:none; }
+    .skin:not(.st-capture):not(.mixview) .section.mixer .strip > :not(.micsw), .skin:not(.st-capture):not(.mixview) .section.mixer .st-mixer-extra { opacity:.55; filter:grayscale(.35); }
+    .skin:not(.st-capture):not(.mixview) .section.mixer *:not(.micsw):not(.micsw *) { pointer-events:none !important; }
+    /* Activate-mic practice switch under the mic channel (Listen / Listen with stems only) */
+    .skin .strip .micsw { display:none; position:absolute; left:50%; bottom:.5%; transform:translateX(-50%); height:11.5%; aspect-ratio:230/470; width:auto;
+      padding:0; margin:0; border:0; background:none; cursor:pointer; pointer-events:auto !important; flex-direction:column; align-items:center; justify-content:space-between; }
+    .skin.m-listen:not(.mixview) .strip .micsw { display:flex; }
+    .skin .strip .micsw .micsw-lever { display:block; width:100%; height:64%; flex:none; background:${T('sk-st-toggle-off.png')} center / contain no-repeat; filter:drop-shadow(0 0 3px #ffb34755); }
+    .skin .strip .micsw.on .micsw-lever { background-image:${T('sk-st-toggle-on.png')}; filter:drop-shadow(0 0 6px #ffb347aa); }
+    .skin .strip .micsw span { display:flex; align-items:center; justify-content:center; height:18%; width:200%; font:700 clamp(7px,9cqi,13px)/1 'Barlow Condensed','Oswald',sans-serif; letter-spacing:.06em; visibility:hidden; }
+    .skin .strip .micsw .micsw-on { color:#5dff7a; text-shadow:0 0 5px #5dff7acc; }
+    .skin .strip .micsw .micsw-off { color:#ff4a3a; text-shadow:0 0 5px #ff4a3acc; }
+    .skin .strip .micsw.on .micsw-on, .skin .strip .micsw:not(.on) .micsw-off { visibility:visible; }
     .skin .status { position:absolute; inset:0; pointer-events:none; display:block; padding:0; font:600 .68cqw 'Barlow Condensed',sans-serif; color:#ead9b2; letter-spacing:.08em; text-shadow:0 1px 2px #000; }
     .skin .status > span { position:absolute; display:flex; align-items:center; overflow:hidden; white-space:nowrap; }
     .skin .clock { justify-content:center; font:600 .78cqw 'Oswald',sans-serif; color:#ead9b2; }
