@@ -2734,8 +2734,8 @@ if (isAutotunePage()) {
     .skin .section.session > .bigbtn, .skin .section.session .btn.startk { display:flex; align-items:center; justify-content:center; font:700 .72cqw/1 'Barlow Condensed','Oswald',sans-serif !important; color:#422c16 !important; -webkit-text-fill-color:#422c16; letter-spacing:.08em; line-height:1; white-space:nowrap; padding:0; }
     .skin .section.session > .btn.stemb { display:flex !important; }
     .skin .section.session > .btn.startk { display:none !important; }
-    .skin.m-karaoke .section.session > .btn.stemb, .skin.m-karaoke .section.session > .btn.recbig:not(.startk),
-    .skin.mixview .section.session > .btn.stemb { display:none !important; }
+    /* LISTEN WITH STEMS stays a real button in every mode (the plate is also painted on the backdrop): it switches over by itself */
+    .skin.m-karaoke .section.session > .btn.recbig:not(.startk) { display:none !important; }
     .skin.m-karaoke .section.session > .btn.startk { display:flex !important; }
     .skin .section.session .advtoggle { font-size:0; line-height:1; }
     .skin .section.tune .tunevalue { font-size:.55cqw; white-space:nowrap; }
