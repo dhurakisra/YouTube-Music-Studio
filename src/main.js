@@ -6,7 +6,7 @@ const path = require('node:path');
 
 const YTM_URL = 'https://music.youtube.com/';
 const PARTITION = process.env.POC_PARTITION || 'persist:ytm-poc';
-const LOG_DIR = path.join(__dirname, '..', 'logs');
+const LOG_DIR = app.isPackaged ? path.join(process.env.APPDATA || require('node:os').homedir(), 'YTM-Audio-POC', 'logs') : path.join(__dirname, '..', 'logs'); // an installed app must not write into its own folder
 const LOG_FILE = path.join(LOG_DIR, `capture-${new Date().toISOString().replace(/[:.]/g, '-')}.jsonl`);
 const METRICS_FILE = path.join(LOG_DIR, `metrics-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`);
 const ALLOWED_EVENTS = new Set([
@@ -519,6 +519,7 @@ function createWindow() {
     minWidth: 800,
     minHeight: 600,
     autoHideMenuBar: true,
+    icon: path.join(__dirname, '..', 'build', 'icon.png'),
     titleBarStyle: 'hidden', // no native title bar: our top bar is the window's header; the native min/max/close buttons stay as an overlay
     // window buttons are drawn by the page (small, in the top bar) and sent here
     webPreferences: {
@@ -651,6 +652,7 @@ app.whenReady().then(() => {
   }
   createPcmBridgeWindow();
   createWindow();
+  try { require('./updater').setupUpdater(() => mainWindow, appendLog); } catch (error) { appendLog('updater_error', { state: 'setup_failed', error: String(error.message).slice(0, 120) }); }
 
   const template = [{
     label: 'Capture',

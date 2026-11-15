@@ -10,10 +10,11 @@ const parentPort = process.parentPort || require('electron').parentPort;
 const ort = require('onnxruntime-node');
 
 const SAMPLE_RATE = 44100;
+const MODELS_DIR = (process.resourcesPath && require('node:fs').existsSync(path.join(process.resourcesPath, 'models'))) ? path.join(process.resourcesPath, 'models') : path.join(__dirname, '..', 'models'); // installed app: models ship in resources/
 const MODEL_PROFILES = {
-  'umx-hq': { file: path.join(__dirname, '..', 'models', 'umx-hq-vocals.onnx'), windowFrames: SAMPLE_RATE * 2, kind: 'umx' },
+  'umx-hq': { file: path.join(MODELS_DIR, 'umx-hq-vocals.onnx'), windowFrames: SAMPLE_RATE * 2, kind: 'umx' },
   passthrough: { file: null, windowFrames: 343980, kind: 'pass' }, // diagnostic: no model, input goes out as 'vocal'
-  htdemucs: { file: path.join(__dirname, '..', 'models', 'htdemucs_fp16.onnx'), windowFrames: 343980, kind: 'ht' },
+  htdemucs: { file: path.join(MODELS_DIR, 'htdemucs_fp16.onnx'), windowFrames: 343980, kind: 'ht' },
 };
 const requestedModel = process.argv.find((arg) => arg.startsWith('--model='))?.slice('--model='.length);
 const MODEL_ID = Object.hasOwn(MODEL_PROFILES, requestedModel) ? requestedModel : 'umx-hq';

@@ -1,23 +1,92 @@
 {
-  "name": "ytm-audio-poc",
-  "version": "0.1.0",
+  "name": "youtube-music-studio",
+  "version": "1.0.0",
   "private": true,
-  "description": "Electron Method B audio capture proof of concept",
+  "description": "YouTube Music Studio: steampunk YouTube Music client with stem separation, karaoke and a vocal chain",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
     "smoke": "electron . --smoke",
-    "start:a": "electron src/main-a.js"
+    "start:a": "electron src/main-a.js",
+    "dist": "electron-builder --win nsis --publish never",
+    "dist:publish": "electron-builder --win nsis --publish always"
   },
   "engines": {
     "node": ">=24"
   },
   "devDependencies": {
     "electron": "45.3.0",
-    "onnxruntime-node": "^1.31.1"
+    "electron-builder": "^26.18.0"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
-    "signalsmith-stretch": "^1.3.2"
+    "electron-updater": "^6.8.11",
+    "signalsmith-stretch": "^1.3.2",
+    "onnxruntime-node": "^1.31.1"
+  },
+  "productName": "YouTube Music Studio",
+  "author": "dhurakisra",
+  "build": {
+    "appId": "com.dhurakisra.youtube-music-studio",
+    "productName": "YouTube Music Studio",
+    "asar": false,
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "icon": "build/icon.ico",
+    "files": [
+      "package.json",
+      "src/**/*",
+      "build/icon.png",
+      "design/tex/**/*",
+      "design/fonts/**/*",
+      "node_modules/**/*",
+      "!node_modules/onnxruntime-node/bin/napi-v6/{darwin,linux}/**",
+      "!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64/**",
+      "!**/node_modules/*/{test,tests,docs,example,examples}/**",
+      "!**/*.{md,map,ts}"
+    ],
+    "extraResources": [
+      {
+        "from": "models/htdemucs_fp16.onnx",
+        "to": "models/htdemucs_fp16.onnx"
+      },
+      {
+        "from": "models/umx-hq-vocals.onnx",
+        "to": "models/umx-hq-vocals.onnx"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "YouTube-Music-Studio-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "YouTube Music Studio",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "REPO_OWNER",
+        "repo": "REPO_NAME",
+        "releaseType": "release"
+      }
+    ]
   }
 }
