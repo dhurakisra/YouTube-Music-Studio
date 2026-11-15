@@ -2736,8 +2736,8 @@ if (isAutotunePage()) {
     .enh-gear i { position:absolute; inset:0; background:center / 100% 100% no-repeat; animation:enh-spin 16s linear infinite; animation-play-state:paused; }
     .section.enh.enh-on .enh-gear i { animation-play-state:running; }
     .enh-gear.big { -webkit-mask-image:${T('sk-st-gear-big-mask.png')}; } .enh-gear.big i { background-image:${T('sk-st-gear-big.png')}; }
-    .enh-gear.r { -webkit-mask-image:${T('sk-st-gear-r-mask.png')}; } .enh-gear.r i { background-image:${T('sk-st-gear-r.png')}; animation-duration:9s; animation-direction:reverse; }
-    .enh-gear.l { -webkit-mask-image:${T('sk-st-gear-l-mask.png')}; } .enh-gear.l i { background-image:${T('sk-st-gear-l.png')}; animation-duration:11s; animation-direction:reverse; }
+    .enh-gear.r { -webkit-mask-image:${T('sk-st-sfx-er-mask.png')}; } .enh-gear.r i { background-image:${T('sk-st-sfx-er.png')}; animation-duration:9s; animation-direction:reverse; }
+    .enh-gear.l { -webkit-mask-image:${T('sk-st-sfx-el-mask.png')}; } .enh-gear.l i { background-image:${T('sk-st-sfx-el.png')}; animation-duration:11s; animation-direction:reverse; }
     @keyframes enh-spin { to { transform:rotate(360deg); } }
     /* Session and Key&Tempo wheels (design/tools/studio_wheels.py): turn while a session mode is lit / key or tempo is changed */
     .st-wheel { position:absolute; pointer-events:none; -webkit-mask:center / 100% 100% no-repeat; }
@@ -2749,6 +2749,25 @@ if (isAutotunePage()) {
     .st-wheel.sg-right { -webkit-mask-image:${T('sk-st-sgear-right-mask.png')}; } .st-wheel.sg-right i { background-image:${T('sk-st-sgear-right.png')}; animation-duration:14s; animation-direction:reverse; }
     .st-wheel.sg-top { -webkit-mask-image:${T('sk-st-sgear-top-mask.png')}; } .st-wheel.sg-top i { background-image:${T('sk-st-sgear-top.png')}; animation-duration:10s; }
     .st-wheel.k { -webkit-mask-image:${T('sk-st-wheel-k-mask.png')}; } .st-wheel.k i { background-image:${T('sk-st-wheel-k.png')}; animation:none; }
+    /* side pillars / corners (design/tools/studio_sidefx.py) */
+    .st-fx { position:absolute; inset:0; pointer-events:none; }
+    .st-sfx { pointer-events:none; }
+    .st-sfx i { position:absolute; inset:0; background:center / 100% 100% no-repeat; animation:enh-spin 24s linear infinite; }
+    .st-sfx.sfx-g1 i, .st-sfx.sfx-g2 i { animation-play-state:paused; }
+    .voc-on .st-sfx.sfx-g1 i, .voc-on .st-sfx.sfx-g2 i { animation-play-state:running; }
+    .st-sfx.sfx-g2 i { animation-direction:reverse; } .st-sfx.sfx-bl i { animation-direction:reverse; animation-duration:30s; } .st-sfx.sfx-br i { animation-duration:30s; } .st-sfx.sfx-v i { animation-duration:40s; }
+    .st-sfx.sfx-v { -webkit-mask:${T('sk-st-sfx-v-mask.png')} center / 100% 100% no-repeat; } .st-sfx.sfx-v i { background-image:${T('sk-st-sfx-v.png')}; }
+    .st-sfx.sfx-g1 { -webkit-mask:${T('sk-st-sfx-g1-mask.png')} center / 100% 100% no-repeat; } .st-sfx.sfx-g1 i { background-image:${T('sk-st-sfx-g1.png')}; }
+    .st-sfx.sfx-g2 { -webkit-mask:${T('sk-st-sfx-g2-mask.png')} center / 100% 100% no-repeat; } .st-sfx.sfx-g2 i { background-image:${T('sk-st-sfx-g2.png')}; }
+    .st-sfx.sfx-br { -webkit-mask:${T('sk-st-sfx-br-mask.png')} center / 100% 100% no-repeat; } .st-sfx.sfx-br i { background-image:${T('sk-st-sfx-br.png')}; }
+    .st-sfx.sfx-bl { -webkit-mask:${T('sk-st-sfx-bl-mask.png')} center / 100% 100% no-repeat; } .st-sfx.sfx-bl i { background-image:${T('sk-st-sfx-bl.png')}; }
+    /* capacitor tubes: dark and unlit unless the Vocal Lab is on (then a gentle flicker on top of the painted glow) */
+    .st-vtube { pointer-events:none; background:center / 100% 100% no-repeat; opacity:0; transition:opacity .6s ease; }
+    .st-vtube.t1 { background-image:${T('sk-st-glow-t1.png')}; } .st-vtube.t2 { background-image:${T('sk-st-glow-t2.png')}; } .st-vtube.t3 { background-image:${T('sk-st-glow-t3.png')}; } .st-vtube.tl { background-image:${T('sk-st-glow-tl.png')}; }
+    .voc-on .st-vtube { opacity:1; }
+    .st-vsteam { pointer-events:none; opacity:0; background:${T('sk-smoke-r.png')} center / 100% 100% no-repeat; transform-origin:14% 96%; }
+    .voc-on .st-vsteam { animation:st-vsteam 4.8s linear infinite; }
+    @keyframes st-vsteam { 0% { opacity:0; transform:translate(-3%,14%) scale(.55,.45); } 12% { opacity:.95; } 45% { opacity:.9; transform:translate(3%,2%) scale(.95,.92) skewX(-4deg); } 75% { opacity:.55; transform:translate(10%,-13%) scale(1.12,1.15) skewX(3deg); } 100% { opacity:0; transform:translate(19%,-27%) scale(1.3,1.35) skewX(-2deg); } }
     .eq-tube { position:absolute; pointer-events:none; border-radius:30%; z-index:3; transition:backdrop-filter .3s, background .3s; }
     .section.eq.eq-off .eq-tube { backdrop-filter:brightness(.28) saturate(.25); -webkit-backdrop-filter:brightness(.28) saturate(.25); background:#0a060255; }
     .skin .section.eq.eq-off .eq-geq .geqfill { opacity:.25; box-shadow:none; }
@@ -3325,6 +3344,13 @@ if (isAutotunePage()) {
       [[2786,164,2878,256],[2915,164,3007,256],[3042,164,3134,256],[3167,164,3259,256]].forEach(([x0,y0,x1,y1],i)=>stPlace(enhKnobs[i],x0,y0,x1,y1));
       q(enhSection,'.switches')?.classList.add('st-enh-switches');
       stPlace(q(sessSection,'.sg-big'),97,602,341,846); stPlace(q(sessSection,'.sg-right'),319,639,465,785); stPlace(q(sessSection,'.sg-top'),294,589,396,691); stPlace(q(tuneSection,'.st-wheel.k'),579,538,817,776);
+      { // side pillars and corners: wheels (valve + 2 corner gears always turn; the 2 pipe gears, capacitor glow and steam only while the Vocal Lab is on)
+        const fxLayer=h('div','st-fx'); consoleEl.prepend(fxLayer);
+        for (const [n,x0,y0,x1,y1] of [['v',4050,555,4154,659],['g1',4046,834,4254,1042],['g2',4094,1193,4298,1397],['br',4218,1329,4336,1447],['bl',16,1331,128,1443]]) { const w=h('div','st-sfx sfx-'+n); w.appendChild(h('i')); fxLayer.appendChild(w); stPlace(w,x0,y0,x1,y1); }
+        for (const [n,x0,y0,x1,y1] of [['t1',4048,190,4176,420],['t2',4170,345,4296,592],['t3',4262,1112,4308,1194],['tl',40,1066,82,1142]]) { const t=h('div','st-vtube '+n); fxLayer.appendChild(t); stPlace(t,x0,y0,x1,y1); }
+        for (let i=0;i<3;i++) { const sm=h('div','st-vsteam'); sm.style.animationDelay=(-i*1.6)+'s'; fxLayer.appendChild(sm); stPlace(sm,4205,23,4345,213); }
+        consoleEl.classList.toggle('voc-on', !!fxState.voc.on);
+      }
       stPlace(q(enhSection,'.enh-gear.big'),2889,527,3149,787); stPlace(q(enhSection,'.enh-gear.r'),3080,578,3218,716); stPlace(q(enhSection,'.enh-gear.l'),2816,579,2966,729);
       const enhBtns=qa(enhSection,'.switches > .btn'); stPlace(enhBtns[0],2778,333,3262,393);
       enhBtns.slice(1).forEach((el,i)=>stPlace(el,[[2780,420,2930,480],[2950,420,3097,480],[3117,420,3262,480]][i][0],420,[[2780,420,2930,480],[2950,420,3097,480],[3117,420,3262,480]][i][2],480));
@@ -3989,7 +4015,8 @@ if (isAutotunePage()) {
       if (immediate) swap(); else fx.irTimer = setTimeout(swap, 50);
     }
   }
-  function applyVocalFxAll(deferIR) { for (const fx of vocalFxInstances) { routeVocalFx(fx); applyVocalFx(fx, false, deferIR === true); } }
+  function applyVocalFxAll(deferIR) { for (const fx of vocalFxInstances) { routeVocalFx(fx); applyVocalFx(fx, false, deferIR === true); } studio.consoleEl?.classList.toggle('voc-on', !!fxState.voc.on); }
+  setInterval(() => studio.consoleEl?.classList.toggle('voc-on', !!fxState.voc.on), 700); // safety net: side-pillar effects follow the Vocal Lab switch
 
   // ---- Auto-tune (mic): pitch correction runs in a hidden local window and returns over a local WebRTC link; this page plays it into the Vocal Lab chain. ----
   const AT_KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];

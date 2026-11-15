@@ -14,23 +14,13 @@ def build(n):
     R = int(RO + 3); S = 2 * R; x0, y0 = int(CX - R), int(CY - R)
     yy, xx = np.mgrid[0:S, 0:S].astype(np.float32); px, py = xx + x0, yy + y0; d = np.hypot(px - CX, py - CY)
     D = int(round(2 * (RO + 1))); g = Image.open('design/tex/sk-gear.png').convert('RGBA').resize((D, D), Image.LANCZOS)
-    a = g.split()[3].filter(ImageFilter.MinFilter(3)); g.putalpha(a)   # drop the light antialias fringe
-    # the hub has tiny see-through specks in the asset: fill only small enclosed holes (not the spoke openings) with the nearest hub colour
-    from scipy import ndimage as ndi
-    ga_ = np.asarray(g).copy(); op = ga_[..., 3] >= 128
-    lab, nl = ndi.label(~op); gy, gx = np.mgrid[0:D, 0:D]; rr = np.hypot(gx - D / 2 + .5, gy - D / 2 + .5)
-    area = ndi.sum(np.ones_like(lab), lab, range(1, nl + 1)); small = np.zeros_like(op)
-    for i, ar in enumerate(area, 1):
-        if ar < 0.004 * D * D and rr[lab == i].max() < 0.42 * D / 2: small |= lab == i
-    small = ndi.binary_dilation(small, iterations=1) & ~op | small
-    idx = ndi.distance_transform_edt(~(op & ~small), return_distances=False, return_indices=True)
-    filled = ga_[idx[0], idx[1]]; ga_[small] = filled[small]; ga_[small, 3] = 255; g = Image.fromarray(ga_)
     base = Image.new('RGBA', (S, S), (0, 0, 0, 0)); base.paste(g, ((S - D) // 2, (S - D) // 2))   # real transparency between teeth and spokes
     arr = np.asarray(base).astype(np.float32); rgb = arr[..., :3]; ga = arr[..., 3] > 128
     m = (d <= RO).astype(np.float32); m[py < TOP_Y] = 0; m[py >= FRAME_Y] = 0
     # (no clipping by the big gear: it is stacked on top in the DOM, so its transparent tooth gaps show the neighbours behind it)
-    k = {'big': 0.66, 'right': 0.59, 'top': 0.48}[n]   # same brightness as the first (opaque) version, measured against the baked wheels
+    k = 0.66   # darkened to sit in the backdrop (the raw asset is far brighter than the painted scene)
     rgb = rgb * k
+    gray = rgb.mean(axis=2, keepdims=True); rgb = gray + (rgb - gray) * 1.45   # darker but richer: saturation up, not washed out
     sprite = Image.fromarray(np.dstack([rgb.clip(0, 255).astype(np.uint8), np.where(ga, 255, 0).astype(np.uint8)]))
     mask = Image.fromarray((m * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(0.7))
     return (x0, y0, S), sprite, mask, k

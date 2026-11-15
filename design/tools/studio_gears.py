@@ -11,9 +11,9 @@ from scipy.ndimage import map_coordinates
 src = Image.open('design/tex/sk-studio.jpg').convert('RGB'); A = np.asarray(src).astype(np.float32)
 L = A.mean(axis=2)
 # name: (cx, cy, inner r, outer r, wedge start deg (ccw from 3 o'clock), wedge width deg, spin speed hint)
-GEARS = {'big': (3019.5, 657.5, 97, 127, 66.0, 360.0 / 7), 'r': (3149.0, 647.0, 40, 66, 22.0, 72.0), 'l': (2891.0, 654.0, 46, 72, 86.0, 72.0)}
+GEARS = {'big': (3019.5, 657.5, 97, 127, 66.0, 360.0 / 7)}   # the two side wheels are asset gears now: see studio_sidefx.py (el / er)
 BIG = (3019.5, 657.5, 131); BAR = (641, 677); FRAME_Y = 728
-ASSET = {'l': 'design/tex/sk-gear.png', 'r': 'design/tex/sk-gear.png'}   # wheels replaced by a whole clean gear from the asset set (colour-matched), instead of a cut ring
+ASSET = {}   # wheels replaced by a whole clean gear from the asset set (colour-matched), instead of a cut ring
 def build_asset(n):
     CX, CY, RI, RO, W0, W = GEARS[n]
     R = int(RO + 3); S = 2 * R; x0, y0 = int(CX - R), int(CY - R)
