@@ -192,7 +192,7 @@ if (isAutotunePage()) {
     const makeStemSlider = () => makeStemState(); // UI lives in the Studio drawer
     modelSelect = document.createElement('select');
     modelSelect.setAttribute('aria-label', 'Stem separation model (applies on next capture start)');
-    for (const [value, text] of [['umx-hq', 'UMX-HQ (fast, ~3 s)'], ['htdemucs', 'HT-Demucs (best, ~10 s)'], ['passthrough', 'TEST: no separation (~9 s)']]) {
+    for (const [value, text] of [['umx-hq', 'UMX-HQ (fast, ~3 s)'], ['htdemucs', 'HT-Demucs (best, ~10 s)']]) {
       const option = document.createElement('option');
       option.value = value;
       option.textContent = text;
@@ -457,9 +457,9 @@ if (isAutotunePage()) {
     const now = performance.now();
     if (now - studio.lastStatus > 250) {
       studio.lastStatus = now;
-      const names = { 'umx-hq': 'UMX-HQ', htdemucs: 'HT-DEMUCS', passthrough: 'TEST PASSTHROUGH' };
+      const names = { 'umx-hq': 'UMX-HQ', htdemucs: 'HT-DEMUCS' };
       const [m, b, u] = studio.statusEls;
-      m.textContent = names[modelSelect?.value] || '-';
+      m.textContent = 'SEPARATION MODEL: ' + (names[modelSelect?.value] || '-');
       if (captureActive && stemPlayer && activeContext) {
         b.textContent = 'BUF ' + Math.max(0, stemPlayer.nextTime - activeContext.currentTime).toFixed(1) + 's / ' + stemLeadS.toFixed(1) + 's';
         u.textContent = 'UNDERRUNS ' + stemPlayer.underruns;
@@ -942,7 +942,7 @@ if (isAutotunePage()) {
     const bar = h('div', 'chainbar st-chainbar');
     const chainSel = presetSelect(CHAIN_PRESETS, 'Whole vocal chain preset');
     chainSel.options[0].textContent = 'Choose a chain preset...';
-    bar.append(h('span', 'offlbl', 'VOCAL CHAIN PRESET'), chainSel, h('span', 'offlbl', 'Every module below is set at once; tweak any of them after.'));
+    bar.append(h('span', 'offlbl', 'VOCAL CHAIN PRESET'), chainSel);
     sec.append(bar, row);
   }
 
@@ -1977,9 +1977,16 @@ if (isAutotunePage()) {
     const fit = () => { // the meter block shrinks with the window and hides when it would collide with the search field
       try { document.documentElement.style.setProperty('--poc-rz', String(Math.max(1, Math.min(1.5, (window.innerWidth - 940) / 220)).toFixed(2))); } catch {}
       const z = Math.min(1, (window.innerWidth - 240 - 850) / 540);
-      box.style.display = z < 0.45 ? 'none' : 'flex'; box.style.zoom = String(Math.max(0.45, z));
+      const only = z < 0.45; // too narrow for the meters: keep just the volume knob
+      box.classList.toggle('knob-only', only); box.style.display = 'flex'; box.style.zoom = only ? '1' : String(Math.max(0.45, z));
+      if (only) { // order in the narrow header: search | VOLUME | cast | account: the knob sits just left of the right-hand icons
+        const rc = document.querySelector('ytmusic-nav-bar #right-content');
+        const xs = rc ? [...rc.children].map((c) => c.getBoundingClientRect()).filter((r) => r.width > 8).map((r) => r.left) : [];
+        const left = xs.length ? Math.min(...xs) : window.innerWidth - 150;
+        box.style.right = 'auto'; box.style.left = Math.max(0, left - 96) + 'px';
+      } else { box.style.left = ''; box.style.right = ''; }
     };
-    window.addEventListener('resize', fit); fit();
+    window.addEventListener('resize', fit); fit(); setInterval(fit, 1000);
     let lastTapCheck = 0, deadTicks = 0, lastHeal = 0;
     setInterval(() => {
       if (document.hidden) return;
@@ -2298,7 +2305,7 @@ if (isAutotunePage()) {
     * { box-sizing: border-box; }
     .ui { --dh: min(calc(100vw / 3), 84vh); --edge: #3a322c; --edge-hi: #5a4c40; --ink-dim: #cdbfa9; --brass: #d9b07a; --amber: #ffb347;
       font-family: "Bahnschrift", "Segoe UI Condensed", "Arial Narrow", system-ui, sans-serif; color: #e9dfd0; }
-    .tab { position: fixed; left: 50%; bottom: 0; transform: translateX(-50%); z-index: 2147483646; padding: 6px 22px 8px;
+    .tab { position: fixed; left: calc(50% - 2.07vw); bottom: 0; transform: translateX(-50%); z-index: 2147483646; padding: 6px 22px 8px;
       border: 1px solid var(--edge-hi); border-bottom: 0; border-radius: 10px 10px 0 0; cursor: pointer;
       background: linear-gradient(#2c2622, #1b1816); color: var(--brass); font: 700 12px "Barlow Condensed", "Bahnschrift", system-ui, sans-serif; letter-spacing: .2em;
       transition: bottom .35s cubic-bezier(.2,.8,.2,1); }
@@ -2352,6 +2359,7 @@ if (isAutotunePage()) {
     .topvu .vu .lbl { font-size: 10px; } .topvu .vu .lbl.c { font-size: 12px; }
     .topvu .knob-box { flex-direction: column; font-size: 9px; gap: 1px; }
     .topvu .knobw { padding: 0; border: 0; background: none; margin-left: 56px; }
+    .topvu.knob-only { right: 22px; top: 6px; } .topvu.knob-only .vuw { display: none; } .topvu.knob-only .knobw { margin-left: 0; }
     .topvu .knobw .knob-box { position: relative; width: 88px; height: 100px; box-sizing: border-box; padding-top: 86px; display: block; text-align: center; }
     .topvu .knobw .knob-box::before { content: none; }
     .topvu .knobw .knob.big { position: absolute; left: 13px; top: 12px; width: 62px; height: 62px; background-image: ${T('sk-kn0.png')}; box-shadow: none; z-index: 1; border-radius: 0; }
@@ -2447,18 +2455,18 @@ if (isAutotunePage()) {
     .npctl { display: flex; gap: 6px; flex: none; }
     .btn.npbtn { width: 44px; height: 34px; font-size: 14px; }
     /* steampunk player bar: dark plate under a copper rod, glowing waveform as the progress track, round brass transport buttons */
-    .np.float { left: 0; right: 0; bottom: 0; height: 124px; border-radius: 0; padding: 14px 30px 18px; border: 0; gap: 20px;
+    .np:is(.float,.st-lift) { left: 0; right: 0; bottom: 0; height: 124px; border-radius: 0; padding: 14px 30px 18px; border: 0; gap: 20px;
       background: #0b0806; border-image: ${T('sk-topplate.png')} 64 fill / 22px round;
       box-shadow: 0 -6px 18px #000c, inset 0 -1px 0 #ffffff12; }
-    .np.float .npart { width: 62px; height: 62px; box-shadow: 0 0 0 2px #0a0807, 0 0 0 4px #9a6a2c, 0 0 10px #ff9a3a55; }
-    .np.float .nptitle { font: 700 19px/1.15 "Barlow Condensed", "Barlow", sans-serif; letter-spacing: .02em; }
-    .np.float .npartist { font: 600 14px "Barlow Condensed", "Barlow", sans-serif; letter-spacing: .04em; color: #cdbfa9; }
+    .np:is(.float,.st-lift) .npart { width: 62px; height: 62px; box-shadow: 0 0 0 2px #0a0807, 0 0 0 4px #9a6a2c, 0 0 10px #ff9a3a55; }
+    .np:is(.float,.st-lift) .nptitle { font: 700 19px/1.15 "Barlow Condensed", "Barlow", sans-serif; letter-spacing: .02em; }
+    .np:is(.float,.st-lift) .npartist { font: 600 14px "Barlow Condensed", "Barlow", sans-serif; letter-spacing: .04em; color: #cdbfa9; }
     .npbar.libbar { position: relative; height: 30px; margin-top: 4px; border: 0; border-radius: 0; cursor: pointer; overflow: visible;
       background: linear-gradient(transparent calc(50% - 1px), #ff9a3a59 calc(50% - 1px), #ff9a3a59 calc(50% + 1px), transparent calc(50% + 1px)) !important; box-shadow: none; }
     .npbar .libfill { position: relative; height: 100%; background: linear-gradient(transparent calc(50% - 1px), #ffc46b calc(50% - 1px), #ffc46b calc(50% + 1px), transparent calc(50% + 1px)) !important; box-shadow: none; filter: drop-shadow(0 0 3px #ff8a1fcc); }
     .npbar .npviz { position: absolute; left: 0; top: -12px; width: 100%; height: calc(100% + 24px); pointer-events: none; z-index: 1; }
     .npbar .libfill::after { content: ""; position: absolute; right: -1px; top: 2px; bottom: 2px; width: 2px; background: #ffe2a8; box-shadow: 0 0 6px 2px #ffb347; }
-    .np.float .npticks { height: 16px; margin-top: 0; } .np.float .nptick .tklbl { top: 6px; } .np.float .nptick .tkline { height: 3px; } .np.float .nptick.major .tkline { height: 5px; }
+    .np:is(.float,.st-lift) .npticks { height: 16px; margin-top: 0; } .np:is(.float,.st-lift) .nptick .tklbl { top: 6px; } .np:is(.float,.st-lift) .nptick .tkline { height: 3px; } .np:is(.float,.st-lift) .nptick.major .tkline { height: 5px; }
     .npctl { align-items: center; gap: 10px; }
     .btn.npbtn { width: 42px; height: 42px; padding: 0; border: 0 !important; border-radius: 50%; font-size: 0 !important; color: transparent !important; background: center / contain no-repeat !important; box-shadow: none !important; filter: drop-shadow(0 2px 3px #000c); transition: filter .15s; }
     .btn.npbtn:hover { filter: drop-shadow(0 0 6px #ffb347aa) brightness(1.15); }
@@ -2630,7 +2638,7 @@ if (isAutotunePage()) {
     .skin .section.enh { left:0; top:0; width:100%; height:100%; }
     .skin .section.fx.enh { display:block; }
     .skin .section.output { left:0; top:0; width:100%; height:100%; }
-    .skin.mixview .section.eq, .skin.mixview .section.enh, .skin.m-karaoke .section.eq, .skin.m-karaoke .section.enh { display:none; }
+    .skin.mixview .section.eq, .skin.mixview .section.enh { display:none; }
     .skin .st-placed { position:absolute !important; box-sizing:border-box; margin:0; max-width:none; min-width:0; }
     .skin .section.session > .bigbtn, .skin .section.session .btn.startk { display:flex; align-items:center; justify-content:center; border:calc(30 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-cream-big.png')} 30 26 fill / calc(30 / 4344 * 100cqw) calc(26 / 4344 * 100cqw) stretch; background:none; color:#422c16; font:600 1.15cqw/1 'Barlow Condensed','Oswald',sans-serif; letter-spacing:.12em; filter:drop-shadow(0 calc(2 / 4344 * 100cqw) calc(2 / 4344 * 100cqw) #0009); }
     .skin .section.session > .bigbtn.on, .skin .section.session > .bigbtn:active { filter:brightness(.8) drop-shadow(0 1px 1px #0009); }
@@ -2727,6 +2735,17 @@ if (isAutotunePage()) {
     .skin .section.output .knob.big::after { background-image:${T('sk-st-kout-master-cap.png')} !important; }
     .skin .section.output .knob.dark::before { background-image:${T('sk-st-kout-thresh-base.png')} !important; }
     .skin .section.output .knob.dark::after { background-image:${T('sk-st-kout-thresh-cap.png')} !important; }
+    /* Output MASTER / THRESHOLD: whole artwork (design/ref/outknobs2-ref.png, name plates included); only the needle turns with the value */
+    .skin .section.output .knob-box { font-size:0 !important; filter:brightness(.8) saturate(.92); }
+    .skin .section.output .knob-box::after { content:none !important; }
+    .skin .section.output .knob-box .knob { inset:0 !important; transform:none !important; }
+    .skin .section.output .knob::before { background-size:100% 100% !important; }
+    .skin .section.output .knob.big::before { background-image:${T('sk-st-ko2-master-base.png')} !important; }
+    .skin .section.output .knob.dark::before { background-image:${T('sk-st-ko2-thresh-base.png')} !important; }
+    .skin .section.output .knob::after { content:''; position:absolute; background-repeat:no-repeat !important; background-position:center !important; transform:rotate(var(--a,0deg)); transform-origin:50% 50% !important; filter:drop-shadow(0 1px 2px #000a) !important; }
+    .skin .section.output .knob.big::after { left:calc(((530 - 268 - 65) / 885) * 100%); top:calc(((415 - 268 - 16) / 890) * 100%); width:calc(536 / 885 * 100%); height:calc(536 / 890 * 100%); background-image:${T('sk-st-ko2-master-needle.png')} !important; background-size:100% 100% !important; }
+    .skin .section.output .knob.dark::after { left:calc(((1350 - 158 - 1060) / 571) * 100%); top:calc(((455 - 158 - 181) / 628) * 100%); width:calc(316 / 571 * 100%); height:calc(316 / 628 * 100%); background-image:${T('sk-st-ko2-thresh-needle.png')} !important; background-size:100% 100% !important; }
+    .skin .section.output .knob-box .hubdisc { position:absolute; pointer-events:none; background:center / 100% 100% no-repeat; }
     .eq-geq, .eq-geqpre { display:none; }
     .skin .section.eq.mode-graphic .eq-screen, .skin .section.eq.mode-graphic .eqrow, .skin .section.eq.mode-graphic .eqinfo-row { display:none !important; }
     .skin .section.eq.mode-graphic .eq-geq { display:block; position:absolute; box-sizing:border-box; --u:calc(100cqw / 4344); --caph:calc(52 * var(--u)); border-radius:calc(14 * var(--u)); background:linear-gradient(#ffffff06,#00000040), #0c0805; box-shadow:inset 0 0 14px #000, 0 0 0 1px #6a4a26; }
@@ -2754,7 +2773,7 @@ if (isAutotunePage()) {
     .st-sfx { pointer-events:none; }
     .st-sfx i { position:absolute; inset:0; background:center / 100% 100% no-repeat; animation:enh-spin 24s linear infinite; }
     .st-sfx.sfx-g1 i, .st-sfx.sfx-g2 i { animation-play-state:paused; }
-    .voc-on .st-sfx.sfx-g1 i, .voc-on .st-sfx.sfx-g2 i { animation-play-state:running; }
+    .voc-on:is(.m-karaoke,.mixview,.practice) .st-sfx.sfx-g1 i, .voc-on:is(.m-karaoke,.mixview,.practice) .st-sfx.sfx-g2 i { animation-play-state:running; }
     .st-sfx.sfx-g2 i { animation-direction:reverse; } .st-sfx.sfx-bl i { animation-direction:reverse; animation-duration:30s; } .st-sfx.sfx-br i { animation-duration:30s; } .st-sfx.sfx-v i { animation-duration:40s; }
     .st-sfx.sfx-v { -webkit-mask:${T('sk-st-sfx-v-mask.png')} center / 100% 100% no-repeat; } .st-sfx.sfx-v i { background-image:${T('sk-st-sfx-v.png')}; }
     .st-sfx.sfx-g1 { -webkit-mask:${T('sk-st-sfx-g1-mask.png')} center / 100% 100% no-repeat; } .st-sfx.sfx-g1 i { background-image:${T('sk-st-sfx-g1.png')}; }
@@ -2764,10 +2783,18 @@ if (isAutotunePage()) {
     /* capacitor tubes: dark and unlit unless the Vocal Lab is on (then a gentle flicker on top of the painted glow) */
     .st-vtube { pointer-events:none; background:center / 100% 100% no-repeat; opacity:0; transition:opacity .6s ease; }
     .st-vtube.t1 { background-image:${T('sk-st-glow-t1.png')}; } .st-vtube.t2 { background-image:${T('sk-st-glow-t2.png')}; } .st-vtube.t3 { background-image:${T('sk-st-glow-t3.png')}; } .st-vtube.tl { background-image:${T('sk-st-glow-tl.png')}; }
-    .voc-on .st-vtube { opacity:1; }
+    .voc-on:is(.m-karaoke,.mixview,.practice) .st-vtube { opacity:1; }
     .st-vsteam { pointer-events:none; opacity:0; background:${T('sk-smoke-r.png')} center / 100% 100% no-repeat; transform-origin:14% 96%; }
-    .voc-on .st-vsteam { animation:st-vsteam 4.8s linear infinite; }
+    .voc-on:is(.m-karaoke,.mixview,.practice) .st-vsteam { animation:st-vsteam 4.8s linear infinite; }
     @keyframes st-vsteam { 0% { opacity:0; transform:translate(-3%,14%) scale(.55,.45); } 12% { opacity:.95; } 45% { opacity:.9; transform:translate(3%,2%) scale(.95,.92) skewX(-4deg); } 75% { opacity:.55; transform:translate(10%,-13%) scale(1.12,1.15) skewX(3deg); } 100% { opacity:0; transform:translate(19%,-27%) scale(1.3,1.35) skewX(-2deg); } }
+    .st-presetlbl { display:flex; align-items:center; justify-content:flex-start; color:#e6d3ad; font:600 .62cqw 'Barlow Condensed',sans-serif; letter-spacing:.08em; white-space:nowrap; pointer-events:none; z-index:8; text-shadow:0 1px 2px #000; }
+    .skin .section.tune .switches .btn { border:calc(11 / 4344 * 100cqw) solid transparent !important; border-image:${T('sk-st-cream.png')} 22 30 22 30 fill / calc(11 / 4344 * 100cqw) stretch !important; padding:0 !important; }
+    .skin .section.tune .switches .btn { color:#3a2412 !important; font-size:clamp(8px,.46cqw,15px) !important; letter-spacing:.08em; text-shadow:0 1px 0 #ffffff55; }
+    .skin .section.tune .eqinfo { text-align:center; display:flex; align-items:center; justify-content:center; }
+    .st-cables { background:center / 100% 100% no-repeat; pointer-events:none; z-index:1; }
+    .st-cables.top { background-image:${T('sk-st-cables-top.png')}; } .st-cables.bot { background-image:${T('sk-st-cables-bot.png')}; }
+    .skin .st-chainbar, .skin .status { z-index:8; }
+    .skin .section.output .hubdisc.hm { background-image:${T('sk-st-ko2-master-hub.png')}; } .skin .section.output .hubdisc.ht { background-image:${T('sk-st-ko2-thresh-hub.png')}; }
     .eq-tube { position:absolute; pointer-events:none; border-radius:30%; z-index:3; transition:backdrop-filter .3s, background .3s; }
     .section.eq.eq-off .eq-tube { backdrop-filter:brightness(.28) saturate(.25); -webkit-backdrop-filter:brightness(.28) saturate(.25); background:#0a060255; }
     .skin .section.eq.eq-off .eq-geq .geqfill { opacity:.25; box-shadow:none; }
@@ -2785,7 +2812,7 @@ if (isAutotunePage()) {
     .skin .section.output .knob::after { filter:drop-shadow(0 2px 2px #000a) !important; }
     /* THRESH follows the LIMITER: limiter off = dimmed, unlit knob */
     .skin .section.output .knob-box:has(.knob.dark) { transition:filter .25s; }
-    .skin .section.output .row.lim-off .knob-box:has(.knob.dark) { filter:brightness(.55) saturate(.8); }
+    .skin .section.output .row.lim-off .knob-box:has(.knob.dark) { filter:brightness(.45) saturate(.75); }
     .skin .section.output .knob-box::after { position:absolute; left:-60%; right:-60%; top:104%; text-align:center; color:#e9d6a8; text-shadow:0 1px 2px #000, 0 0 4px #0008;
       font:600 calc(34 / 4344 * 100cqw)/1 'Barlow Condensed','Oswald',sans-serif; letter-spacing:.06em; pointer-events:none; }
     .skin .section.output .knob-box:has(.knob.big)::after { content:'MASTER'; }
@@ -2810,7 +2837,7 @@ if (isAutotunePage()) {
     .skin .st-chainbar .offlbl:first-child { display:none; }
     .skin .st-chainbar .sel { position:absolute; left:0; top:0; width:28.6%; height:100%; border:calc(20 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-select.png')} 20 62 fill / calc(20 / 4344 * 100cqw) calc(38 / 4344 * 100cqw) stretch; border-radius:0; background:none; color:#ead9b2; font:600 .72cqw 'Barlow Condensed',sans-serif; }
     .skin .st-chainbar .offlbl:last-child { position:absolute; left:32%; top:0; width:68%; height:100%; display:flex; align-items:center; overflow:hidden; }
-    .skin .st-chainrow { position:absolute; left:2.486%; top:63.121%; width:90.976%; height:27.486%; display:flex; flex-wrap:nowrap; gap:.65%; align-items:stretch; padding:0; }
+    .skin .st-chainrow { position:absolute; left:2.486%; top:62.5%; width:90.976%; height:29.28%; display:flex; flex-wrap:nowrap; gap:calc(39 / 4344 * 100cqw); align-items:stretch; padding:0; }
     .skin .st-chain-module { position:relative; align-self:stretch; min-width:0; min-height:0; height:100%; max-height:100%; max-width:none; padding:calc(4 / 4344 * 100cqw) calc(10 / 4344 * 100cqw) calc(6 / 4344 * 100cqw); border:calc(82 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-mod.png')} 82 40 44 50 fill / calc(82 / 4344 * 100cqw) calc(40 / 4344 * 100cqw) calc(44 / 4344 * 100cqw) calc(50 / 4344 * 100cqw) stretch; background:none; box-shadow:none; border-radius:0; display:flex; flex-direction:column; justify-content:space-between; gap:2%; overflow:hidden; }
     .skin .st-chain-module .st-modtitle { position:absolute; left:18%; right:17%; top:4%; height:12%; display:flex; align-items:center; justify-content:center; gap:4%; color:#e9d6a8; font:600 .78cqw 'Barlow Condensed','Oswald',sans-serif; text-shadow:0 1px 2px #000; white-space:nowrap; }
     .skin .st-chain-module .modled { position:absolute; right:10%; top:6%; width:8%; height:8%; border:0; border-radius:0; background:${T('sk-st-led-off.png')} center/contain no-repeat; cursor:pointer; }
@@ -2829,7 +2856,7 @@ if (isAutotunePage()) {
     .skin .st-chain-module.off { filter:brightness(.58) saturate(.55); }
     .skin:not(.m-karaoke):not(.mixview):not(.practice) .st-chainrow { opacity:.55; filter:grayscale(.35); pointer-events:none; }
     .skin .st-chainrow .modarrow { display:none; }
-    .np.st-lift { position:fixed; left:0; right:0; bottom:var(--dh); height:104px; margin:0; z-index:2147483644; }
+    .np.st-lift { position:fixed; left:0; right:0; bottom:var(--dh); height:124px; margin:0; z-index:2147483644; }
     /* Full-artboard layout layers must not swallow clicks: only real controls take pointer events. */
     .skin .section, .skin .section .switches, .skin .section .fxknobs, .skin .section .vus, .skin .section .master, .skin .section .master .row,
       .skin .st-chainrow, .skin .st-chain-module, .skin .st-module-content, .skin .st-select-label, .skin .status { pointer-events:none; }
@@ -2942,6 +2969,16 @@ if (isAutotunePage()) {
     .skin .eqrow .txt { border:0 !important; border-image:none !important; background:#120d08 !important; border-radius:calc(14 / 4344 * 100cqw); box-shadow:inset 0 0 0 1px #6a4a26, inset 0 2px 6px #000; padding:0 calc(24 / 4344 * 100cqw); outline:none; }
     .skin .eqrow .txt:focus { box-shadow:inset 0 0 0 1px #c8954a, inset 0 2px 6px #000; }
     .skin .eqrow .st-select-label { left:calc(24 / 4344 * 100cqw); right:calc(60 / 4344 * 100cqw); }
+    /* Vocal Chain dropdowns: thinner and a touch higher */
+    .skin .st-chain-module .st-module-content > .st-select-wrap { height:calc(40 / 4344 * 100cqw) !important; min-height:0 !important; }
+    .skin .st-chain-module .st-module-content > .st-select-wrap[style], .skin .st-chain-module .st-module-content > .st-select-wrap { margin-top:0; }
+    .skin .st-chain-module:not(.st-chain-m0):not(.st-chain-m1):not(.st-chain-m10) .st-module-content > .st-select-wrap { top:auto !important; bottom:calc(36 / 4344 * 100cqw) !important; }
+    .skin .st-chain-module.st-chain-m10 .st-module-content > .st-select-wrap:not(:nth-child(2)) { top:auto !important; bottom:calc(36 / 4344 * 100cqw) !important; }
+    /* Vocal Chain dropdowns: same flat field as the EQ preset picker (no plate, no 3D button) */
+    .skin .st-chain-module .st-select-wrap, .skin .st-chainbar .st-select-wrap { background:#120d08; border-radius:calc(12 / 4344 * 100cqw); box-shadow:inset 0 0 0 1px #6a4a26, inset 0 2px 5px #000; padding:0 calc(40 / 4344 * 100cqw) 0 calc(18 / 4344 * 100cqw); }
+    .skin .st-chain-module .st-select-wrap::before, .skin .st-chainbar .st-select-wrap::before { display:none; }
+    .skin .st-chain-module .st-select-wrap::after, .skin .st-chainbar .st-select-wrap::after { content:''; position:absolute; right:calc(18 / 4344 * 100cqw); top:50%; width:calc(10 / 4344 * 100cqw); height:calc(10 / 4344 * 100cqw); margin-top:calc(-8 / 4344 * 100cqw); border:solid #e9d6a8; border-width:0 calc(3 / 4344 * 100cqw) calc(3 / 4344 * 100cqw) 0; transform:rotate(45deg); z-index:1; pointer-events:none; }
+    .skin .st-chain-module .st-select-label, .skin .st-chainbar .st-select-label { background:transparent; left:calc(18 / 4344 * 100cqw); right:calc(40 / 4344 * 100cqw); }
     .skin .section.enh .knob-box { font-size:0; }
     /* preset buttons rebuild the Enhancer knobs: place them by position, not once by script */
     .skin .section.enh .fxknobs > .knob-box:nth-child(1) { position:absolute; left:64.1344%; top:11.3260%; width:2.1179%; height:6.3536%; }
@@ -3013,8 +3050,24 @@ if (isAutotunePage()) {
     .skin .status > span { font-size:clamp(7px,.5cqw,13px); line-height:1; }
     .skin .status > span.clock { justify-content:center; text-align:center; font:700 .7cqw/1 'Oswald',sans-serif; letter-spacing:.02em; }
     .skin .strip .name { font:700 .82cqw/1 'Barlow Condensed','Oswald',sans-serif; letter-spacing:.02em; white-space:nowrap; }
-    .skin .st-chain-module .st-module-content .btn.fxon, .skin .st-chain-module .st-module-content .btn.takebtn { box-sizing:border-box; border:0; border-image:none; background:${T('sk-st-cream.png')} center/100% 100% no-repeat; }
-    .skin .st-chain-module .st-module-content .btn.fxon.on { background-image:${T('sk-st-amber.png')}; }
+    /* chain-module buttons (MIC / AUTO-TUNE / CHAIN ON / REC): 9-slice like the EQ buttons, corners keep their shape instead of the plate being stretched */
+    .skin .st-chain-module .st-module-content .btn.fxon, .skin .st-chain-module .st-module-content .btn.takebtn { box-sizing:border-box; border:calc(11 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-cream.png')} 22 30 22 30 fill / calc(11 / 4344 * 100cqw) stretch; background:none; padding:0; display:flex; align-items:center; justify-content:center; }
+    .skin .st-chain-module .st-module-content .btn.fxon.on { border-image:${T('sk-st-amber.png')} 22 28 22 28 fill / calc(11 / 4344 * 100cqw) stretch; }
+    .skin .st-chain-module .st-module-content .btn.fxon, .skin .st-chain-module .st-module-content .btn.takebtn { color:#3a2412 !important; text-shadow:0 1px 0 #ffffff55 !important; }
+    .skin .st-chain-module .st-module-content .btn.fxon.on { color:#8a1a0a !important; }
+    /* Vocal Chain buttons: whole plates (pressed / unpressed, text + LED painted in) from design/ref/chainbtn-*-ref.png; live label hidden */
+    .skin .st-chain-module .st-module-content .btn.fxon, .skin .st-chain-module .st-module-content .btn.takebtn { border:0 !important; border-image:none !important; background-color:transparent !important; background-repeat:no-repeat !important; background-position:center !important; background-size:100% 100% !important; font-size:0 !important; color:transparent !important; text-shadow:none !important; filter:none !important; box-shadow:none !important; }
+    .skin .st-chain-module .st-module-content .btn.fxon *, .skin .st-chain-module .st-module-content .btn.takebtn * { display:none !important; }
+    .skin .st-chain-module .st-module-content .btn.takebtn::before { display:none !important; }
+    .skin .st-chain-module.st-chain-m0 .st-module-content .btn.fxon { background-image:${T('sk-st-cb-mic-off.png')} !important; } .skin .st-chain-module.st-chain-m0 .st-module-content .btn.fxon.on { background-image:${T('sk-st-cb-mic-on.png')} !important; }
+    .skin .st-chain-module.st-chain-m1 .st-module-content .btn.fxon { background-image:${T('sk-st-cb-at-off.png')} !important; } .skin .st-chain-module.st-chain-m1 .st-module-content .btn.fxon.on { background-image:${T('sk-st-cb-at-on.png')} !important; }
+    /* MIC / AUTO-TUNE: smaller, plate-shaped (no stretching): narrower than the module and lower in height */
+    .skin .st-chain-module.st-chain-m0 .st-module-content > .modbody > .fxon { left:19% !important; right:19% !important; width:62% !important; height:30% !important; margin-top:calc(22 / 4344 * 100cqw) !important; }
+    /* knobs + their labels sit a little lower in the modules (Gate ... Delay); Input / Auto-Tune keep their own layout */
+    .skin .st-chain-module:not(.st-chain-m0):not(.st-chain-m1) .st-module-content > .modbody { transform:translateY(calc(34 / 4344 * 100cqw)); }
+    .skin .st-chain-module.st-chain-m1 .st-module-content > .btn { left:20% !important; right:20% !important; width:auto !important; height:11.5% !important; top:74% !important; }
+    .skin .st-chain-module.st-chain-m13 .st-module-content .btn.fxon { background-image:${T('sk-st-cb-chain-off.png')} !important; } .skin .st-chain-module.st-chain-m13 .st-module-content .btn.fxon.on { background-image:${T('sk-st-cb-chain-on.png')} !important; }
+    .skin .st-chain-module.st-chain-m13 .st-module-content .btn.takebtn { background-image:${T('sk-st-cb-rec-off.png')} !important; } .skin .st-chain-module.st-chain-m13 .st-module-content .btn.takebtn.on { background-image:${T('sk-st-cb-rec-on.png')} !important; }
     .skin:not(.m-karaoke):not(.mixview):not(.practice) .st-chainrow .st-chain-module .btn.fxon,
     .skin:not(.m-karaoke):not(.mixview):not(.practice) .st-chainrow .st-chain-module .btn.takebtn { filter:brightness(1.65); }
     .skin .st-chain-module.st-chain-m10 .st-module-content > .st-select-wrap:nth-child(2) { left:10%; right:10%; top:18%; bottom:auto; width:auto; height:calc(55 / 4344 * 100cqw); }
@@ -3227,9 +3280,17 @@ if (isAutotunePage()) {
         ytmusic-guide-section-renderer h3, ytmusic-guide-section-renderer #guide-section-title { color: #b49568 !important; letter-spacing: .14em; text-transform: uppercase; font-size: 11px !important; }
         ytmusic-guide-signin-promo-renderer .descriptive-text { color: #bfae8f !important; }
         ytmusic-guide-signin-promo-renderer button { background: linear-gradient(#3a322a, #1b1816) !important; color: #e9dcc2 !important; border: 1px solid #6a5636 !important; }
-        ytmusic-nav-bar #right-content ytmusic-settings-button { zoom: 1.4; }
-        ytmusic-nav-bar #right-content ytmusic-settings-button #avatar, ytmusic-nav-bar #right-content ytmusic-settings-button img { border-radius: 50% !important; box-shadow: 0 0 0 2px #0a0807, 0 0 0 3px #8a6a3c; }
-        ytmusic-nav-bar #right-content { position: fixed !important; top: 20px; right: 14px; zoom: var(--poc-rz, 1); z-index: 2147483640; display: flex !important; align-items: center; }
+        ytmusic-nav-bar #right-content ytmusic-settings-button { zoom: 1; }
+        /* cast + account: two small framed squares, close together (the avatar is a square picture inside a thin frame, not a circle) */
+        ytmusic-nav-bar #right-content { gap: 8px !important; right: 66px !important; }
+        @media (max-width: 1360px) { ytmusic-nav-bar #right-content { right: 22px !important; } ytmusic-nav-bar #right-content:has(> a) ytmusic-cast-button { display: none !important; } }
+        /* signed out: the white SIGN IN pill becomes the brass plate (design/ref/signin-ref.png) */
+        ytmusic-nav-bar #right-content > a { display: block !important; box-sizing: border-box; width: 88px !important; height: 44px !important; margin: 0 !important; padding: 0 !important; border: 0 !important; background: ${T('sk-signin.png')} center / 100% 100% no-repeat !important; font-size: 0 !important; color: transparent !important; overflow: hidden; filter: brightness(.86) saturate(.78) drop-shadow(0 2px 3px #000b); }
+        ytmusic-nav-bar #right-content > a * { opacity: 0 !important; }
+        ytmusic-nav-bar #right-content ytmusic-cast-button, ytmusic-nav-bar #right-content ytmusic-settings-button { display: flex !important; align-items: center; justify-content: center; box-sizing: border-box !important; width: 44px !important; height: 44px !important; margin: 0 !important; padding: 3px !important; overflow: hidden; border: 1px solid #8a6a3c !important; border-radius: 5px !important; background: #0b0806 !important; box-shadow: inset 0 0 6px #000c, 0 0 0 1px #0a0807; }
+        ytmusic-nav-bar #right-content ytmusic-settings-button #avatar, ytmusic-nav-bar #right-content ytmusic-settings-button yt-img-shadow, ytmusic-nav-bar #right-content ytmusic-settings-button img { border-radius: 2px !important; box-shadow: none !important; width: 34px !important; height: 34px !important; object-fit: cover; }
+        ytmusic-nav-bar #right-content ytmusic-settings-button yt-icon-button, ytmusic-nav-bar #right-content ytmusic-settings-button #button { padding: 0 !important; width: 36px !important; height: 36px !important; border-radius: 3px !important; overflow: hidden !important; background: transparent !important; }
+        ytmusic-nav-bar #right-content { position: fixed !important; top: calc(11px + (1.5 - var(--poc-rz, 1)) * 44px); right: 14px; width: max-content !important; justify-content: flex-end; zoom: var(--poc-rz, 1); z-index: 2147483640; display: flex !important; align-items: center; }
         ytmusic-search-box .search-box { background: #0a0807 !important; background-clip: border-box !important; border: 14px solid transparent !important; border-image: ${T('sk-pill.png')} 72 / 28px stretch !important; border-radius: 26px !important; box-shadow: none !important; height: 56px !important; box-sizing: border-box !important; }
         ytmusic-app-layout { --ytmusic-nav-bar-height: 112px !important; }
         ytmusic-nav-bar { height: 112px !important; padding-right: 120px !important; box-sizing: border-box !important; }
@@ -3288,7 +3349,7 @@ if (isAutotunePage()) {
         #poc-brand .brandname, #poc-brand .brandname * { font: 700 22px/1 'Oswald', 'Barlow Condensed', sans-serif !important; color: #f1e6d3 !important; white-space: nowrap; text-shadow: 0 1px 2px #000 !important; letter-spacing: -.01em; }
         #poc-brand .brandname .bm { color: #ff6a3d !important; }
         #poc-brand .brandsub { margin-top: 5px; font: 600 10px/1 'Oswald', 'Barlow Condensed', sans-serif !important; letter-spacing: .62em; padding-left: .62em; color: #e6d3ad !important; text-align: center; text-shadow: 0 1px 2px #000 !important; }
-        ytmusic-nav-bar ytmusic-search-box { position: relative; left: clamp(0px, calc(560px - 33vw), 130px); width: min(480px, calc(100vw - 800px)) !important; min-width: 300px; }
+        ytmusic-nav-bar ytmusic-search-box { position: relative; left: clamp(0px, calc(560px - 33vw), 130px); width: min(480px, calc(100vw - 940px)) !important; min-width: 240px; }
       `;
       root.append(style, ui);
       try { const gs = document.createElement('style'); gs.textContent = 'ytmusic-player-bar { opacity: 0 !important; pointer-events: none !important; }' + skinCss; (document.head || document.documentElement).appendChild(gs); } catch {} // our own bar replaces the native one (kept alive: its buttons are still clicked programmatically)
@@ -3326,7 +3387,7 @@ if (isAutotunePage()) {
       const adv=q(sessSection,'.adv'); if(adv){ adv.classList.add('st-adv'); stPlace(adv,108,178,465,467); }
       const tuneRows=qa(tuneSection,'.tunerow');
       for(const [row,y0,y1] of [[tuneRows[0],178,235],[tuneRows[1],265,322]]) { const c=[...row.children]; row.style.top=(y0/1448*100)+'%'; row.style.height=((y1-y0)/1448*100)+'%'; [[c[1],652,698],[c[2],702,795],[c[3],802,848]].forEach(([el,x0,x1])=>{el.classList.add('st-placed'); el.style.left=(x0/4344*100)+'%'; el.style.top='0'; el.style.width=((x1-x0)/4344*100)+'%'; el.style.height='100%';}); }
-      stPlace(q(tuneSection,'.switches button'),538,343,640,388); stPlace(q(tuneSection,'.eqinfo'),555,410,822,452);
+      stPlace(q(tuneSection,'.switches button'),646,374,730,410); stPlace(q(tuneSection,'.eqinfo'),555,458,822,500);
       // Mixer controls adapt to the number of active stems while filling the reference mixer bay.
       const mixer=consoleEl.querySelector('.section.mixer'); mixer.classList.add('st-mixer');
       const channels=q(mixer,'.channels'); channels.classList.add('st-channels');
@@ -3355,9 +3416,12 @@ if (isAutotunePage()) {
       const enhBtns=qa(enhSection,'.switches > .btn'); stPlace(enhBtns[0],2778,333,3262,393);
       enhBtns.slice(1).forEach((el,i)=>stPlace(el,[[2780,420,2930,480],[2950,420,3097,480],[3117,420,3262,480]][i][0],420,[[2780,420,2930,480],[2950,420,3097,480],[3117,420,3262,480]][i][2],480));
       const vus=q(outSection,'.vus'); qa(vus,'.vu').forEach((el,i)=>stPlace(el,...(i===0?[3368,172,3648,365]:[3675,172,3952,365])));
-      const outKnobs=qa(outSection,'.knob-box'); outKnobs.forEach((el,i)=>stPlace(el,...(i===0?[3556,404,3764,612]:[3803,471,3895,563])));
-      stPlace(q(outSection,'.limiter'),3580,688,3740,738); // centred in the module (x 3660), lower, smaller
-      const chainRow=q(chainSection,'.st-chainrow'); qa(chainRow,'.st-mod').forEach((el,i)=>{el.style.flex='0 1 calc('+[450,450,175,175,270,175,175,175,270,270,260,270,270,260][i]+' / 4344 * 100cqw)';});
+      const outKnobs=qa(outSection,'.knob-box'); outKnobs.forEach((el,i)=>stPlace(el,...(i===0?[3548,412,3762,627]:[3784,456,3912,596])));
+      outKnobs.forEach((box,i)=>{ const hd=h('i','hubdisc'); const K=i===0?{ax:65,ay:16,aw:885,ah:890,hx:530,hy:415,hr:59,img:'sk-st-ko2-master-hub.png'}:{ax:1060,ay:181,aw:571,ah:628,hx:1350,hy:455,hr:32,img:'sk-st-ko2-thresh-hub.png'}; hd.style.left=((K.hx-K.hr-K.ax)/K.aw*100)+'%'; hd.style.top=((K.hy-K.hr-K.ay)/K.ah*100)+'%'; hd.style.width=(2*K.hr/K.aw*100)+'%'; hd.style.height=(2*K.hr/K.ah*100)+'%'; hd.classList.add(i===0?'hm':'ht'); box.appendChild(hd); });
+      stPlace(q(outSection,'.limiter'),3580,672,3740,722); // centred in the module (x 3660), lower, smaller
+      const chainRow=q(chainSection,'.st-chainrow'); qa(chainRow,'.st-mod').forEach((el,i)=>{el.style.flex='0 1 calc('+[434,428,166,164,251,164,164,166,255,255,246,255,255,240][i]+' / 4344 * 100cqw)';});
+      { const pl=h('div','st-presetlbl','VOCAL CHAIN PRESET'); chainSection.appendChild(pl); stPlace(pl,692,853,950,883); } // moved off the backdrop so it can be positioned
+      { const ct=h('div','st-cables top'), cb=h('div','st-cables bot'); chainSection.append(ct,cb); stPlace(ct,57.7,856.6,4099.7,1117.1); stPlace(cb,57.7,1095.1,4099.7,1402.2); } // user's cable mock (studio_cables.py), above the modules
       const chainbar=q(chainSection,'.st-chainbar'); stPlace(chainbar,973,845,2320,902); chainbar.classList.add('st-placed');
       const modules=qa(chainRow,'.st-mod'); modules.forEach((el,i)=>{
         const content=h('div','st-module-content'); while(el.firstChild) content.appendChild(el.firstChild); el.appendChild(content);
@@ -3380,7 +3444,7 @@ if (isAutotunePage()) {
         new MutationObserver(sync).observe(select,{childList:true,subtree:true,characterData:true}); sync();
       });
       const statusEls=[...status.querySelectorAll('span')];
-      [[180,1374,445,1410],[1968,1376,2182,1412],[3488,1378,3712,1410],[4035,1378,4198,1414]].forEach((r,i)=>stPlace(statusEls[i],...r));
+      [[180,1374,640,1410],[1968,1376,2182,1412],[3488,1378,3712,1410],[4035,1378,4198,1414]].forEach((r,i)=>stPlace(statusEls[i],...r));
       applyOutput();
       document.documentElement.appendChild(host);
       let wasOpen = false;

@@ -639,7 +639,7 @@ app.commandLine.appendSwitch('disable-features', 'WebRtcHideLocalIpsWithMdns');
 
 app.whenReady().then(() => {
   app.setName('YTM Audio POC');
-  app.setPath('userData', path.join(app.getPath('appData'), 'YTM-Audio-POC'));
+  app.setPath('userData', process.env.YTM_POC_USERDATA || path.join(app.getPath('appData'), 'YTM-Audio-POC')); // YTM_POC_USERDATA: dev aid, e.g. a signed-out profile
   appendLog('app_started', { state: 'ready' });
   writeAppMetrics();
   metricsTimer = setInterval(writeAppMetrics, 5000);
