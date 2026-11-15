@@ -1864,7 +1864,7 @@ if (isAutotunePage()) {
         if (!ti) { try { const vd = document.getElementById('movie_player').getVideoData(); ti = vd.title || ''; artist = vd.author || ''; } catch {} }
         const txt = (ti + (artist ? '  •  ' + artist : '')).trim() || 'YouTube Music Studio';
         if (tvs.textContent !== txt) { tvs.textContent = txt; tvs.style.animationDuration = Math.max(9, 7 + txt.length * 0.32) + 's'; tvs.style.animation = 'none'; void tvs.offsetWidth; tvs.style.animation = ''; tvs.style.animationDuration = Math.max(9, 7 + txt.length * 0.32) + 's'; }
-        tvt.style.fontSize = Math.max(8, Math.round(26 * sc)) + 'px';
+        tvt.style.fontSize = Math.max(7, Math.round(26 * sc)) + 'px';
       }
       { const ins = 14 * sc; // black backing just inside the glass opening, never outside the frame
         tvb.style.display = 'block'; tvb.style.left = Math.round(cx - (TV.gw / 2) * sc + ins) + 'px'; tvb.style.top = Math.round(cy - (TV.gh / 2) * sc + ins) + 'px';
@@ -3250,7 +3250,7 @@ if (isAutotunePage()) {
       const LAT = 'U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD';
       const LEX = 'U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF';
       const FACE = (fam, w, file) => ['latin', 'latin-ext'].map((sub) => { const d = tex && tex['f:' + file + '-' + sub + '.woff2']; return d ? `@font-face { font-family: '${fam}'; font-weight: ${w}; font-style: normal; font-display: swap; src: url("${d}") format('woff2'); unicode-range: ${sub === 'latin' ? LAT : LEX}; }` : ''; }).join('\n');
-      const fontCss = [FACE('Cinzel Decorative', 700, 'cinzel-decorative-700'), FACE('Oswald', 600, 'oswald-600'), FACE('Oswald', 700, 'oswald-700'), FACE('Barlow Condensed', 500, 'barlow-condensed-500'), FACE('Barlow Condensed', 600, 'barlow-condensed-600'), FACE('Barlow', 400, 'barlow-400'), FACE('Barlow', 600, 'barlow-600')].join('\n');
+      const fontCss = [FACE('Cinzel Decorative', 700, 'cinzel-decorative-700'), FACE('Oswald', 600, 'oswald-600'), FACE('Oswald', 700, 'oswald-700'), FACE('Barlow Condensed', 500, 'barlow-condensed-500'), FACE('Barlow Condensed', 600, 'barlow-condensed-600'), FACE('Barlow', 400, 'barlow-400'), FACE('Barlow', 600, 'barlow-600'), FACE('VT323', 400, 'vt323-400')].join('\n');
       // YTM page skin, step 1: top bar (rust/metal plate with corner screws, inset brass-rimmed search field)
       const skinCss = `
         ${fontCss}
@@ -3296,7 +3296,7 @@ if (isAutotunePage()) {
         ytmusic-two-column-browse-results-renderer ytmusic-responsive-header-renderer ytmusic-thumbnail-renderer.thumbnail { width: 190px !important; height: 190px !important; margin-left: auto !important; margin-right: auto !important; align-self: center !important; }
         ytmusic-player-page#player-page { background: transparent !important; }
         ytmusic-player-page #side-panel { box-sizing: border-box !important; height: calc(100vh - 290px) !important; padding: 8px 14px 12px !important; border: 26px solid transparent !important; border-image: ${T('sk-shelf-body.png')} 34 / 8px stretch !important; background: ${T('sk-listtex.jpg')} 0 0 / auto auto repeat !important; }
-        #poc-tvtick { position: absolute; left: 38.2%; top: 2.1%; width: 24.6%; height: 5.6%; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent); border-radius: 4px; white-space: nowrap; display: flex; align-items: center; font: 600 26px/1 'Barlow Condensed', 'Oswald', sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #ffb347; text-shadow: 0 0 6px #ff8a1fcc, 0 0 14px #ff6a00aa; }
+        #poc-tvtick { position: absolute; left: 38.2%; top: 2.1%; width: 24.6%; height: 5.6%; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent); border-radius: 4px; white-space: nowrap; display: flex; align-items: center; font: 400 26px/1 'VT323', 'Barlow Condensed', monospace; letter-spacing: .08em; text-transform: uppercase; color: #ffe28a; text-shadow: 0 0 4px #ffb43ccc, 0 0 12px #ff8a1f88; }
         #poc-tvtick span { display: inline-block; padding-left: 100%; animation: poc-tick 14s linear infinite; will-change: transform; }
         @keyframes poc-tick { from { transform: translateX(0); } to { transform: translateX(-100%); } }
         #poc-tvlamps { position: fixed; display: none; pointer-events: none; z-index: 7; }

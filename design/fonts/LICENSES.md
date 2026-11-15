@@ -9,3 +9,4 @@ Files are the Latin and Latin-Extended (Turkish characters) woff2 subsets served
 - Nixie One (Jovanny Lemonad) - glowing nixie-tube style titles
 - Metamorphous (Sorkin Type) - headings
 - Cinzel Decorative (Natanael Gama) - headings
+- VT323 (Peter Hull) - digital screen ticker
