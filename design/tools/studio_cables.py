@@ -16,6 +16,10 @@ for x0, x1 in PLATES: pass
 white = m > 244
 for x in range(W):
     if white[494:500, x].all(): keep[466:494, x] = False          # nothing hangs here: bare rail / dark background
+# The Gate / Low Cut part of the mock leaves a straight hairline across the
+# underside.  This narrow strip is the horizontal rail, not one of the curved
+# cables; remove it while keeping the cable arcs above and below it intact.
+keep[507:513, 258:370] = False
 
 keep[:, :20] = False; keep[:, 2160:] = False                   # the mock's outer end caps: the drawer has its own side pillars
 lum = im.mean(axis=2)

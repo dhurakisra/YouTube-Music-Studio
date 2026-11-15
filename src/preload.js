@@ -2971,6 +2971,8 @@ if (isAutotunePage()) {
     .skin .eqrow .st-select-label { left:calc(24 / 4344 * 100cqw); right:calc(60 / 4344 * 100cqw); }
     /* Vocal Chain dropdowns: thinner and a touch higher */
     .skin .st-chain-module .st-module-content > .st-select-wrap { height:calc(40 / 4344 * 100cqw) !important; min-height:0 !important; }
+    .skin .st-chain-module.st-chain-m1 .eqinfo-row .st-select-wrap,
+    .skin .st-chain-module.st-chain-m10 .st-module-content > .st-select-wrap { height:calc(32 / 4344 * 100cqw) !important; }
     .skin .st-chain-module .st-module-content > .st-select-wrap[style], .skin .st-chain-module .st-module-content > .st-select-wrap { margin-top:0; }
     .skin .st-chain-module:not(.st-chain-m0):not(.st-chain-m1):not(.st-chain-m10) .st-module-content > .st-select-wrap { top:auto !important; bottom:calc(36 / 4344 * 100cqw) !important; }
     .skin .st-chain-module.st-chain-m10 .st-module-content > .st-select-wrap:not(:nth-child(2)) { top:auto !important; bottom:calc(36 / 4344 * 100cqw) !important; }
@@ -3070,7 +3072,7 @@ if (isAutotunePage()) {
     .skin .st-chain-module.st-chain-m13 .st-module-content .btn.takebtn { background-image:${T('sk-st-cb-rec-off.png')} !important; } .skin .st-chain-module.st-chain-m13 .st-module-content .btn.takebtn.on { background-image:${T('sk-st-cb-rec-on.png')} !important; }
     .skin:not(.m-karaoke):not(.mixview):not(.practice) .st-chainrow .st-chain-module .btn.fxon,
     .skin:not(.m-karaoke):not(.mixview):not(.practice) .st-chainrow .st-chain-module .btn.takebtn { filter:brightness(1.65); }
-    .skin .st-chain-module.st-chain-m10 .st-module-content > .st-select-wrap:nth-child(2) { left:10%; right:10%; top:18%; bottom:auto; width:auto; height:calc(55 / 4344 * 100cqw); }
+    .skin .st-chain-module.st-chain-m10 .st-module-content > .st-select-wrap:nth-child(2) { left:10%; right:10%; top:18%; bottom:auto; width:auto; height:calc(32 / 4344 * 100cqw) !important; }
     .skin .st-chain-module .btn.fxon, .skin .st-chain-module .btn.takebtn { color:#f1d6bd; text-shadow:0 1px 2px #120b05; }
     .skin .st-channels > .strip .btn, .skin .strip .name, .skin .strip .micfx { display:flex; align-items:center; justify-content:center; font-weight:700; font-size:.82cqw; line-height:1; white-space:nowrap; padding:0; }
     .skin .strip .btns .btn { display:flex; align-items:center; justify-content:center; font-size:clamp(12px,20cqi,24px); }

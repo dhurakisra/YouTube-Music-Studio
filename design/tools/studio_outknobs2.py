@@ -10,7 +10,7 @@ from scipy import ndimage as ndi
 im = Image.open('design/ref/outknobs2-ref.png').convert('RGBA'); A = np.asarray(im).astype(np.float32); H, W = A.shape[:2]
 # name: hub centre, hub radius, needle angle (deg clockwise from up), needle length range, perp range, dial face radius, art x range
 KN = {'master': dict(c=(530, 415), rh=57, ang=58.0, along=(40, 262), perp=(-26, 32), face=262, xr=(0, 1000)),
-      'thresh': dict(c=(1350, 455), rh=30, ang=126.0, along=(20, 152), perp=(-18, 20), face=148, xr=(1000, 1705))}
+      'thresh': dict(c=(1350, 455), rh=30, ang=126.0, along=(20, 152), perp=(-23, 25), face=148, xr=(1000, 1705))}
 yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
 for n, P in KN.items():
     cx, cy = P['c']; t = np.radians(P['ang']); dx, dy = np.sin(t), -np.cos(t)

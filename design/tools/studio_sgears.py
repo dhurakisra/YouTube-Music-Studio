@@ -18,7 +18,7 @@ def build(n):
     arr = np.asarray(base).astype(np.float32); rgb = arr[..., :3]; ga = arr[..., 3] > 128
     m = (d <= RO).astype(np.float32); m[py < TOP_Y] = 0; m[py >= FRAME_Y] = 0
     # (no clipping by the big gear: it is stacked on top in the DOM, so its transparent tooth gaps show the neighbours behind it)
-    k = 0.66   # darkened to sit in the backdrop (the raw asset is far brighter than the painted scene)
+    k = 0.60   # slightly dimmer so the rotating teeth blend into the painted Session panel
     rgb = rgb * k
     gray = rgb.mean(axis=2, keepdims=True); rgb = gray + (rgb - gray) * 1.45   # darker but richer: saturation up, not washed out
     sprite = Image.fromarray(np.dstack([rgb.clip(0, 255).astype(np.uint8), np.where(ga, 255, 0).astype(np.uint8)]))
