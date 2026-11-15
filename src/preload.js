@@ -1798,7 +1798,7 @@ if (isAutotunePage()) {
     let frame = 0;
     const draw = () => { frame = 0; const y = '0 ' + (-Math.round(scroller().scrollTop)) + 'px'; l.style.backgroundPosition = y; r.style.backgroundPosition = y; };
     window.addEventListener('scroll', () => { if (!frame) frame = requestAnimationFrame(draw); }, { capture: true, passive: true });
-    const sel = 'ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)), ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))';
+    const sel = 'ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)), ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)), ytmusic-playlist-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))';
     const place = () => {
       if (document.hidden) return;
       const guide = document.getElementById('guide');
@@ -1825,7 +1825,7 @@ if (isAutotunePage()) {
       // album / playlist page: park the header (cover, title, buttons) in the left compartment, just under the shelf's top chain clamp
       try {
         const hd = document.querySelector('ytmusic-two-column-browse-results-renderer ytmusic-responsive-header-renderer');
-        const sh0 = document.querySelector('ytmusic-two-column-browse-results-renderer ytmusic-shelf-renderer');
+        const sh0 = document.querySelector('ytmusic-two-column-browse-results-renderer :is(ytmusic-shelf-renderer, ytmusic-playlist-shelf-renderer)');
         if (hd && sh0) {
           const rc = sh0.getBoundingClientRect();
           if (rc.width) {
@@ -3276,16 +3276,16 @@ if (isAutotunePage()) {
         ytmusic-two-row-item-renderer { transition: box-shadow .15s; }
         ytmusic-two-row-item-renderer:hover { box-shadow: 0 0 16px 3px #ffb34780, 0 0 4px 1px #ffd27acc !important; }
         /* song-list shelves (Quick picks, Trending songs, Covers & remixes, Long listens ...): one steampunk plate per shelf; the small song rows stay unframed */
-        ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)), ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)), ytmusic-immersive-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)) { position: relative; box-sizing: border-box !important; width: calc(100% + 28px) !important; max-width: none; margin: 76px auto 24px !important; padding: 12px 20px 16px !important; border: 26px solid transparent !important;
+        ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)), ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)), ytmusic-playlist-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)), ytmusic-immersive-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)) { position: relative; box-sizing: border-box !important; width: calc(100% + 28px) !important; max-width: none; margin: 76px auto 24px !important; padding: 12px 20px 16px !important; border: 26px solid transparent !important;
           border-image: ${T('sk-shelf-body.png')} 120 / 26px stretch !important; background: ${T('sk-listtex.jpg')} 0 0 / auto auto repeat !important; transition: box-shadow .15s; }
-        ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))::before, ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))::before, ytmusic-immersive-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))::before { content: ""; position: absolute; left: -26px; right: -26px; top: -94px; height: 72px; pointer-events: none;
+        ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))::before, ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))::before, ytmusic-playlist-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))::before, ytmusic-immersive-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))::before { content: ""; position: absolute; left: -26px; right: -26px; top: -94px; height: 72px; pointer-events: none;
           background: ${T('sk-shelf-bl.png')} left top / calc((100% - 545px) / 2) 100% no-repeat, ${T('sk-shelf-bc.png')} center top / 545px 100% no-repeat, ${T('sk-shelf-br.png')} right top / calc((100% - 545px) / 2) 100% no-repeat; }
         /* the two glass lamps and the gauge light up (5-step flicker) while the mouse is over the shelf */
-        ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))::after, ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))::after, ytmusic-immersive-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))::after { content: ""; position: absolute; left: calc(50% - 272px); width: 545px; top: -94px; height: 72px; pointer-events: none; opacity: 0; mix-blend-mode: screen;
+        ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))::after, ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))::after, ytmusic-playlist-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))::after, ytmusic-immersive-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer))::after { content: ""; position: absolute; left: calc(50% - 272px); width: 545px; top: -94px; height: 72px; pointer-events: none; opacity: 0; mix-blend-mode: screen;
           background: radial-gradient(circle at 53px 42px, #ffc15ccc 0, #ff8a1f77 9px, transparent 22px), radial-gradient(circle at 491px 42px, #ffc15ccc 0, #ff8a1f77 9px, transparent 22px), radial-gradient(circle at 270px 50px, #ffe9b077 0, #ffb34744 15px, transparent 31px); }
-        ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)):hover::after, ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)):hover::after, ytmusic-immersive-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)):hover::after { animation: poc-flick 2.4s linear infinite; }
+        ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)):hover::after, ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)):hover::after, ytmusic-playlist-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)):hover::after, ytmusic-immersive-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)):hover::after { animation: poc-flick 2.4s linear infinite; }
         @keyframes poc-flick { 0% { opacity: 0.25; } 6% { opacity: 0.55; } 11% { opacity: 0.95; } 15% { opacity: 0.7; } 19% { opacity: 1; } 26% { opacity: 0.8; } 31% { opacity: 0.35; } 35% { opacity: 0.6; } 41% { opacity: 1; } 47% { opacity: 0.9; } 52% { opacity: 0.45; } 57% { opacity: 0.85; } 63% { opacity: 1; } 69% { opacity: 0.6; } 74% { opacity: 0.3; } 80% { opacity: 0.75; } 87% { opacity: 0.95; } 93% { opacity: 0.5; } 100% { opacity: 0.25; } }
-        ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)):hover, ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)):hover, ytmusic-immersive-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)):hover { box-shadow: 0 0 18px 3px #ffb34775, 0 0 4px 1px #ffd27aaa; }
+        ytmusic-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)):hover, ytmusic-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)):hover, ytmusic-playlist-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)):hover, ytmusic-immersive-carousel-shelf-renderer:not(:has(ytmusic-two-row-item-renderer)):hover { box-shadow: 0 0 18px 3px #ffb34775, 0 0 4px 1px #ffd27aaa; }
         /* left guide: framed metal panel with its own textured inner plate */
         ytmusic-app-layout #guide-wrapper { background: linear-gradient(#0b0806e6, #0b0806f2) !important; }
         ytmusic-app-layout, ytmusic-app { --ytmusic-guide-width: 300px !important; }
