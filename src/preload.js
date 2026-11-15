@@ -1580,9 +1580,21 @@ if (isAutotunePage()) {
     const val = (cls) => h('div', 'tunevalue' + (cls ? ' ' + cls : ''), '');
     const keyV = val(), tempoV = val();
     const step = (label, fn) => { const b = h('button', 'btn tunebtn', label, { type: 'button', 'aria-label': label }); b.addEventListener('click', fn); return b; };
+    const wheelEl = h('i'), wheel = { dir: 0, speed: 0, ang: 0, last: 0, raf: 0 };
+    wheel.tick = (now) => {
+      wheel.ang = (wheel.ang + wheel.dir * wheel.speed * Math.min(0.1, (now - wheel.last) / 1000) + 360) % 360; wheel.last = now;
+      wheelEl.style.transform = 'rotate(' + wheel.ang.toFixed(2) + 'deg)';
+      wheel.raf = wheel.dir ? requestAnimationFrame(wheel.tick) : 0;
+    };
     const show = () => {
       keyV.textContent = (tuneState.semis > 0 ? '+' : '') + tuneState.semis;
       tempoV.textContent = Math.round(tuneState.tempo * 100) + '%';
+      // KEY and TEMPO both drive the wheel; whichever one is further from neutral (more steps) wins. Up/faster = right, down/slower = left, neutral = stops.
+      const keySteps = Math.abs(tuneState.semis), tempoSteps = Math.round(Math.abs(tuneState.tempo - 1) / 0.05 * 100) / 100;
+      const useKey = keySteps >= tempoSteps, steps = useKey ? keySteps : tempoSteps;
+      const dir = steps === 0 ? 0 : Math.sign(useKey ? tuneState.semis : tuneState.tempo - 1);
+      wheel.dir = dir; wheel.speed = 22 * steps; // deg/s
+      if (dir && !wheel.raf) { wheel.last = performance.now(); wheel.raf = requestAnimationFrame(wheel.tick); }
     };
     const setKey = (v) => { tuneState.semis = Math.max(-8, Math.min(8, v)); show(); stemNodes?.pitch?.route?.(); masterEq?.mixPitch?.route(); };
     const setTempo = (v) => { tuneState.tempo = Math.max(0.5, Math.min(1.5, Math.round(v * 100) / 100)); show(); applyTempo(); };
@@ -1593,6 +1605,7 @@ if (isAutotunePage()) {
     const note = h('div', 'eqinfo', 'KEY IN SEMITONES');
     sec.append(keyRow, tempoRow, h('div', 'switches'), note);
     sec.lastChild.previousSibling.appendChild(reset);
+    sec.appendChild(h('div', 'st-wheel k')).appendChild(wheelEl);
     show();
   }
 
@@ -2726,6 +2739,16 @@ if (isAutotunePage()) {
     .enh-gear.r { -webkit-mask-image:${T('sk-st-gear-r-mask.png')}; } .enh-gear.r i { background-image:${T('sk-st-gear-r.png')}; animation-duration:9s; animation-direction:reverse; }
     .enh-gear.l { -webkit-mask-image:${T('sk-st-gear-l-mask.png')}; } .enh-gear.l i { background-image:${T('sk-st-gear-l.png')}; animation-duration:11s; animation-direction:reverse; }
     @keyframes enh-spin { to { transform:rotate(360deg); } }
+    /* Session and Key&Tempo wheels (design/tools/studio_wheels.py): turn while a session mode is lit / key or tempo is changed */
+    .st-wheel { position:absolute; pointer-events:none; -webkit-mask:center / 100% 100% no-repeat; }
+    .st-wheel i { position:absolute; inset:0; background:center / 100% 100% no-repeat; animation:enh-spin 18s linear infinite; animation-play-state:paused; }
+    .section.wheel-on .st-wheel i { animation-play-state:running; }
+    .st-wheel.sg-big, .st-wheel.sg-right, .st-wheel.sg-top { }
+    .sess-g1 .sg-big i, .sess-g2 .sg-right i, .sess-g3 .sg-top i { animation-play-state:running; }
+    .st-wheel.sg-big { -webkit-mask-image:${T('sk-st-sgear-big-mask.png')}; } .st-wheel.sg-big i { background-image:${T('sk-st-sgear-big.png')}; animation-duration:20s; }
+    .st-wheel.sg-right { -webkit-mask-image:${T('sk-st-sgear-right-mask.png')}; } .st-wheel.sg-right i { background-image:${T('sk-st-sgear-right.png')}; animation-duration:14s; animation-direction:reverse; }
+    .st-wheel.sg-top { -webkit-mask-image:${T('sk-st-sgear-top-mask.png')}; } .st-wheel.sg-top i { background-image:${T('sk-st-sgear-top.png')}; animation-duration:10s; }
+    .st-wheel.k { -webkit-mask-image:${T('sk-st-wheel-k-mask.png')}; } .st-wheel.k i { background-image:${T('sk-st-wheel-k.png')}; animation:none; }
     .eq-tube { position:absolute; pointer-events:none; border-radius:30%; z-index:3; transition:backdrop-filter .3s, background .3s; }
     .section.eq.eq-off .eq-tube { backdrop-filter:brightness(.28) saturate(.25); -webkit-backdrop-filter:brightness(.28) saturate(.25); background:#0a060255; }
     .skin .section.eq.eq-off .eq-geq .geqfill { opacity:.25; box-shadow:none; }
@@ -3258,6 +3281,13 @@ if (isAutotunePage()) {
       studioBuildOutput(outSection);
       studioBuildSession(sessSection);
       studioBuildTune(tuneSection);
+      for (const n of ['top', 'right', 'big']) sessSection.appendChild(h('div', 'st-wheel sg-' + n)).appendChild(h('i')); // big last = on top, its tooth gaps show the other gears
+      { // gears: LISTEN lit = 1 gear turns, LISTEN WITH STEMS = 2, KARAOKE = 3
+        const sessModes = [...sessSection.querySelectorAll(':scope > .bigbtn')];
+        const count = (b) => (b.classList.contains('stemb') ? 2 : b.classList.contains('recbig') ? 3 : 1);
+        const sessSync = () => { const n = Math.max(0, ...sessModes.filter((b) => b.classList.contains('on') && !b.classList.contains('startk')).map(count)); for (let i = 1; i <= 3; i++) sessSection.classList.toggle('sess-g' + i, n >= i); };
+        sessModes.forEach((b) => new MutationObserver(sessSync).observe(b, { attributes: true, attributeFilter: ['class'] })); sessSync();
+      }
       setAppMode(appMode); // shows the LISTEN controls from the start
       studioBuildChain(chainSection);
       studioBuildEnhancer(enhSection);
@@ -3294,6 +3324,7 @@ if (isAutotunePage()) {
       const enhRow=q(enhSection,'.fxknobs'); const enhKnobs=qa(enhRow,'.knob-box');
       [[2786,164,2878,256],[2915,164,3007,256],[3042,164,3134,256],[3167,164,3259,256]].forEach(([x0,y0,x1,y1],i)=>stPlace(enhKnobs[i],x0,y0,x1,y1));
       q(enhSection,'.switches')?.classList.add('st-enh-switches');
+      stPlace(q(sessSection,'.sg-big'),97,602,341,846); stPlace(q(sessSection,'.sg-right'),319,639,465,785); stPlace(q(sessSection,'.sg-top'),294,589,396,691); stPlace(q(tuneSection,'.st-wheel.k'),579,538,817,776);
       stPlace(q(enhSection,'.enh-gear.big'),2889,527,3149,787); stPlace(q(enhSection,'.enh-gear.r'),3080,578,3218,716); stPlace(q(enhSection,'.enh-gear.l'),2816,579,2966,729);
       const enhBtns=qa(enhSection,'.switches > .btn'); stPlace(enhBtns[0],2778,333,3262,393);
       enhBtns.slice(1).forEach((el,i)=>stPlace(el,[[2780,420,2930,480],[2950,420,3097,480],[3117,420,3262,480]][i][0],420,[[2780,420,2930,480],[2950,420,3097,480],[3117,420,3262,480]][i][2],480));
