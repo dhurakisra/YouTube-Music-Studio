@@ -1158,6 +1158,7 @@ if (isAutotunePage()) {
           applyVocalFx(fx, true);
           const sec = Math.round((0.4 + fxState.voc.decay * 3.6) * 10) / 10;
           fx.irKey = sec; fx.conv.buffer = makeReverbIR(off, sec);
+          await fx.harm.ready; // the harmony voice's worklet must exist before the offline render starts
         } else g.connect(bus);
         const shiftS = isMicLayer(k) ? (libPlayer.micOffsetMs || 0) / 1000 : 0;
         if (shiftS >= 0) src.start(0, Math.min(shiftS, Math.max(0, mix.bufs[k].duration - 0.001))); else src.start(-shiftS, 0);
@@ -1493,148 +1494,39 @@ if (isAutotunePage()) {
 
   // ---- Key & Tempo (karaoke / listen) ----
   // TEMPO: the YouTube Music element itself is slowed or sped up with pitch preserved (browser time-stretch), so the stems, the lyrics and the recording all follow it.
-  // KEY: every stem layer passes a streaming WSOLA pitch shifter (below) before its fader and before the recording taps, so layers are recorded in the key the singer sang in.
-  // Streaming stereo pitch shifter: WSOLA time stretch (by factor f) followed by resampling (by f). Duration is preserved, pitch moves by f.
-  // One instance handles one stereo pair; process() takes any block size and always produces the same number of samples it consumed.
-  class PairShifter {
-    constructor() {
-      this.CAP = 1 << 16; this.MASK = this.CAP - 1;
-      this.Hs = 512; this.W = 1024; this.D = 384; // synthesis hop, window, search radius (samples)
-      this.hann = new Float32Array(this.W);
-      for (let i = 0; i < this.W; i += 1) this.hann[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / this.W);
-      this.f = 1;
-      this.reset();
-    }
-    reset() {
-      const C = this.CAP;
-      this.inL = new Float32Array(C); this.inR = new Float32Array(C); this.inCount = 0;
-      this.stL = new Float32Array(C); this.stR = new Float32Array(C); this.stCount = 0;
-      this.accL = new Float32Array(this.W); this.accR = new Float32Array(this.W);
-      this.pNom = 0; this.prevBest = -1; this.rp = 1; this.first = true;
-      this.refD = new Float32Array(this.Hs / 4); this.candD = new Float32Array(Math.ceil((2 * this.D + this.Hs) / 4) + 8);
-    }
-    setFactor(f) { this.f = f; }
-    mono(i) { return 0.5 * (this.inL[i & this.MASK] + this.inR[i & this.MASK]); }
-    // Adds one windowed segment to the overlap accumulator and emits Hs finished samples. Returns false when the input does not reach far enough yet.
-    produceFrame() {
-      const { Hs, W, D, MASK } = this;
-      const Ha = Hs / this.f;
-      let p;
-      if (this.first) {
-        if (this.inCount < W + 8) return false;
-        p = 0; this.first = false; this.pNom = Ha;
-      } else {
-        const c = Math.round(this.pNom);
-        const t = this.prevBest + Hs; // where the previous segment would naturally continue
-        if (c + D + W > this.inCount || t + Hs > this.inCount) return false;
-        const lo = Math.max(0, c - D), hi = c + D;
-        // coarse search on 4x-decimated mono
-        const nd = Hs / 4, M = Math.floor((hi - lo) / 4);
-        const ref = this.refD, cand = this.candD;
-        for (let k = 0; k < nd; k += 1) { const b = t + 4 * k; ref[k] = this.mono(b) + this.mono(b + 1) + this.mono(b + 2) + this.mono(b + 3); }
-        const need = M + nd;
-        for (let k = 0; k < need; k += 1) { const b = lo + 4 * k; cand[k] = this.mono(b) + this.mono(b + 1) + this.mono(b + 2) + this.mono(b + 3); }
-        let eRef = 0; for (let k = 0; k < nd; k += 1) eRef += ref[k] * ref[k];
-        let bestJ = Math.floor(M / 2), bestS = -Infinity;
-        let eC = 0; for (let k = 0; k < nd; k += 1) eC += cand[k] * cand[k];
-        for (let j = 0; j <= M; j += 1) {
-          if (j > 0) { const o = cand[j - 1], n2 = cand[j - 1 + nd]; eC += n2 * n2 - o * o; }
-          let dot = 0; for (let k = 0; k < nd; k += 1) dot += ref[k] * cand[j + k];
-          const s = dot / Math.sqrt(eC * eRef + 1e-9);
-          if (s > bestS) { bestS = s; bestJ = j; }
-        }
-        // fine search at full rate around the coarse winner
-        const centre = lo + 4 * bestJ;
-        let bestP = centre, bestF = -Infinity;
-        for (let q = Math.max(lo, centre - 4); q <= Math.min(hi, centre + 4); q += 1) {
-          let dot = 0, e = 0;
-          for (let k = 0; k < Hs; k += 2) { const a = this.mono(t + k), b = this.mono(q + k); dot += a * b; e += b * b; }
-          const s = dot / Math.sqrt(e + 1e-9);
-          if (s > bestF) { bestF = s; bestP = q; }
-        }
-        p = bestP;
-        this.pNom += Ha;
-      }
-      this.prevBest = p;
-      const aL = this.accL, aR = this.accR, hw = this.hann;
-      for (let i = 0; i < W; i += 1) { const w = hw[i]; aL[i] += w * this.inL[(p + i) & MASK]; aR[i] += w * this.inR[(p + i) & MASK]; }
-      for (let i = 0; i < Hs; i += 1) { const o = (this.stCount + i) & MASK; this.stL[o] = aL[i]; this.stR[o] = aR[i]; }
-      this.stCount += Hs;
-      aL.copyWithin(0, Hs); aR.copyWithin(0, Hs); aL.fill(0, W - Hs); aR.fill(0, W - Hs);
-      return true;
-    }
-    process(inL, inR, outL, outR, n) {
-      const MASK = this.MASK, f = this.f;
-      for (let i = 0; i < n; i += 1) { const o = (this.inCount + i) & MASK; this.inL[o] = inL[i]; this.inR[o] = inR[i]; }
-      this.inCount += n;
-      if (this.inCount - this.pNom > this.CAP / 2) { this.reset(); this.f = f; } // fell hopelessly behind: restart cleanly
-      let rp = this.rp;
-      for (let i = 0; i < n; i += 1) {
-        while (this.stCount < Math.floor(rp) + 3) { if (!this.produceFrame()) break; }
-        const idx = Math.floor(rp);
-        if (this.stCount < idx + 3) { outL[i] = 0; outR[i] = 0; continue; } // still filling
-        const fr = rp - idx;
-        const o0 = (idx - 1) & MASK, o1 = idx & MASK, o2 = (idx + 1) & MASK, o3 = (idx + 2) & MASK;
-        // Catmull-Rom interpolation
-        const cr = (a, b, c, d) => b + 0.5 * fr * (c - a + fr * (2 * a - 5 * b + 4 * c - d + fr * (3 * (b - c) + d - a)));
-        outL[i] = cr(this.stL[o0], this.stL[o1], this.stL[o2], this.stL[o3]);
-        outR[i] = cr(this.stR[o0], this.stR[o1], this.stR[o2], this.stR[o3]);
-        rp += f;
-      }
-      this.rp = rp;
-    }
-  }
-
+  // KEY: every stem layer passes a Signalsmith Stretch pitch shifter (below) before its fader and before the recording taps, so layers are recorded in the key the singer sang in.
   const tuneState = { semis: 0, tempo: 1 };
   const STEM_SLOTS = ['vocalGain', 'instGain', 'drumsGain', 'bassGain', 'otherGain'];
-  // One ScriptProcessor carries all five stereo layers (10 channels): one callback per block instead of five.
+  // KEY on the stems: one stereo Signalsmith Stretch node per stem (AudioWorklet + WASM, spectral). Two paths per stem: 'direct' (KEY 0)
+  // and 'wet' (shifted), crossfaded; until a node is ready its stem simply stays on the direct path.
   function buildStemPitch(context, nodes) {
-    const nCh = STEM_SLOTS.length * 2;
     const ins = {}, outs = {}, paths = [];
-    const merger = context.createChannelMerger(nCh);
-    const proc = context.createScriptProcessor(4096, nCh, nCh);
-    proc.channelCount = nCh; proc.channelCountMode = 'explicit'; proc.channelInterpretation = 'discrete';
-    merger.connect(proc);
-    const splitOut = context.createChannelSplitter(nCh);
-    proc.connect(splitOut);
-    STEM_SLOTS.forEach((key, k) => {
-      const input = fxGain(context), sp = context.createChannelSplitter(2);
-      input.connect(sp); sp.connect(merger, 0, 2 * k); sp.connect(merger, 1, 2 * k + 1);
-      const mo = context.createChannelMerger(2), output = fxGain(context);
-      // two paths per stem: 'direct' (KEY 0) never touches the main-thread ScriptProcessor, so a busy page cannot punch holes
-      // (clicks) into the stems; 'wet' carries the shifted signal. Only one is open at a time (short crossfade on change).
-      const direct = fxGain(context), wet = fxGain(context);
-      input.connect(direct); direct.connect(output);
-      splitOut.connect(mo, 2 * k, 0); splitOut.connect(mo, 2 * k + 1, 1); mo.connect(wet); wet.connect(output); output.connect(nodes[key]);
-      direct.gain.value = 1; wet.gain.value = 0;
-      ins[key] = input; outs[key] = output; paths.push({ direct, wet });
-    });
-    const pairs = STEM_SLOTS.map(() => ({ ps: new PairShifter(), seen: false, wasShifting: false }));
-    const self = { ins, outs, proc };
+    const self = { ins, outs };
     let shifted = false;
-    const route = () => {
-      const want = tuneState.semis !== 0;
-      if (want === shifted || nodes.pitch !== self) return;
+    STEM_SLOTS.forEach((key) => {
+      const input = fxGain(context), output = fxGain(context), direct = fxGain(context), wet = fxGain(context);
+      input.connect(direct); direct.connect(output); wet.connect(output); output.connect(nodes[key]);
+      direct.gain.value = 1; wet.gain.value = 0;
+      const path = { direct, wet, node: null, last: null };
+      paths.push(path);
+      ins[key] = input; outs[key] = output;
+      createStretch(context).then((node) => {
+        if (nodes.pitch !== self) return; // superseded by a newer capture graph
+        input.connect(node); node.connect(wet); path.node = node; route(true);
+      }).catch((error) => stemDiag('stem_pitch', { state: 'unavailable', error: String(error?.message || error).slice(0, 120) }));
+    });
+    const route = (force) => {
+      if (nodes.pitch !== self) return;
+      const semis = tuneState.semis, want = semis !== 0, t = context.currentTime;
+      for (const p of paths) if (p.node && p.last !== semis) { p.last = semis; p.node.schedule({ semitones: semis }); }
+      if (want === shifted && !force) return;
       shifted = want;
-      // the shifter's own latency (~1 block) means the wet path lags; a 60 ms crossfade keeps the switch smooth
-      const t = context.currentTime;
-      for (const p of paths) { p.direct.gain.setTargetAtTime(want ? 0 : 1, t, 0.02); p.wet.gain.setTargetAtTime(want ? 1 : 0, t, 0.02); }
-    };
-    self.route = route; setInterval(route, 150);
-    proc.onaudioprocess = (e) => {
-      const inp = e.inputBuffer, out = e.outputBuffer, n = inp.length;
-      if (nodes.pitch !== self) { for (let c = 0; c < nCh; c += 1) out.getChannelData(c).fill(0); return; } // superseded by a newer capture graph
-      const semis = tuneState.semis, f = 2 ** (semis / 12);
-      for (let k = 0; k < STEM_SLOTS.length; k += 1) {
-        const iL = inp.getChannelData(2 * k), iR = inp.getChannelData(2 * k + 1), oL = out.getChannelData(2 * k), oR = out.getChannelData(2 * k + 1);
-        const pr = pairs[k];
-        if (semis === 0) { oL.set(iL); oR.set(iR); pr.wasShifting = false; continue; } // untouched when the key is not changed
-        if (!pr.seen) { let a = 0; for (let i = 0; i < n; i += 64) a += Math.abs(iL[i]) + Math.abs(iR[i]); if (a < 1e-6) { oL.fill(0); oR.fill(0); continue; } pr.seen = true; }
-        if (!pr.wasShifting) { pr.ps.reset(); pr.wasShifting = true; }
-        pr.ps.setFactor(f);
-        pr.ps.process(iL, iR, oL, oR, n);
+      for (const p of paths) {
+        const on = want && !!p.node;
+        p.direct.gain.setTargetAtTime(on ? 0 : 1, t, 0.02); p.wet.gain.setTargetAtTime(on ? 1 : 0, t, 0.02);
       }
     };
+    self.route = route; setInterval(route, 150);
     return self;
   }
   // Recording taps hang on the shifter outputs: layers are recorded after the key change, exactly as heard.
@@ -3540,80 +3432,34 @@ if (isAutotunePage()) {
     masterEq.limiterOn = eqState.limiter;
   }
 
-  // Stereo KEY shifter on the whole mix for plain listening. Runs in an AudioWorklet (real-time audio thread, so a busy page
-  // cannot click it; main.js adds `blob:` to the page's script-src for this). A 'direct' path (KEY 0, or capture running: the stems
-  // shift themselves) and a 'wet' path are crossfaded. If the worklet cannot load, the old ScriptProcessor shifter is the fallback.
+  // Signalsmith Stretch (MIT, WASM, spectral; built for full mixes) is the one pitch engine: KEY on the mix, KEY on the stems,
+  // and the Harmonizer. The sandboxed preload cannot require files, so main.js hands over the library source.
   let stretchFactory = null;
-  function loadStretch() {
+  function createStretch(context) {
     stretchFactory ||= ipcRenderer.invoke('poc:stretch-src').then((src) => {
       if (!src) throw new Error('stretch source missing');
       return new Function([src, 'return SignalsmithStretch;'].join(String.fromCharCode(10)))(); // local, bundled MIT library
     });
-    return stretchFactory;
+    return stretchFactory.then((create) => create(context, { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], channelCount: 2, channelCountMode: 'explicit' }))
+      .then((node) => { node.start(); return node; });
   }
-  const mixPitchModules = new WeakMap();
-  function loadMixPitchModule(context) {
-    if (!mixPitchModules.has(context)) {
-      const src = PairShifter.toString() + `
-class YtmPocMixPitch extends AudioWorkletProcessor {
-  constructor() { super(); this.ps = new PairShifter(); this.semis = 0; this.active = false; this.port.onmessage = (e) => { this.semis = Number(e.data) || 0; }; }
-  process(inputs, outputs) {
-    const out = outputs[0]; if (!out || !out.length) return true;
-    const inp = inputs[0] || [], n = out[0].length;
-    const iL = inp[0] || new Float32Array(n), iR = inp[1] || iL, oL = out[0], oR = out[1] || out[0];
-    if (this.semis === 0) { this.active = false; oL.set(iL); if (oR !== oL) oR.set(iR); return true; }
-    if (!this.active) { this.ps.reset(); this.active = true; }
-    this.ps.setFactor(2 ** (this.semis / 12));
-    this.ps.process(iL, iR, oL, oR, n);
-    return true;
-  }
-}
-registerProcessor('ytmpoc-mixpitch', YtmPocMixPitch);
-`;
-      const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
-      mixPitchModules.set(context, context.audioWorklet.addModule(url).finally(() => URL.revokeObjectURL(url)));
-    }
-    return mixPitchModules.get(context);
-  }
+  // KEY on the whole mix for plain listening (capture running: the stems shift themselves). 'direct' and 'wet' paths, crossfaded.
   function buildMixPitch(context, input) {
     const output = fxGain(context), direct = fxGain(context), wet = fxGain(context);
     input.connect(direct); direct.connect(output); wet.connect(output);
     direct.gain.value = 1; wet.gain.value = 0;
-    let shifted = false, ready = false, send = () => {};
+    let shifted = false, node = null, last = null;
     const route = () => {
-      const want = ready && tuneState.semis !== 0 && !captureActive && studioOpen;
-      send(want ? tuneState.semis : 0);
+      const want = !!node && tuneState.semis !== 0 && !captureActive && studioOpen;
+      const v = want ? tuneState.semis : 0;
+      if (node && v !== last) { last = v; node.schedule({ semitones: v }); }
       if (want === shifted) return;
       shifted = want;
       const t = context.currentTime;
       direct.gain.setTargetAtTime(want ? 0 : 1, t, 0.02); wet.gain.setTargetAtTime(want ? 1 : 0, t, 0.02);
     };
-    const useScriptProcessor = () => { // fallback only: main-thread processing, may click under load
-      const proc = context.createScriptProcessor(4096, 2, 2);
-      input.connect(proc); proc.connect(wet);
-      const ps = new PairShifter(); let semis = 0, active = false;
-      send = (v) => { semis = v; };
-      proc.onaudioprocess = (e) => {
-        const iL = e.inputBuffer.getChannelData(0), iR = e.inputBuffer.getChannelData(e.inputBuffer.numberOfChannels > 1 ? 1 : 0);
-        const oL = e.outputBuffer.getChannelData(0), oR = e.outputBuffer.getChannelData(1);
-        if (!semis) { active = false; oL.set(iL); oR.set(iR); return; }
-        if (!active) { ps.reset(); active = true; }
-        ps.setFactor(2 ** (semis / 12)); ps.process(iL, iR, oL, oR, iL.length);
-      };
-      ready = true; route();
-    };
-    const useOwnWorklet = () => loadMixPitchModule(context).then(() => {
-      const node = new AudioWorkletNode(context, 'ytmpoc-mixpitch', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], channelCount: 2, channelCountMode: 'explicit' });
-      input.connect(node); node.connect(wet);
-      let last = null; send = (v) => { if (v !== last) { last = v; node.port.postMessage(v); } };
-      ready = true; route(); stemDiag('mix_pitch', { state: 'worklet' });
-    }).catch((error) => { stemDiag('mix_pitch', { state: 'scriptprocessor', error: String(error?.message || error).slice(0, 120) }); useScriptProcessor(); });
-    // First choice: Signalsmith Stretch (spectral, built for full mixes); then our own worklet shifter; then the ScriptProcessor.
-    loadStretch().then((create) => create(context, { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], channelCount: 2, channelCountMode: 'explicit' })).then((node) => {
-      input.connect(node); node.connect(wet); node.start();
-      let last = null; send = (v) => { if (v !== last) { last = v; node.schedule({ semitones: v }); } };
-      ready = true; route(); stemDiag('mix_pitch', { state: 'signalsmith' });
-    }).catch((error) => { stemDiag('mix_pitch', { state: 'own_worklet', error: String(error?.message || error).slice(0, 120) }); useOwnWorklet(); });
+    createStretch(context).then((n) => { input.connect(n); n.connect(wet); node = n; route(); stemDiag('mix_pitch', { state: 'signalsmith' }); })
+      .catch((error) => stemDiag('mix_pitch', { state: 'unavailable', error: String(error?.message || error).slice(0, 120) }));
     setInterval(route, 150);
     return { output, route };
   }
@@ -3823,19 +3669,20 @@ registerProcessor('ytmpoc-mixpitch', YtmPocMixPitch);
     return g;
   }
 
+  // Harmony voice: the vocal through a Signalsmith Stretch node at a fixed interval; silent (gain 0) while the module is off.
   function buildHarmonizer(context) {
-    const input = fxGain(context), output = fxGain(context);
-    const proc = context.createScriptProcessor(1024, 2, 2);
-    proc.channelCount = 2; proc.channelCountMode = 'explicit'; proc.channelInterpretation = 'speakers';
-    input.connect(proc); proc.connect(output);
-    const ps = new PairShifter();
-    const h2 = { input, output, proc, active: false, factor: 1.26 };
-    proc.onaudioprocess = (e) => {
-      const iL = e.inputBuffer.getChannelData(0), iR = e.inputBuffer.getChannelData(1), oL = e.outputBuffer.getChannelData(0), oR = e.outputBuffer.getChannelData(1);
-      if (!h2.active) { oL.fill(0); oR.fill(0); return; }
-      ps.setFactor(h2.factor);
-      ps.process(iL, iR, oL, oR, iL.length);
+    const input = fxGain(context), output = fxGain(context), gate = fxGain(context);
+    gate.gain.value = 0; gate.connect(output);
+    const h2 = { input, output, node: null, _active: false, _factor: 1.26 };
+    const apply = () => {
+      gate.gain.setTargetAtTime(h2._active && h2.node ? 1 : 0, context.currentTime, 0.02);
+      h2.node?.schedule({ semitones: 12 * Math.log2(h2._factor), active: h2._active });
     };
+    Object.defineProperty(h2, 'active', { get: () => h2._active, set: (v) => { if (v !== h2._active) { h2._active = v; apply(); } } });
+    Object.defineProperty(h2, 'factor', { get: () => h2._factor, set: (v) => { if (v !== h2._factor) { h2._factor = v; apply(); } } });
+    h2.ready = createStretch(context).then((n) => { input.connect(n); n.connect(gate); h2.node = n; apply(); })
+      .catch((error) => stemDiag('harmonizer', { state: 'unavailable', error: String(error?.message || error).slice(0, 120) }));
+    h2.dispose = () => { for (const n of [input, h2.node, gate, output].filter(Boolean)) { try { n.disconnect(); } catch {} } };
     return h2;
   }
 
@@ -3897,8 +3744,8 @@ registerProcessor('ytmpoc-mixpitch', YtmPocMixPitch);
     }, 3000);
     fx.dispose = () => {
       for (const o of oscs) { try { o.stop(); } catch {} }
-      if (gate.proc) gate.proc.onaudioprocess = null; harm.proc.onaudioprocess = null; gate.dispose?.();
-      for (const n of [gate.proc, gate.output, harm.proc, harm.output].filter(Boolean)) { try { n.disconnect(); } catch {} }
+      if (gate.proc) gate.proc.onaudioprocess = null; harm.dispose(); gate.dispose?.();
+      for (const n of [gate.proc, gate.output, harm.output].filter(Boolean)) { try { n.disconnect(); } catch {} }
     };
     return fx;
   }
