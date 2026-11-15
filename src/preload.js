@@ -3280,6 +3280,8 @@ if (isAutotunePage()) {
         @property --gw { syntax: '<number>#'; inherits: false; initial-value: 255, 157, 61; }
         ytmusic-two-column-browse-results-renderer ytmusic-responsive-header-renderer { position: fixed !important; left: var(--poc-hx, auto) !important; top: var(--poc-hy, auto) !important; width: var(--poc-hw, 330px) !important; box-sizing: border-box; z-index: 3; }
         ytmusic-two-column-browse-results-renderer ytmusic-responsive-header-renderer ytmusic-thumbnail-renderer.thumbnail { width: 190px !important; height: 190px !important; margin-left: auto !important; margin-right: auto !important; align-self: center !important; }
+        ytmusic-player-page#player-page { background: transparent !important; }
+        ytmusic-player-page #side-panel { box-sizing: border-box !important; height: calc(100vh - 290px) !important; padding: 8px 14px 12px !important; border: 26px solid transparent !important; border-image: ${T('sk-shelf-body.png')} 120 / 26px stretch !important; background: ${T('sk-listtex.jpg')} 0 0 / auto auto repeat !important; }
         #poc-tv { position: fixed; display: none; pointer-events: none; z-index: 6; background: ${T('sk-tv.png')} center / 100% 100% no-repeat; filter: saturate(.62) brightness(.78); }
         i.poc-hook { position: absolute; height: 46px; pointer-events: none; z-index: 2; box-sizing: border-box; border: solid transparent; border-width: 0 24px; border-image: ${T('sk-hook.png')} 0 60 fill / 0 24px / 0 stretch; filter: drop-shadow(0 2px 3px #000c);
  }
