@@ -1840,13 +1840,20 @@ if (isAutotunePage()) {
     };
     // video mode: a steampunk TV frame (glass opening = the video) around the player; the player is scaled down so the whole frame fits between the guide and the side panel
     const tv = document.createElement('div'); tv.id = 'poc-tv'; document.documentElement.appendChild(tv); const tvt = document.createElement('div'); tvt.id = 'poc-tvtick'; const tvs = document.createElement('span'); tvt.appendChild(tvs);
-    const tvl = document.createElement('div'); tvl.id = 'poc-tvlamps'; for (const sd of ['l', 'r']) { const t = document.createElement('i'); t.className = 'tube ' + sd; const f = document.createElement('b'); t.appendChild(f); tvl.appendChild(t); } tvl.appendChild(tvt); document.documentElement.appendChild(tvl);
+    const tvl = document.createElement('div'); tvl.id = 'poc-tvlamps'; for (const sd of ['l', 'r']) { const t = document.createElement('i'); t.className = 'tube ' + sd; const f = document.createElement('b'); t.appendChild(f); tvl.appendChild(t); } tvl.appendChild(tvt);
+    const tvbt = document.createElement('div'); tvbt.id = 'poc-tvbtns'; const tvB = {};
+    for (const [key, label, cls] of [['song', 'SONG', '.song-button'], ['video', 'VIDEO', '.video-button']]) {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = label; tvB[key] = b;
+      b.addEventListener('click', (e) => { e.stopPropagation(); const real = document.querySelector('ytmusic-av-toggle ' + cls); if (real) real.click(); });
+      tvbt.appendChild(b);
+    }
+    tvl.appendChild(tvbt); document.documentElement.appendChild(tvl);
     const tvb = document.createElement('div'); tvb.id = 'poc-tvbg'; document.documentElement.appendChild(tvb);
     const TV = { w: 1217, h: 883, gx: 128, gy: 120, gw: 960, gh: 618 }; // sk-tv.png (px) and its glass opening
     const placeTv = () => {
       const pl = document.querySelector('ytmusic-player#player');
       const on = pl && !document.hidden && pl.getAttribute('playback-mode') === 'OMV_PREFERRED' && pl.hasAttribute('player-page-open') && pl.offsetWidth > 200;
-      if (!on) { tv.style.display = 'none'; tvb.style.display = 'none'; tvl.style.display = 'none'; if (pl && pl.style.transform) { pl.style.transform = ''; } return; }
+      if (!on) { tv.style.display = 'none'; tvb.style.display = 'none'; tvl.style.display = 'none'; document.documentElement.classList.remove('poc-tvon'); if (pl && pl.style.transform) { pl.style.transform = ''; } return; }
       const w0 = pl.offsetWidth, h0 = pl.offsetHeight, cur = pl.getBoundingClientRect();
       const k0 = parseFloat(pl.dataset.pocK) || 1, cx = cur.left + cur.width / 2, cy = cur.top + cur.height / 2;
       const guide = document.getElementById('guide'), side = document.querySelector('ytmusic-player-page #side-panel');
@@ -1857,7 +1864,8 @@ if (isAutotunePage()) {
       const k = Math.max(0.3, Math.min(1, (2 * hw) / (w0 * fw), (2 * hh) / (h0 * fh)));
       pl.dataset.pocK = String(k); pl.style.transform = 'scale(' + k + ')'; pl.style.transformOrigin = 'center center';
       const vw = w0 * k, vh = h0 * k, sc = Math.max(vw * 1.03 / TV.gw, vh * 1.03 / TV.gh);
-      tv.style.display = 'block'; tvl.style.display = 'block';
+      tv.style.display = 'block'; tvl.style.display = 'block'; document.documentElement.classList.add('poc-tvon');
+      { const t = document.querySelector('ytmusic-av-toggle'), vsel = !t || t.getAttribute('is-video-playback-mode-selected') !== 'false'; tvB.video.classList.toggle('on', vsel); tvB.song.classList.toggle('on', !vsel); tvbt.style.fontSize = Math.max(7, Math.round(24 * sc)) + 'px'; }
       { // name plate: scrolling "title - artist" of the playing song (plate slot is 350x50 at (438,18) in the frame image)
         let ti = '', artist = '';
         try { const m = navigator.mediaSession.metadata; if (m) { ti = m.title || ''; artist = m.artist || ''; } } catch {}
@@ -3304,6 +3312,11 @@ if (isAutotunePage()) {
         #poc-tvlamps .tube.l { left: 0.7%; } #poc-tvlamps .tube.r { left: 94.9%; animation-duration: 4.6s; animation-delay: -1.9s; }
         #poc-tvlamps .tube b { position: absolute; left: 36%; width: 28%; top: 18%; height: 54%; border-radius: 40%; background: linear-gradient(#fff6d0, #ffd35a 60%, #ffb02a); filter: blur(1.2px); box-shadow: 0 0 8px 2px #ffc04acc; }
         @keyframes poc-flick { 0% { opacity: .95; } 6% { opacity: .55; } 8% { opacity: .98; } 17% { opacity: .85; } 19% { opacity: .35; } 21% { opacity: .9; } 34% { opacity: 1; } 47% { opacity: .78; } 49% { opacity: .96; } 58% { opacity: .5; } 60% { opacity: .92; } 62% { opacity: .42; } 64% { opacity: .95; } 80% { opacity: .88; } 91% { opacity: 1; } 93% { opacity: .6; } 95% { opacity: .97; } 100% { opacity: .95; } }
+        html.poc-tvon ytmusic-player-page #av-id { display: none !important; }
+        #poc-tvbtns { position: absolute; left: 33%; width: 34%; top: 88.2%; height: 5.6%; display: flex; gap: 6%; pointer-events: none; }
+        #poc-tvbtns button { flex: 1; pointer-events: auto; cursor: pointer; border: 1px solid #c98a3a; border-radius: 999px; font: 600 1em/1 'Oswald', 'Barlow Condensed', sans-serif; letter-spacing: .14em; color: #9a6a30; background: linear-gradient(#3a2412, #1a0e06); box-shadow: inset 0 1px 0 #e0a45855, inset 0 -2px 3px #000a, 0 1px 3px #000c; transition: color .15s, box-shadow .15s; }
+        #poc-tvbtns button:hover { color: #e0a458; }
+        #poc-tvbtns button.on { color: #ffb52e; background: linear-gradient(#2a1608, #0e0703); text-shadow: 0 0 6px #ff9a1f, 0 0 12px #ff7a0f; box-shadow: inset 0 2px 5px #000d, 0 0 8px #ff8a1f77, 0 1px 3px #000c; }
         #poc-tvbg { position: fixed; display: none; pointer-events: none; z-index: 1; background: #000; }
         #poc-tv { position: fixed; display: none; pointer-events: none; z-index: 6; background: ${T('sk-tv.png')} center / 100% 100% no-repeat; filter: saturate(.62) brightness(.78); }
         i.poc-hook { position: absolute; height: 46px; pointer-events: none; z-index: 2; box-sizing: border-box; border: solid transparent; border-width: 0 24px; border-image: ${T('sk-hook.png')} 0 60 fill / 0 24px / 0 stretch; filter: drop-shadow(0 2px 3px #000c);
