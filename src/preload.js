@@ -1822,7 +1822,24 @@ if (isAutotunePage()) {
           else { k.style.width = (rx1 - rx0) + 'px'; k.style.right = ((rc.right - br) - rx1) + 'px'; k.style.left = ''; }
                 }
       }
+      // album / playlist page: park the header (cover, title, buttons) in the left compartment, just under the shelf's top chain clamp
+      try {
+        const hd = document.querySelector('ytmusic-two-column-browse-results-renderer ytmusic-responsive-header-renderer');
+        const sh0 = document.querySelector('ytmusic-two-column-browse-results-renderer ytmusic-shelf-renderer');
+        if (hd && sh0) {
+          const rc = sh0.getBoundingClientRect();
+          if (rc.width) {
+            const x0 = left + 19 + 44, x1 = rc.left, hw = Math.max(200, Math.min(300, x1 - x0 - 24));
+            const thb = rc.top + rc.height * 0.16 + 46; // bottom edge of the top clamp
+            const hy = rc.height <= window.innerHeight ? Math.max(120, Math.min(thb + 8, window.innerHeight - 470)) : 130; // short list: sit between the two clamps; long list: the clamps scroll away, so stay at the top
+            hd.style.setProperty('--poc-hx', Math.round(x0 + (x1 - x0 - hw) / 2) + 'px');
+            hd.style.setProperty('--poc-hy', Math.round(hy) + 'px');
+            hd.style.setProperty('--poc-hw', Math.round(hw) + 'px');
+          }
+        }
+      } catch {}
     };
+    let pf = 0; window.addEventListener('scroll', () => { if (!pf) pf = requestAnimationFrame(() => { pf = 0; place(); }); }, { capture: true, passive: true });
     setInterval(place, 600); window.addEventListener('resize', place); place(); draw();
   }
 
@@ -3241,6 +3258,8 @@ if (isAutotunePage()) {
         :is(ytmusic-carousel-shelf-basic-header-renderer yt-formatted-string.title, .poc-ntitle) > * { position: relative; }
         @property --gh { syntax: '<number>'; inherits: false; initial-value: 0; }
         @property --gw { syntax: '<number>#'; inherits: false; initial-value: 255, 157, 61; }
+        ytmusic-two-column-browse-results-renderer ytmusic-responsive-header-renderer { position: fixed !important; left: var(--poc-hx, auto) !important; top: var(--poc-hy, auto) !important; width: var(--poc-hw, 330px) !important; box-sizing: border-box; z-index: 3; }
+        ytmusic-two-column-browse-results-renderer ytmusic-responsive-header-renderer ytmusic-thumbnail-renderer.thumbnail { width: 190px !important; height: 190px !important; }
         i.poc-hook { position: absolute; height: 46px; pointer-events: none; z-index: 2; box-sizing: border-box; border: solid transparent; border-width: 0 24px; border-image: ${T('sk-hook.png')} 0 60 fill / 0 24px / 0 stretch; filter: drop-shadow(0 2px 3px #000c);
  }
         i.poc-hook.t { top: 16%; } i.poc-hook.b { bottom: 16%; }
