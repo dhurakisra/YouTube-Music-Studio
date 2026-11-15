@@ -12,4 +12,5 @@ def shift(SHIFT, y0, y1, x0, x1):
 for job in sys.argv[2:] or ['enh']:
     if job == 'enh': shift(10, 101, 141, 2893, 3102)      # ENHANCER: ~10 px left of its plate centre
     if job == 'out': shift(20, 104, 142, 3538, 3692)      # OUTPUT: ~20 px left
+    if job == 'outplate': shift(22, 86, 152, 3412, 3862)  # OUTPUT name plate: ~22 px left of the module centre
 Image.fromarray(a).save(p, quality=86)
