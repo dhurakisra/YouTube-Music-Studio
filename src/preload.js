@@ -2726,7 +2726,7 @@ if (isAutotunePage()) {
     .skin:not(.st-capture):not(.mixview) .section.mixer .strip > :not(.micsw), .skin:not(.st-capture):not(.mixview) .section.mixer .st-mixer-extra { opacity:.55; filter:grayscale(.35); }
     .skin:not(.st-capture):not(.mixview) .section.mixer *:not(.micsw):not(.micsw *) { pointer-events:none !important; }
     /* Activate-mic practice switch under the mic channel (Listen / Listen with stems only) */
-    .skin .strip .micsw { display:none; position:absolute; left:50%; bottom:.5%; transform:translateX(-50%); height:11.5%; width:70%;
+    .skin .strip .micsw { display:none; position:absolute; left:50%; bottom:-2.5%; transform:translateX(-50%); height:16%; width:90%;
       padding:0; margin:0; border:0; background:none; cursor:pointer; pointer-events:auto !important;
       grid-template-columns:1fr auto 1fr; grid-template-rows:auto 1fr; align-items:center; justify-items:center; column-gap:6%; }
     .skin.m-listen:not(.mixview) .strip .micsw { display:grid; }
