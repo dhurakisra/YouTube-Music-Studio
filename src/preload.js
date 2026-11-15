@@ -1839,8 +1839,9 @@ if (isAutotunePage()) {
       } catch {}
     };
     // video mode: a steampunk TV frame (glass opening = the video) around the player; the player is scaled down so the whole frame fits between the guide and the side panel
-    const tv = document.createElement('div'); tv.id = 'poc-tv'; document.documentElement.appendChild(tv); const tvb = document.createElement('div'); tvb.id = 'poc-tvbg'; document.documentElement.appendChild(tvb);
-    const TV = { w: 1224, h: 869, gx: 125, gy: 125, gw: 980, gh: 610 }; // sk-tv.png (px) and its glass opening
+    const tv = document.createElement('div'); tv.id = 'poc-tv'; document.documentElement.appendChild(tv); const tvt = document.createElement('div'); tvt.id = 'poc-tvtick'; const tvs = document.createElement('span'); tvt.appendChild(tvs); tv.appendChild(tvt);
+    const tvb = document.createElement('div'); tvb.id = 'poc-tvbg'; document.documentElement.appendChild(tvb);
+    const TV = { w: 1217, h: 883, gx: 128, gy: 120, gw: 960, gh: 618 }; // sk-tv.png (px) and its glass opening
     const placeTv = () => {
       const pl = document.querySelector('ytmusic-player#player');
       const on = pl && !document.hidden && pl.getAttribute('playback-mode') === 'OMV_PREFERRED' && pl.hasAttribute('player-page-open') && pl.offsetWidth > 200;
@@ -1856,6 +1857,14 @@ if (isAutotunePage()) {
       pl.dataset.pocK = String(k); pl.style.transform = 'scale(' + k + ')'; pl.style.transformOrigin = 'center center';
       const vw = w0 * k, vh = h0 * k, sc = Math.max(vw * 1.03 / TV.gw, vh * 1.03 / TV.gh);
       tv.style.display = 'block';
+      { // name plate: scrolling "title - artist" of the playing song (plate slot is 350x50 at (438,18) in the frame image)
+        let ti = '', artist = '';
+        try { const m = navigator.mediaSession.metadata; if (m) { ti = m.title || ''; artist = m.artist || ''; } } catch {}
+        if (!ti) { try { const vd = document.getElementById('movie_player').getVideoData(); ti = vd.title || ''; artist = vd.author || ''; } catch {} }
+        const txt = (ti + (artist ? '  •  ' + artist : '')).trim() || 'YouTube Music Studio';
+        if (tvs.textContent !== txt) { tvs.textContent = txt; tvs.style.animationDuration = Math.max(9, 7 + txt.length * 0.32) + 's'; tvs.style.animation = 'none'; void tvs.offsetWidth; tvs.style.animation = ''; tvs.style.animationDuration = Math.max(9, 7 + txt.length * 0.32) + 's'; }
+        tvt.style.fontSize = Math.max(8, Math.round(26 * sc)) + 'px';
+      }
       { const ins = 14 * sc; // black backing just inside the glass opening, never outside the frame
         tvb.style.display = 'block'; tvb.style.left = Math.round(cx - (TV.gw / 2) * sc + ins) + 'px'; tvb.style.top = Math.round(cy - (TV.gh / 2) * sc + ins) + 'px';
         tvb.style.width = Math.round(TV.gw * sc - 2 * ins) + 'px'; tvb.style.height = Math.round(TV.gh * sc - 2 * ins) + 'px'; tvb.style.borderRadius = Math.round(70 * sc) + 'px'; }
@@ -3285,6 +3294,9 @@ if (isAutotunePage()) {
         ytmusic-two-column-browse-results-renderer ytmusic-responsive-header-renderer ytmusic-thumbnail-renderer.thumbnail { width: 190px !important; height: 190px !important; margin-left: auto !important; margin-right: auto !important; align-self: center !important; }
         ytmusic-player-page#player-page { background: transparent !important; }
         ytmusic-player-page #side-panel { box-sizing: border-box !important; height: calc(100vh - 290px) !important; padding: 8px 14px 12px !important; border: 26px solid transparent !important; border-image: ${T('sk-shelf-body.png')} 34 / 8px stretch !important; background: ${T('sk-listtex.jpg')} 0 0 / auto auto repeat !important; }
+        #poc-tvtick { position: absolute; left: 38.2%; top: 2.1%; width: 24.6%; height: 5.6%; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent); border-radius: 4px; white-space: nowrap; display: flex; align-items: center; font: 600 26px/1 'Barlow Condensed', 'Oswald', sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #ffb347; text-shadow: 0 0 6px #ff8a1fcc, 0 0 14px #ff6a00aa; }
+        #poc-tvtick span { display: inline-block; padding-left: 100%; animation: poc-tick 14s linear infinite; will-change: transform; }
+        @keyframes poc-tick { from { transform: translateX(0); } to { transform: translateX(-100%); } }
         #poc-tvbg { position: fixed; display: none; pointer-events: none; z-index: 1; background: #000; }
         #poc-tv { position: fixed; display: none; pointer-events: none; z-index: 6; background: ${T('sk-tv.png')} center / 100% 100% no-repeat; filter: saturate(.62) brightness(.78); }
         i.poc-hook { position: absolute; height: 46px; pointer-events: none; z-index: 2; box-sizing: border-box; border: solid transparent; border-width: 0 24px; border-image: ${T('sk-hook.png')} 0 60 fill / 0 24px / 0 stretch; filter: drop-shadow(0 2px 3px #000c);
