@@ -3543,6 +3543,14 @@ if (isAutotunePage()) {
   // Stereo KEY shifter on the whole mix for plain listening. Runs in an AudioWorklet (real-time audio thread, so a busy page
   // cannot click it; main.js adds `blob:` to the page's script-src for this). A 'direct' path (KEY 0, or capture running: the stems
   // shift themselves) and a 'wet' path are crossfaded. If the worklet cannot load, the old ScriptProcessor shifter is the fallback.
+  let stretchFactory = null;
+  function loadStretch() {
+    stretchFactory ||= ipcRenderer.invoke('poc:stretch-src').then((src) => {
+      if (!src) throw new Error('stretch source missing');
+      return new Function([src, 'return SignalsmithStretch;'].join(String.fromCharCode(10)))(); // local, bundled MIT library
+    });
+    return stretchFactory;
+  }
   const mixPitchModules = new WeakMap();
   function loadMixPitchModule(context) {
     if (!mixPitchModules.has(context)) {
@@ -3594,12 +3602,18 @@ registerProcessor('ytmpoc-mixpitch', YtmPocMixPitch);
       };
       ready = true; route();
     };
-    loadMixPitchModule(context).then(() => {
+    const useOwnWorklet = () => loadMixPitchModule(context).then(() => {
       const node = new AudioWorkletNode(context, 'ytmpoc-mixpitch', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], channelCount: 2, channelCountMode: 'explicit' });
       input.connect(node); node.connect(wet);
       let last = null; send = (v) => { if (v !== last) { last = v; node.port.postMessage(v); } };
       ready = true; route(); stemDiag('mix_pitch', { state: 'worklet' });
     }).catch((error) => { stemDiag('mix_pitch', { state: 'scriptprocessor', error: String(error?.message || error).slice(0, 120) }); useScriptProcessor(); });
+    // First choice: Signalsmith Stretch (spectral, built for full mixes); then our own worklet shifter; then the ScriptProcessor.
+    loadStretch().then((create) => create(context, { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], channelCount: 2, channelCountMode: 'explicit' })).then((node) => {
+      input.connect(node); node.connect(wet); node.start();
+      let last = null; send = (v) => { if (v !== last) { last = v; node.schedule({ semitones: v }); } };
+      ready = true; route(); stemDiag('mix_pitch', { state: 'signalsmith' });
+    }).catch((error) => { stemDiag('mix_pitch', { state: 'own_worklet', error: String(error?.message || error).slice(0, 120) }); useOwnWorklet(); });
     setInterval(route, 150);
     return { output, route };
   }

@@ -83,6 +83,17 @@ ipcMain.on('poc:log', (event, level, name, data) => {
 });
 
 let textureCache = null;
+let stretchSrc = null;
+// Signalsmith Stretch (MIT, WASM): high-quality KEY / pitch shifting. The sandboxed preload cannot require files, so it gets the source here.
+ipcMain.handle('poc:stretch-src', (event) => {
+  if (!isTrustedYtmSender(event)) return '';
+  if (stretchSrc === null) {
+    try { stretchSrc = fs.readFileSync(path.join(__dirname, '..', 'node_modules', 'signalsmith-stretch', 'SignalsmithStretch.js'), 'utf8'); }
+    catch (error) { stretchSrc = ''; appendLog('capture_error', { state: 'stretch_src_failed', error: String(error.message).slice(0, 120) }); }
+  }
+  return stretchSrc;
+});
+
 ipcMain.handle('poc:textures', (event) => {
   if (!isTrustedYtmSender(event)) return {};
   if (!textureCache) {
