@@ -274,8 +274,9 @@ if (isAutotunePage()) {
     };
     let stemPrep = false;
     stemBtn.addEventListener('click', async () => {
-      if (stemPrep || busy || appMode !== 'listen') return;
-      if (captureActive) { stopCapture(); info.textContent = ''; return; } // pressing again returns to normal listening
+      if (stemPrep || busy) return;
+      if (appMode !== 'listen' || libPlayer.mix) { await enter('listen'); if (appMode !== 'listen' || libPlayer.mix) return; } // from karaoke / the recording mixer: switch over first
+      else if (captureActive) { stopCapture(); info.textContent = ''; return; } // pressing again returns to normal listening
       stemPrep = true;
       try {
         ensureHt(); startMusic();
@@ -293,7 +294,7 @@ if (isAutotunePage()) {
         if (captureActive) info.textContent = '';
       } catch (error) { info.textContent = 'ERROR: ' + String(error?.message || error).slice(0, 60); stemDiag('ui_error', { error: String(error?.stack || error).slice(0, 400) }); } finally { stemPrep = false; }
     });
-    startBtn.addEventListener('click', () => { if (appMode === 'karaoke' && !busy) takeToggle(info).catch((error) => { info.textContent = 'ERROR: ' + String(error?.message || error).slice(0, 60); stemDiag('ui_error', { error: String(error?.stack || error).slice(0, 400) }); }); });
+    startBtn.addEventListener('click', async () => { if (busy) return; if (appMode !== 'karaoke' || libPlayer.mix) { await enter('karaoke'); if (appMode !== 'karaoke') return; } takeToggle(info).catch((error) => { info.textContent = 'ERROR: ' + String(error?.message || error).slice(0, 60); stemDiag('ui_error', { error: String(error?.stack || error).slice(0, 400) }); }); });
     listenBtn.addEventListener('click', () => enter('listen'));
     karaokeBtn.addEventListener('click', () => enter('karaoke'));
     setInterval(() => {
