@@ -279,8 +279,8 @@ Hâlâ çözemezseniz [Issues](../../issues) sayfasına, `%APPDATA%\YTM-Audio-PO
 Gereksinimler: **Node.js 24+**, Git, Windows.
 
 ```bash
-git clone <depo-adresi>
-cd <klasör>
+git clone https://github.com/dhurakisra/YouTube-Music-Studio.git
+cd YouTube-Music-Studio
 npm install
 # yapay zekâ modellerini models/ klasörüne koyun:
 #   models/htdemucs_fp16.onnx
