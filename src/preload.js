@@ -2681,6 +2681,14 @@ if (isAutotunePage()) {
     .skin .section.output .vu:first-child { background-image:${T('sk-st-vu-l.png')}; }
     .skin .section.output .vu:last-child { background-image:${T('sk-st-vu-r.png')}; }
     .skin .section.output .vu .lbl { display:none; }
+    /* Output MASTER / THRESH: new knobs (design/ref/outknobs-ref.png); base and cap share one centre, the cap is only the pointer */
+    .skin .section.output .knob-box .knob { inset:-5.5% !important; }
+    .skin .section.output .knob::before, .skin .section.output .knob::after { background-size:100% 100% !important; transform-origin:50% 50% !important; }
+    .skin .section.output .knob.big::before { background-image:${T('sk-st-kout-master-base.png')} !important; }
+    .skin .section.output .knob.big::after { background-image:${T('sk-st-kout-master-cap.png')} !important; }
+    .skin .section.output .knob.dark::before { background-image:${T('sk-st-kout-thresh-base.png')} !important; }
+    .skin .section.output .knob.dark::after { background-image:${T('sk-st-kout-thresh-cap.png')} !important; }
+    .skin .section.output .knob::after { filter:drop-shadow(0 2px 2px #000a) !important; }
     /* new dials: pivot at the bottom centre (behind the L/R bezel); the bezel cover sprite sits above the needle */
     .skin .section.output .vu .nd { bottom:-1% !important; height:70% !important; width:.9% !important; transform-origin:50% 97% !important; z-index:1; }
     .skin .section.output .vu::after { content:''; position:absolute; inset:0; z-index:2; pointer-events:none; background:center / 100% 100% no-repeat; }
