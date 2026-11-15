@@ -557,6 +557,10 @@ function createWindow() {
           .map((part) => part.trim().replace(/nonce-[A-Za-z0-9+/_=-]+/gi, 'nonce-[REDACTED]'))
           .filter((part) => /^(?:script-src|worker-src|default-src)(?:\s|$)/i.test(part));
         appendLog('csp_policy', { directives: wanted });
+        // KEY on plain listening runs in an AudioWorklet (real-time audio thread: no clicks under page load). Worklet modules are
+        // built in the preload as blob: URLs, so only `blob:` is added to script-src; nothing else in YouTube Music's policy changes.
+        cspHeader[1] = policies.map((policy) => String(policy).replace(/(^|;)\s*script-src(?![\w-])([^;]*)/gi, (m, sep, rest) => `${sep} script-src${rest} blob:`));
+        headers[cspHeader[0]] = cspHeader[1];
       }
     }
     callback({ responseHeaders: details.responseHeaders });

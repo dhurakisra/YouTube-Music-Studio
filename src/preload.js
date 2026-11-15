@@ -3540,32 +3540,67 @@ if (isAutotunePage()) {
     masterEq.limiterOn = eqState.limiter;
   }
 
-  // Stereo KEY shifter on the whole mix for plain listening. Like the stem shifter: a 'direct' path that never touches the
-  // main-thread ScriptProcessor (KEY 0, or capture running) and a 'wet' path, crossfaded; the processor idles (copies) when unused.
+  // Stereo KEY shifter on the whole mix for plain listening. Runs in an AudioWorklet (real-time audio thread, so a busy page
+  // cannot click it; main.js adds `blob:` to the page's script-src for this). A 'direct' path (KEY 0, or capture running: the stems
+  // shift themselves) and a 'wet' path are crossfaded. If the worklet cannot load, the old ScriptProcessor shifter is the fallback.
+  const mixPitchModules = new WeakMap();
+  function loadMixPitchModule(context) {
+    if (!mixPitchModules.has(context)) {
+      const src = PairShifter.toString() + `
+class YtmPocMixPitch extends AudioWorkletProcessor {
+  constructor() { super(); this.ps = new PairShifter(); this.semis = 0; this.active = false; this.port.onmessage = (e) => { this.semis = Number(e.data) || 0; }; }
+  process(inputs, outputs) {
+    const out = outputs[0]; if (!out || !out.length) return true;
+    const inp = inputs[0] || [], n = out[0].length;
+    const iL = inp[0] || new Float32Array(n), iR = inp[1] || iL, oL = out[0], oR = out[1] || out[0];
+    if (this.semis === 0) { this.active = false; oL.set(iL); if (oR !== oL) oR.set(iR); return true; }
+    if (!this.active) { this.ps.reset(); this.active = true; }
+    this.ps.setFactor(2 ** (this.semis / 12));
+    this.ps.process(iL, iR, oL, oR, n);
+    return true;
+  }
+}
+registerProcessor('ytmpoc-mixpitch', YtmPocMixPitch);
+`;
+      const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+      mixPitchModules.set(context, context.audioWorklet.addModule(url).finally(() => URL.revokeObjectURL(url)));
+    }
+    return mixPitchModules.get(context);
+  }
   function buildMixPitch(context, input) {
     const output = fxGain(context), direct = fxGain(context), wet = fxGain(context);
-    const proc = context.createScriptProcessor(4096, 2, 2);
-    input.connect(direct); direct.connect(output);
-    input.connect(proc); proc.connect(wet); wet.connect(output);
+    input.connect(direct); direct.connect(output); wet.connect(output);
     direct.gain.value = 1; wet.gain.value = 0;
-    const ps = new PairShifter();
-    let shifted = false, active = false;
+    let shifted = false, ready = false, send = () => {};
     const route = () => {
-      const want = tuneState.semis !== 0 && !captureActive && studioOpen;
+      const want = ready && tuneState.semis !== 0 && !captureActive && studioOpen;
+      send(want ? tuneState.semis : 0);
       if (want === shifted) return;
       shifted = want;
       const t = context.currentTime;
       direct.gain.setTargetAtTime(want ? 0 : 1, t, 0.02); wet.gain.setTargetAtTime(want ? 1 : 0, t, 0.02);
     };
-    setInterval(route, 150);
-    proc.onaudioprocess = (e) => {
-      const iL = e.inputBuffer.getChannelData(0), iR = e.inputBuffer.getChannelData(e.inputBuffer.numberOfChannels > 1 ? 1 : 0);
-      const oL = e.outputBuffer.getChannelData(0), oR = e.outputBuffer.getChannelData(1);
-      if (!shifted) { active = false; oL.set(iL); oR.set(iR); return; }
-      if (!active) { ps.reset(); active = true; }
-      ps.setFactor(2 ** (tuneState.semis / 12));
-      ps.process(iL, iR, oL, oR, iL.length);
+    const useScriptProcessor = () => { // fallback only: main-thread processing, may click under load
+      const proc = context.createScriptProcessor(4096, 2, 2);
+      input.connect(proc); proc.connect(wet);
+      const ps = new PairShifter(); let semis = 0, active = false;
+      send = (v) => { semis = v; };
+      proc.onaudioprocess = (e) => {
+        const iL = e.inputBuffer.getChannelData(0), iR = e.inputBuffer.getChannelData(e.inputBuffer.numberOfChannels > 1 ? 1 : 0);
+        const oL = e.outputBuffer.getChannelData(0), oR = e.outputBuffer.getChannelData(1);
+        if (!semis) { active = false; oL.set(iL); oR.set(iR); return; }
+        if (!active) { ps.reset(); active = true; }
+        ps.setFactor(2 ** (semis / 12)); ps.process(iL, iR, oL, oR, iL.length);
+      };
+      ready = true; route();
     };
+    loadMixPitchModule(context).then(() => {
+      const node = new AudioWorkletNode(context, 'ytmpoc-mixpitch', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], channelCount: 2, channelCountMode: 'explicit' });
+      input.connect(node); node.connect(wet);
+      let last = null; send = (v) => { if (v !== last) { last = v; node.port.postMessage(v); } };
+      ready = true; route(); stemDiag('mix_pitch', { state: 'worklet' });
+    }).catch((error) => { stemDiag('mix_pitch', { state: 'scriptprocessor', error: String(error?.message || error).slice(0, 120) }); useScriptProcessor(); });
+    setInterval(route, 150);
     return { output, route };
   }
 
