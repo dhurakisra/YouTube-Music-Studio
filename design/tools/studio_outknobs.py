@@ -1,6 +1,6 @@
 # Output MASTER / THRESH knobs from design/ref/outknobs-ref.png.
-# base = the whole knob with its pointer painted out (static); cap = the pointer alone, rotated to point straight up, on a
-# canvas the same size as the base, so both share one exact centre (fitted to the dark face circle) and the cap turns in place.
+# cap = the whole round knob with its pointer, rotated so the pointer points up (turns as one piece); base = the two side studs
+# (static). Same canvas size, one exact centre (fitted to the dark face circle), so the knob turns in place.
 # usage: python -I design/tools/studio_outknobs.py design/ref/outknobs-ref.png design/tex
 import sys, math
 import numpy as np
@@ -32,17 +32,19 @@ def knob(name, cx, cy, R, rdisc, studs, p0, p1, pw):
     d2.pieslice([R - rin, R - rin, R + rin, R + rin], a0 - 22, a0 + 26, fill=255)
     big = em.filter(ImageFilter.GaussianBlur(3))
     base = Image.composite(fill, crop, big)
-    am = Image.new('L', (S, S)); d = ImageDraw.Draw(am)
-    d.ellipse([R - rdisc, R - rdisc, R + rdisc, R + rdisc], fill=255)
+    # cap = the whole round knob WITH its pointer (it turns as one piece), rotated so the pointer points up
+    ang = math.degrees(math.atan2(q1[0] - R, -(q1[1] - R)))
+    dm = Image.new('L', (S, S)); ImageDraw.Draw(dm).ellipse([R - rdisc, R - rdisc, R + rdisc, R + rdisc], fill=255)
+    dm = dm.filter(ImageFilter.GaussianBlur(2))
+    cap = crop.convert('RGBA'); cap.putalpha(dm)
+    cap = cap.rotate(ang, resample=Image.BICUBIC, center=c)   # PIL: positive = counter-clockwise
+    cap.save(f'{out}/sk-st-{name}-cap.png', optimize=True)
+    # base = only the two side studs (they stay put)
+    sm = Image.new('L', (S, S)); d = ImageDraw.Draw(sm)
     for (sx, sy, sr) in studs:
         sx, sy = sx - cx + R, sy - cy + R; d.ellipse([sx - sr, sy - sr, sx + sr, sy + sr], fill=255)
-    am = am.filter(ImageFilter.GaussianBlur(2))
-    b = base.convert('RGBA'); b.putalpha(am); b.save(f'{out}/sk-st-{name}-base.png', optimize=True)
-    # cap: the pointer pixels, rotated so it points up (angle measured clockwise from 12 o'clock)
-    ang = math.degrees(math.atan2(q1[0] - R, -(q1[1] - R)))
-    cap = crop.convert('RGBA'); cap.putalpha(pm)
-    cap = cap.rotate(ang, resample=Image.BICUBIC, center=c)   # PIL rotates counter-clockwise for positive angles
-    cap.save(f'{out}/sk-st-{name}-cap.png', optimize=True)
+    sm = sm.filter(ImageFilter.GaussianBlur(1.5))
+    b = crop.convert('RGBA'); b.putalpha(sm); b.save(f'{out}/sk-st-{name}-base.png', optimize=True)
     print(name, 'pointer angle', round(ang, 1))
 knob('kout-master', 523.5, 360.0, 372, 338, [(160, 381, 24), (873, 381, 24)], (585, 333), (722, 257), 24)
 knob('kout-thresh', 1327.4, 385.2, 192, 172, [(1143, 400, 16), (1503, 400, 16)], (1355, 408), (1420, 463), 14)

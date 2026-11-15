@@ -2689,6 +2689,10 @@ if (isAutotunePage()) {
     .skin .section.output .knob.dark::before { background-image:${T('sk-st-kout-thresh-base.png')} !important; }
     .skin .section.output .knob.dark::after { background-image:${T('sk-st-kout-thresh-cap.png')} !important; }
     .skin .section.output .knob::after { filter:drop-shadow(0 2px 2px #000a) !important; }
+    .skin .section.output .knob-box::after { position:absolute; left:-60%; right:-60%; top:104%; text-align:center; color:#e9d6a8; text-shadow:0 1px 2px #000, 0 0 4px #0008;
+      font:600 calc(34 / 4344 * 100cqw)/1 'Barlow Condensed','Oswald',sans-serif; letter-spacing:.06em; pointer-events:none; }
+    .skin .section.output .knob-box:has(.knob.big)::after { content:'MASTER'; }
+    .skin .section.output .knob-box:has(.knob.dark)::after { content:'THRESH'; font-size:calc(28 / 4344 * 100cqw); }
     /* new dials: pivot at the bottom centre (behind the L/R bezel); the bezel cover sprite sits above the needle */
     .skin .section.output .vu .nd { bottom:-1% !important; height:70% !important; width:.9% !important; transform-origin:50% 97% !important; z-index:1; }
     .skin .section.output .vu::after { content:''; position:absolute; inset:0; z-index:2; pointer-events:none; background:center / 100% 100% no-repeat; }
@@ -3228,7 +3232,7 @@ if (isAutotunePage()) {
       const enhBtns=qa(enhSection,'.switches > .btn'); stPlace(enhBtns[0],2778,333,3262,393);
       enhBtns.slice(1).forEach((el,i)=>stPlace(el,[[2780,420,2930,480],[2950,420,3097,480],[3117,420,3262,480]][i][0],420,[[2780,420,2930,480],[2950,420,3097,480],[3117,420,3262,480]][i][2],480));
       const vus=q(outSection,'.vus'); qa(vus,'.vu').forEach((el,i)=>stPlace(el,...(i===0?[3368,172,3648,365]:[3675,172,3952,365])));
-      const outKnobs=qa(outSection,'.knob-box'); outKnobs.forEach((el,i)=>stPlace(el,...(i===0?[3443,375,3651,583]:[3737,427,3829,519])));
+      const outKnobs=qa(outSection,'.knob-box'); outKnobs.forEach((el,i)=>stPlace(el,...(i===0?[3556,362,3764,570]:[3842,566,3934,658])));
       stPlace(q(outSection,'.limiter'),3553,655,3743,715);
       const chainRow=q(chainSection,'.st-chainrow'); qa(chainRow,'.st-mod').forEach((el,i)=>{el.style.flex='0 1 calc('+[450,450,175,175,270,175,175,175,270,270,260,270,270,260][i]+' / 4344 * 100cqw)';});
       const chainbar=q(chainSection,'.st-chainbar'); stPlace(chainbar,973,845,2320,902); chainbar.classList.add('st-placed');
