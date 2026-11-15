@@ -300,7 +300,7 @@ if (isAutotunePage()) {
     setInterval(() => {
       const inMix = !!libPlayer.mix;
       const l = appMode === 'listen' && !inMix, k = appMode === 'karaoke' && !inMix;
-      listenBtn.classList.toggle('on', l); listenBtn.setAttribute('aria-pressed', String(l));
+      const plain = l && !captureActive; listenBtn.classList.toggle('on', plain); listenBtn.setAttribute('aria-pressed', String(plain)); // LISTEN and LISTEN WITH STEMS light up one at a time
       karaokeBtn.classList.toggle('on', k); karaokeBtn.setAttribute('aria-pressed', String(k));
       const stemsOn = l && captureActive; stemBtn.classList.toggle('on', stemsOn); stemBtn.setAttribute('aria-pressed', String(stemsOn));
       const running = rec.active || takePrep;
@@ -2749,7 +2749,8 @@ if (isAutotunePage()) {
     .skin .section.session > .st-stems.on { background-image:${T('sk-st-ses-stems-on.png')} !important; }
     .skin .section.session > .st-karaoke { background-image:${T('sk-st-ses-karaoke-off.png')} !important; }
     .skin .section.session > .st-karaoke.on { background-image:${T('sk-st-ses-karaoke-on.png')} !important; }
-    .skin .section.session > .startk { background-image:${T('sk-st-ses-start-off.png')} !important; padding-left:12% !important;
+    .skin .section.session > .startk { background-image:${T('sk-st-ses-start-off.png')} !important; box-sizing:border-box !important; padding:0 4% 0 14% !important;
+      justify-content:center !important; white-space:nowrap; overflow:hidden;
       color:#2a1a0c !important; -webkit-text-fill-color:#2a1a0c !important; text-shadow:0 1px 1px #fff4 !important; }
     .skin .section.session > .startk.on { background-image:${T('sk-st-ses-start-on.png')} !important;
       color:#ffd98a !important; -webkit-text-fill-color:#ffd98a !important; text-shadow:0 0 6px #ffb347, 0 0 2px #ff9a2a !important; }
