@@ -537,9 +537,9 @@ if (isAutotunePage()) {
     const fmtFreq = (f) => (f >= 1000 ? (f / 1000).toFixed(f >= 10000 ? 0 : 1) + ' kHz' : Math.round(f) + ' Hz');
 
     const eqOn = h('button', 'btn solo', 'EQ ON', { type: 'button', 'aria-label': 'Equalizer enabled' });
-    const quick = [['FLAT', 'Flat'], ['BASS BOOST', 'Bass boost'], ['VOCAL', 'Vocal boost']].map(([text, preset]) => h('button', 'btn', text, { type: 'button', 'data-preset': preset }));
+    const modeBtns = [['PARAMETRIC', 'param'], ['GRAPHIC EQ', 'graphic']].map(([text, mode]) => h('button', 'btn', text, { type: 'button', 'data-mode': mode }));
     const row1 = h('div', 'switches fill');
-    row1.append(eqOn, ...quick);
+    row1.append(eqOn, ...modeBtns);
     const presetSelect = h('select', 'sel', null, { 'aria-label': 'Equalizer preset' });
     const nameInput = h('input', 'txt', null, { type: 'text', maxlength: '40', placeholder: 'Preset name', 'aria-label': 'Name for saving the current equalizer as a preset' });
     for (const type of ['keydown', 'keyup', 'keypress']) nameInput.addEventListener(type, (e) => e.stopPropagation()); // typing a name must not trigger YouTube Music hotkeys
@@ -551,12 +551,22 @@ if (isAutotunePage()) {
     const qSlider = h('input', 'qrange', null, { type: 'range', min: '0.1', max: '10', step: '0.05', 'aria-label': 'Selected band Q' });
     const info = h('div', 'eqinfo-row');
     info.append(infoText, h('span', null, 'Q'), qSlider);
-    sec.append(canvas, row1, row2, info);
+    const geqHost = h('div', 'eq-geq'), geqPreHost = h('div', 'eq-geqpre');
+    studio.eqGeqHost = geqHost; studio.eqGeqPreHost = geqPreHost;
+    studio.geqMount?.();
+    sec.append(canvas, geqHost, row1, row2, geqPreHost, info, h('i', 'eq-tube l'), h('i', 'eq-tube r'));
     ctrlReset(qSlider, () => EQ_DEFAULT_BANDS[selected].q);
 
     let selected = 2, dragging = -1, spectrum = null;
     const userPresets = loadUserPresets();
-    const syncOn = () => { eqOn.classList.toggle('on', eqState.enabled); eqOn.setAttribute('aria-pressed', String(eqState.enabled)); };
+    const isGeq = () => eqState.mode === 'graphic';
+    const syncOn = () => {
+      const on = isGeq() ? geqState.on : eqState.enabled;
+      eqOn.classList.toggle('on', on); eqOn.setAttribute('aria-pressed', String(on));
+      sec.classList.toggle('mode-graphic', isGeq()); sec.classList.toggle('eq-off', !on);
+      for (const b of modeBtns) { const a = on && b.getAttribute('data-mode') === eqState.mode; b.classList.toggle('on', a); b.setAttribute('aria-pressed', String(a)); }
+    };
+    studio.eqModeSync = syncOn;
     const updateInfo = () => {
       const b = eqState.bands[selected];
       infoText.textContent = `BAND ${selected + 1} (${b.type === 'peaking' ? 'BELL' : b.type === 'lowshelf' ? 'LOW SHELF' : 'HIGH SHELF'}): ${fmtFreq(b.freq)}, ${b.gain > 0 ? '+' : ''}${b.gain.toFixed(1)} dB`;
@@ -584,9 +594,13 @@ if (isAutotunePage()) {
       commit(); refreshPresetList(v);
     };
     refreshPresetList(''); syncOn(); updateInfo();
-    for (const b of quick) b.addEventListener('click', () => applyPreset('b:' + b.getAttribute('data-preset')));
+    for (const b of modeBtns) b.addEventListener('click', () => {
+      eqState.mode = b.getAttribute('data-mode');
+      if (isGeq()) geqState.on = true; else eqState.enabled = true; // choosing a mode switches it on
+      syncOn(); applyEq(); applyGeq(); saveEqState(); saveGeq(); ensurePassiveGraph(); studio.geqSync?.();
+    });
     presetSelect.addEventListener('change', () => applyPreset(presetSelect.value));
-    eqOn.addEventListener('click', () => { eqState.enabled = !eqState.enabled; syncOn(); applyEq(); saveEqState(); });
+    eqOn.addEventListener('click', () => { if (isGeq()) { geqState.on = !geqState.on; saveGeq(); } else { eqState.enabled = !eqState.enabled; saveEqState(); } syncOn(); applyEq(); applyGeq(); studio.geqSync?.(); ensurePassiveGraph(); });
     saveBtn.addEventListener('click', () => {
       const name = nameInput.value.trim().slice(0, 40);
       if (!name || name in EQ_BUILTIN_PRESETS) { nameInput.focus(); return; } // built-in names are reserved
@@ -700,7 +714,7 @@ if (isAutotunePage()) {
     const led = h('span', 'led');
     lim.append(led, document.createTextNode('LIMITER'));
     lim.title = 'Peak limiter after the EQ and master gain. Off = no processing.';
-    const syncLim = () => { lim.classList.toggle('on', eqState.limiter); led.classList.toggle('on', eqState.limiter); lim.setAttribute('aria-pressed', String(eqState.limiter)); };
+    const syncLim = () => { lim.classList.toggle('on', eqState.limiter); led.classList.toggle('on', eqState.limiter); lim.setAttribute('aria-pressed', String(eqState.limiter)); knobs.classList.toggle('lim-off', !eqState.limiter); };
     lim.addEventListener('click', () => { eqState.limiter = !eqState.limiter; routeLimiter(); saveEqState(); syncLim(); });
     syncLim();
     const sw = h('div', 'switches'); sw.appendChild(lim);
@@ -962,6 +976,9 @@ if (isAutotunePage()) {
     }
     syncPresets();
     sec.append(row, sw);
+    const gearSync = () => sec.classList.toggle('enh-on', onBtn.classList.contains('on'));
+    new MutationObserver(gearSync).observe(onBtn, { attributes: true, attributeFilter: ['class'] }); gearSync();
+    for (const n of ['big', 'r', 'l']) sec.appendChild(h('div', 'enh-gear ' + n, null)).appendChild(h('i'));
   }
 
   // ---- Recorder (master output -> MP3 in the recordings library) and the library player ----
@@ -1821,11 +1838,12 @@ if (isAutotunePage()) {
     const set = (i, v) => { geqState.gains[i] = Math.max(-12, Math.min(12, Math.round(v))); geqState.preset = ''; changed(); };
     const buildBands = (parent, capH, cls) => {
       const v = { caps: [], fills: [], trks: [], capH };
+      if (capH) parent.style.setProperty('--caph', capH + 'px');
       GEQ_FREQS.forEach((fq, i) => {
         const col = h('div', 'geqcol ' + cls), tr = h('div', 'geqtrk'), fl = h('i', 'geqfill'), cp = h('i', 'geqcap');
         tr.append(fl, cp); col.append(h('span', 'geqlbl', LBL[i]), tr); parent.appendChild(col);
         v.caps.push(cp); v.fills.push(fl); v.trks.push(tr);
-        const fromY = (y) => { const r = tr.getBoundingClientRect(); set(i, (1 - (y - r.top - capH / 2) / Math.max(1, r.height - capH)) * 24 - 12); };
+        const fromY = (y) => { const r = tr.getBoundingClientRect(), ch = cp.getBoundingClientRect().height || capH; set(i, (1 - (y - r.top - ch / 2) / Math.max(1, r.height - ch)) * 24 - 12); };
         tr.addEventListener('pointerdown', (e) => {
           e.preventDefault(); try { tr.setPointerCapture(e.pointerId); } catch {}
           fromY(e.clientY);
@@ -1868,23 +1886,29 @@ if (isAutotunePage()) {
     reset.addEventListener('click', () => { geqState.gains = GEQ_PRESETS.Flat.slice(); geqState.preset = 'Flat'; changed(); });
     const foot = h('div', 'geqfoot'); foot.append(buildPower('big'), buildPreset(), reset);
     pan.append(h('i', 'geqtitle'), h('i', 'geqlamp l'), h('i', 'geqlamp r'), scr, foot, h('div', 'geqlock', 'STUDIO EQ ACTIVE'));
+    let mounted = false;
+    studio.geqMount = () => { if (mounted || !studio.eqGeqHost) return; mounted = true; const H = studio.eqGeqHost; for (const side of ['l', 'r']) { const sc = h('div', 'geqscale ' + side); for (const t of ['+12', '+6', '0', '−6', '−12']) sc.appendChild(h('span', null, t)); H.appendChild(sc); }
+      const bb = h('div', 'geqbands big'); H.append(h('div', 'geqgrid'), bb, h('span', 'geqhz', 'Hz')); buildBands(bb, 0, 'md'); studio.eqGeqPreHost.append(buildPreset()); draw(); };
     ui.append(box, pan);
     const setOpen = (o) => { pan.classList.toggle('open', o); tab.textContent = o ? 'EQ \u25B2' : 'EQ \u25BC'; tab.setAttribute('aria-label', o ? 'Close the graphic equalizer panel' : 'Open the graphic equalizer panel'); };
     tab.addEventListener('click', () => setOpen(!pan.classList.contains('open')));
+    studio.geqOpen = setOpen;
     // the panel stays open until the EQ button is pressed again (no outside-click / Esc close)
     const draw = () => {
-      for (const el of [box, pan]) { el.classList.toggle('off', !geqState.on); el.classList.toggle('locked', studioActive()); }
+      for (const el of [box, pan]) { el.classList.toggle('off', !geqState.on); el.classList.toggle('locked', paramLive()); }
+      studio.eqModeSync?.();
       for (const pw of pwEls) pw.setAttribute('aria-pressed', String(geqState.on));
       for (const pn of nameEls) pn.textContent = geqState.preset || 'Custom';
       for (const v of views) geqState.gains.forEach((g, i) => {
         const p = (g + 12) / 24;
-        v.caps[i].style.bottom = 'calc(' + p + ' * (100% - ' + v.capH + 'px))';
-        v.fills[i].style.height = 'calc(' + p + ' * (100% - ' + v.capH + 'px) + ' + v.capH / 2 + 'px)';
+        v.caps[i].style.bottom = 'calc(' + p + ' * (100% - var(--caph)))';
+        v.fills[i].style.height = 'calc(' + p + ' * (100% - var(--caph)) + var(--caph) / 2)';
         v.trks[i].title = LBL[i] + ' Hz: ' + (g > 0 ? '+' : '') + g + ' dB';
       });
     };
     changed = () => { applyGeq(); saveGeq(); draw(); ensurePassiveGraph(); };
     studio.geqSync = draw;
+    studio.geqMount();
     const place = () => {
       const sb = document.querySelector('ytmusic-search-box');
       const vu = box.parentNode && box.parentNode.querySelector('.topvu');
@@ -2639,9 +2663,9 @@ if (isAutotunePage()) {
     .skin .section.eq .switches { position:absolute; inset:0; margin:0; display:block; }
     .skin .section.eq .btn { display:flex; align-items:center; justify-content:center; border:calc(30 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-cream.png')} 30 fill / calc(30 / 4344 * 100cqw) stretch; background:none; color:#422c16; font:600 .9cqw 'Barlow Condensed',sans-serif; }
     .skin .section.eq .btn.on { border-image:${T('sk-st-amber.png')} 28 fill / calc(28 / 4344 * 100cqw) stretch; }
-    .skin .eqrow .sel, .skin .eqrow .txt { border:calc(20 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-select.png')} 20 62 fill / calc(20 / 4344 * 100cqw) calc(38 / 4344 * 100cqw) stretch; border-radius:0; background:none; color:#ead9b2; font:600 .7cqw 'Barlow Condensed',sans-serif; padding:0 1.2cqw; }
+    .skin .eqrow .sel, .skin .eqrow .txt { border:calc(20 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-select.png')} 20 62 fill / calc(20 / 4344 * 100cqw) calc(62 / 4344 * 100cqw) stretch; border-radius:0; background:none; color:#ead9b2; font:600 .7cqw 'Barlow Condensed',sans-serif; padding:0 .5cqw; }
     .skin .eqrow .txt { border-image:${T('sk-st-input.png')} 18 fill / calc(18 / 4344 * 100cqw) stretch; }
-    .skin .sel { border:calc(20 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-select.png')} 20 62 fill / calc(20 / 4344 * 100cqw) calc(38 / 4344 * 100cqw) stretch; border-radius:0; background:none; color:#ead9b2; font:600 .7cqw 'Barlow Condensed',sans-serif; }
+    .skin .sel { border:calc(20 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-select.png')} 20 62 fill / calc(20 / 4344 * 100cqw) calc(62 / 4344 * 100cqw) stretch; border-radius:0; background:none; color:#ead9b2; font:600 .7cqw 'Barlow Condensed',sans-serif; }
     .skin .sel.st-select-wrap { position:relative; display:flex; align-items:center; overflow:hidden; padding:0 calc(62 / 4344 * 100cqw) 0 calc(20 / 4344 * 100cqw); appearance:none; -webkit-appearance:none; white-space:nowrap; line-height:1; border:0 !important; border-image:none !important; background:none; }
     .skin .st-select-wrap::before { content:''; position:absolute; inset:0; z-index:0; pointer-events:none; border:calc(20 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-select.png')} 20 62 fill / calc(20 / 4344 * 100cqw) calc(62 / 4344 * 100cqw) stretch; }
     .skin .st-select-label { position:absolute; z-index:3; left:calc(20 / 4344 * 100cqw); right:calc(62 / 4344 * 100cqw); top:0; height:100%; display:flex; align-items:center; overflow:hidden; white-space:nowrap; text-overflow:clip; color:#ead9b2; font:inherit; line-height:1; background:#15100b; pointer-events:none; }
@@ -2690,7 +2714,36 @@ if (isAutotunePage()) {
     .skin .section.output .knob.big::after { background-image:${T('sk-st-kout-master-cap.png')} !important; }
     .skin .section.output .knob.dark::before { background-image:${T('sk-st-kout-thresh-base.png')} !important; }
     .skin .section.output .knob.dark::after { background-image:${T('sk-st-kout-thresh-cap.png')} !important; }
+    .eq-geq, .eq-geqpre { display:none; }
+    .skin .section.eq.mode-graphic .eq-screen, .skin .section.eq.mode-graphic .eqrow, .skin .section.eq.mode-graphic .eqinfo-row { display:none !important; }
+    .skin .section.eq.mode-graphic .eq-geq { display:block; position:absolute; box-sizing:border-box; --u:calc(100cqw / 4344); --caph:calc(52 * var(--u)); border-radius:calc(14 * var(--u)); background:linear-gradient(#ffffff06,#00000040), #0c0805; box-shadow:inset 0 0 14px #000, 0 0 0 1px #6a4a26; }
+    .skin .section.eq.mode-graphic .eq-geqpre { display:flex; position:absolute; align-items:center; justify-content:center; }
+    /* Enhancer wheels: rotating sprites cut from the backdrop (design/tools/studio_gears.py); spin only while the Enhancer is on */
+    .enh-gear { position:absolute; pointer-events:none; -webkit-mask:center / 100% 100% no-repeat; }
+    .enh-gear i { position:absolute; inset:0; background:center / 100% 100% no-repeat; animation:enh-spin 16s linear infinite; animation-play-state:paused; }
+    .section.enh.enh-on .enh-gear i { animation-play-state:running; }
+    .enh-gear.big { -webkit-mask-image:${T('sk-st-gear-big-mask.png')}; } .enh-gear.big i { background-image:${T('sk-st-gear-big.png')}; }
+    .enh-gear.r { -webkit-mask-image:${T('sk-st-gear-r-mask.png')}; } .enh-gear.r i { background-image:${T('sk-st-gear-r.png')}; animation-duration:9s; animation-direction:reverse; }
+    .enh-gear.l { -webkit-mask-image:${T('sk-st-gear-l-mask.png')}; } .enh-gear.l i { background-image:${T('sk-st-gear-l.png')}; animation-duration:11s; animation-direction:reverse; }
+    @keyframes enh-spin { to { transform:rotate(360deg); } }
+    .eq-tube { position:absolute; pointer-events:none; border-radius:30%; z-index:3; transition:backdrop-filter .3s, background .3s; }
+    .section.eq.eq-off .eq-tube { backdrop-filter:brightness(.28) saturate(.25); -webkit-backdrop-filter:brightness(.28) saturate(.25); background:#0a060255; }
+    .skin .section.eq.eq-off .eq-geq .geqfill { opacity:.25; box-shadow:none; }
+    .skin .section.eq.eq-off .eq-geq .geqcap { filter:brightness(.6) saturate(.5); }
+    .eq-geq .geqgrid { left:calc(110 * var(--u)); right:calc(110 * var(--u)); top:calc(60 * var(--u)); bottom:calc(14 * var(--u)); }
+    .eq-geq .geqscale { top:calc(60 * var(--u)); bottom:calc(14 * var(--u)); width:calc(100 * var(--u)); font-size:calc(30 * var(--u)); }
+    .eq-geq .geqscale.l { left:calc(6 * var(--u)); } .eq-geq .geqscale.r { right:calc(6 * var(--u)); width:calc(78 * var(--u)); padding-left:calc(14 * var(--u)); box-sizing:content-box; text-align:left; }
+    .eq-geq .geqhz { font-size:calc(30 * var(--u)); right:calc(6 * var(--u)); width:calc(78 * var(--u)); padding-left:calc(14 * var(--u)); box-sizing:content-box; text-align:left; top:calc(8 * var(--u)); }
+    .eq-geq .geqbands.big { left:calc(110 * var(--u)); right:calc(110 * var(--u)); top:calc(6 * var(--u)); bottom:calc(8 * var(--u)); }
+    .geqcol.md { width:calc(84 * var(--u)); } .geqcol.md .geqlbl { font-size:calc(34 * var(--u)); line-height:calc(44 * var(--u)); }
+    .geqcol.md .geqtrk { width:calc(84 * var(--u)); margin-top:calc(8 * var(--u)); }
+    .geqcol.md .geqtrk::before { width:calc(24 * var(--u)); margin-left:calc(-12 * var(--u)); border-radius:calc(12 * var(--u)); box-shadow:inset 0 2px 4px #000, 0 0 0 1px #8a6030, 0 0 0 3px #140c06; }
+    .geqcol.md .geqfill { width:calc(10 * var(--u)); margin-left:calc(-5 * var(--u)); box-shadow:0 0 8px #ff8a1f; }
+    .geqcol.md .geqcap { width:calc(80 * var(--u)); height:var(--caph); margin-left:calc(-40 * var(--u)); border-radius:calc(8 * var(--u)); box-shadow:0 3px 5px #000d; }
     .skin .section.output .knob::after { filter:drop-shadow(0 2px 2px #000a) !important; }
+    /* THRESH follows the LIMITER: limiter off = dimmed, unlit knob */
+    .skin .section.output .knob-box:has(.knob.dark) { transition:filter .25s; }
+    .skin .section.output .row.lim-off .knob-box:has(.knob.dark) { filter:brightness(.55) saturate(.8); }
     .skin .section.output .knob-box::after { position:absolute; left:-60%; right:-60%; top:104%; text-align:center; color:#e9d6a8; text-shadow:0 1px 2px #000, 0 0 4px #0008;
       font:600 calc(34 / 4344 * 100cqw)/1 'Barlow Condensed','Oswald',sans-serif; letter-spacing:.06em; pointer-events:none; }
     .skin .section.output .knob-box:has(.knob.big)::after { content:'MASTER'; }
@@ -2838,6 +2891,15 @@ if (isAutotunePage()) {
       line-height:1; font-size:.52cqw;
     }
     .skin .eqrow .txt, .skin .txt { box-sizing:border-box; min-width:0; padding:0 calc(20 / 4344 * 100cqw); line-height:1; font-size:.43cqw; }
+    .skin .eqrow .sel { padding:0 calc(8 / 4344 * 100cqw) 0 calc(12 / 4344 * 100cqw); }
+    .skin .eqrow .st-select-label { background:transparent; }
+    /* EQ preset picker: a flat dropdown field (no 3D plate, no separate text layer) */
+    .skin .eqrow .st-select-wrap { background:#120d08; border-radius:calc(14 / 4344 * 100cqw); box-shadow:inset 0 0 0 1px #6a4a26, inset 0 2px 6px #000; padding:0 calc(60 / 4344 * 100cqw) 0 calc(24 / 4344 * 100cqw); }
+    .skin .eqrow .st-select-wrap::before { display:none; }
+    .skin .eqrow .st-select-wrap::after { content:''; position:absolute; right:calc(26 / 4344 * 100cqw); top:50%; width:calc(14 / 4344 * 100cqw); height:calc(14 / 4344 * 100cqw); margin-top:calc(-11 / 4344 * 100cqw); border:solid #e9d6a8; border-width:0 calc(4 / 4344 * 100cqw) calc(4 / 4344 * 100cqw) 0; transform:rotate(45deg); z-index:1; pointer-events:none; }
+    .skin .eqrow .txt { border:0 !important; border-image:none !important; background:#120d08 !important; border-radius:calc(14 / 4344 * 100cqw); box-shadow:inset 0 0 0 1px #6a4a26, inset 0 2px 6px #000; padding:0 calc(24 / 4344 * 100cqw); outline:none; }
+    .skin .eqrow .txt:focus { box-shadow:inset 0 0 0 1px #c8954a, inset 0 2px 6px #000; }
+    .skin .eqrow .st-select-label { left:calc(24 / 4344 * 100cqw); right:calc(60 / 4344 * 100cqw); }
     .skin .section.enh .knob-box { font-size:0; }
     /* preset buttons rebuild the Enhancer knobs: place them by position, not once by script */
     .skin .section.enh .fxknobs > .knob-box:nth-child(1) { position:absolute; left:64.1344%; top:11.3260%; width:2.1179%; height:6.3536%; }
@@ -3224,18 +3286,19 @@ if (isAutotunePage()) {
       q(mixer,'.micfx')?.classList.add('st-micfx');
       // Mix export and mic shift remain inside the mixer bay in mixview.
       stPlace(exp,1080,718,1235,765); stPlace(off,905,710,1068,765);
-      const eq=q(eqSection,'.eq-screen'); stPlace(eq,1574,178,2598,478);
+      const eq=q(eqSection,'.eq-screen'); stPlace(eq,1574,178,2598,478); stPlace(q(eqSection,'.eq-geq'),1574,178,2598,478); stPlace(q(eqSection,'.eq-geqpre'),1572,592,2598,650); stPlace(q(eqSection,'.eq-tube.l'),1462,332,1526,490); stPlace(q(eqSection,'.eq-tube.r'),2638,332,2700,490);
       const eqRow=qa(eqSection,'.switches');
-      const eqBtns=qa(eqRow[0],'.btn'); [[1572,1806],[1833,2063],[2092,2325],[2355,2590]].forEach(([x0,x1],i)=>stPlace(eqBtns[i],x0,506,x1,566));
+      const eqBtns=qa(eqRow[0],'.btn'); [[1572,1900],[1935,2255],[2290,2598]].forEach(([x0,x1],i)=>stPlace(eqBtns[i],x0,506,x1,566));
       const er=qa(eqSection,'.eqrow > *'); [[1572,1935],[1962,2355],[2380,2490],[2510,2598]].forEach(([x0,x1],i)=>stPlace(er[i],x0,592,x1,650));
       const info=q(eqSection,'.eqinfo-row'); stPlace(info,1580,668,2005,708); const qlabel=info.children[1], qr=q(info,'.qrange'); if(qlabel){qlabel.classList.add('st-placed'); qlabel.style.left=((2232-1580)/(2005-1580)*100)+'%'; qlabel.style.top='0'; qlabel.style.width='11%'; qlabel.style.height='100%';} if(qr){qr.classList.add('st-placed'); qr.style.left=((2280-1580)/(2005-1580)*100)+'%'; qr.style.top='0'; qr.style.width=((2580-2280)/(2005-1580)*100)+'%'; qr.style.height='100%';}
       const enhRow=q(enhSection,'.fxknobs'); const enhKnobs=qa(enhRow,'.knob-box');
       [[2786,164,2878,256],[2915,164,3007,256],[3042,164,3134,256],[3167,164,3259,256]].forEach(([x0,y0,x1,y1],i)=>stPlace(enhKnobs[i],x0,y0,x1,y1));
       q(enhSection,'.switches')?.classList.add('st-enh-switches');
+      stPlace(q(enhSection,'.enh-gear.big'),2889,527,3149,787); stPlace(q(enhSection,'.enh-gear.r'),3080,578,3218,716); stPlace(q(enhSection,'.enh-gear.l'),2816,579,2966,729);
       const enhBtns=qa(enhSection,'.switches > .btn'); stPlace(enhBtns[0],2778,333,3262,393);
       enhBtns.slice(1).forEach((el,i)=>stPlace(el,[[2780,420,2930,480],[2950,420,3097,480],[3117,420,3262,480]][i][0],420,[[2780,420,2930,480],[2950,420,3097,480],[3117,420,3262,480]][i][2],480));
       const vus=q(outSection,'.vus'); qa(vus,'.vu').forEach((el,i)=>stPlace(el,...(i===0?[3368,172,3648,365]:[3675,172,3952,365])));
-      const outKnobs=qa(outSection,'.knob-box'); outKnobs.forEach((el,i)=>stPlace(el,...(i===0?[3556,404,3764,612]:[3842,566,3934,658])));
+      const outKnobs=qa(outSection,'.knob-box'); outKnobs.forEach((el,i)=>stPlace(el,...(i===0?[3556,404,3764,612]:[3803,471,3895,563])));
       stPlace(q(outSection,'.limiter'),3580,688,3740,738); // centred in the module (x 3660), lower, smaller
       const chainRow=q(chainSection,'.st-chainrow'); qa(chainRow,'.st-mod').forEach((el,i)=>{el.style.flex='0 1 calc('+[450,450,175,175,270,175,175,175,270,270,260,270,270,260][i]+' / 4344 * 100cqw)';});
       const chainbar=q(chainSection,'.st-chainbar'); stPlace(chainbar,973,845,2320,902); chainbar.classList.add('st-placed');
@@ -3392,11 +3455,11 @@ if (isAutotunePage()) {
     { type: 'highshelf', freq: 12000, gain: 0, q: 0.707 },
   ];
   const eqState = (() => {
-    const fresh = { enabled: true, limiter: false, master: 0.8, thresh: 5 / 6, bands: EQ_DEFAULT_BANDS.map((b) => ({ ...b })) };
+    const fresh = { enabled: true, mode: 'param', limiter: false, master: 0.8, thresh: 5 / 6, bands: EQ_DEFAULT_BANDS.map((b) => ({ ...b })) };
     try {
       const saved = JSON.parse(localStorage.getItem(EQ_STORE_KEY) || 'null');
       if (saved && Array.isArray(saved.bands) && saved.bands.length === fresh.bands.length) {
-        fresh.enabled = saved.enabled !== false;
+        fresh.enabled = saved.enabled !== false; fresh.mode = saved.mode === 'graphic' ? 'graphic' : 'param';
         fresh.limiter = saved.limiter === true; // opt-in only, never automatic
         if (Number.isFinite(saved.master)) fresh.master = Math.min(1, Math.max(0, saved.master));
         if (Number.isFinite(saved.thresh)) fresh.thresh = Math.min(1, Math.max(0, saved.thresh));
@@ -3458,7 +3521,8 @@ if (isAutotunePage()) {
     return fresh;
   })();
   function saveGeq() { try { localStorage.setItem(GEQ_KEY, JSON.stringify(geqState)); } catch {} }
-  function geqLive() { return geqState.on && !studioActive(); }
+  const paramLive = () => studioActive() && eqState.mode === 'param';
+  function geqLive() { return geqState.on && !paramLive(); }
   function applyGeq() {
     if (!masterEq || !masterEq.geq) return;
     const t = masterEq.context.currentTime;
@@ -3495,7 +3559,7 @@ if (isAutotunePage()) {
       const f = masterEq.filters[i];
       f.frequency.setTargetAtTime(b.freq, t, 0.01);
       f.Q.setTargetAtTime(b.q, t, 0.01);
-      f.gain.setTargetAtTime(eqState.enabled && studioActive() ? b.gain : 0, t, 0.01); // disabled (or plain listening: graphic EQ's turn) = 0 dB on every band
+      f.gain.setTargetAtTime(eqState.enabled && paramLive() ? b.gain : 0, t, 0.01); // disabled (or plain listening: graphic EQ's turn) = 0 dB on every band
     });
   }
 
@@ -3598,7 +3662,7 @@ if (isAutotunePage()) {
     routeEnhancer(); applyEnhancer(); // Enhancer off = eqOut goes straight to master (clean bypass)
     routeLimiter();
     for (const [i, b] of eqState.bands.entries()) {
-      filters[i].frequency.value = b.freq; filters[i].Q.value = b.q; filters[i].gain.value = eqState.enabled && studioActive() ? b.gain : 0;
+      filters[i].frequency.value = b.freq; filters[i].Q.value = b.q; filters[i].gain.value = eqState.enabled && paramLive() ? b.gain : 0;
     }
     return input;
   }
