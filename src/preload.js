@@ -97,7 +97,11 @@ if (isAutotunePage()) {
   // Studio is "on" while capture runs OR while the Studio drawer is open: its EQ, Enhancer, Key & Tempo and Output then own the sound
   // and the top graphic EQ is locked flat. The mixer is live only with capture (stems) or a loaded layered recording.
   let studioOpen = false;
-  const studioActive = () => captureActive || studioOpen;
+  // EQ ownership follows the drawer only: open = Studio's parametric EQ, closed = the top graphic EQ. Everything else Studio does
+  // (Enhancer, KEY, Output) stays on once Studio has been opened, so browsing with the drawer down keeps the sound.
+  let studioEngaged = false;
+  const studioActive = () => studioOpen;
+  const studioSound = () => captureActive || studioEngaged;
   let autoCycleRunning = false;
   let scanQueued = false;
   let lastMetricsAt = 0;
@@ -464,7 +468,7 @@ if (isAutotunePage()) {
 
   function studioSetOpen(open) {
     studio.open = open;
-    studioOpen = !!open; captureModeChanged(); if (open) { geqGesture = true; ensurePassiveGraph(); } // opening Studio = Studio sound on
+    studioOpen = !!open; if (open) studioEngaged = true; captureModeChanged(); if (open) { geqGesture = true; ensurePassiveGraph(); } // opening Studio = Studio sound on (stays on)
     try { document.documentElement.classList.toggle('ytmpoc-open', open); } catch {}
     studio.root.querySelector('.drawer').classList.toggle('open', open);
     const tab = studio.root.querySelector('.tab');
@@ -3380,7 +3384,7 @@ if (isAutotunePage()) {
   // no stems) into the master stage, the same graph capture reuses later. Only after a user gesture: a media element wired into a
   // still-suspended AudioContext would go silent.
   let geqGesture = false;
-  function geqNeedsGraph() { return studioOpen || (geqState.on && geqState.gains.some((g) => g !== 0)); }
+  function geqNeedsGraph() { return studioEngaged || (geqState.on && geqState.gains.some((g) => g !== 0)); }
   function ensurePassiveGraph() {
     if (!geqGesture || !geqNeedsGraph()) return;
     const media = findMedia(); if (!media || wiredElements.has(media)) return;
@@ -3450,7 +3454,7 @@ if (isAutotunePage()) {
     direct.gain.value = 1; wet.gain.value = 0;
     let shifted = false, node = null, last = null;
     const route = () => {
-      const want = !!node && tuneState.semis !== 0 && !captureActive && studioOpen;
+      const want = !!node && tuneState.semis !== 0 && !captureActive && studioEngaged;
       const v = want ? tuneState.semis : 0;
       if (node && v !== last) { last = v; node.schedule({ semitones: v }); }
       if (want === shifted) return;
@@ -3588,7 +3592,7 @@ if (isAutotunePage()) {
 
   function routeEnhancer() {
     if (!masterEq || !enhancer) return;
-    const want = fxState.enh.on && studioActive(); // the Enhancer is a Studio tool: plain listening stays clean
+    const want = fxState.enh.on && studioSound(); // the Enhancer is a Studio tool: plain listening stays clean
     if (masterEq.enhOn === want) return;
     const { eqOut, master } = masterEq;
     try { eqOut.disconnect(master); } catch {}
