@@ -21,6 +21,24 @@ static class Program
     {
         if (args.Contains("--help") || args.Contains("-h")) { PrintHelp(); return 0; }
         if (args.Contains("--list")) { ListSpotify(); return 0; }
+        if (args.Contains("--list-devices")) { Events.Devices(AudioRouter.ListRenderDevices()); return 0; }
+        if (args.Contains("--route-device"))
+        {
+            string? targetDev = ArgString(args, "--route-device");
+            uint pid = ArgUint(args, "--pid");
+            if (pid == 0) pid = SpotifyLocator.FindTargetPid(out _);
+            var (ok, err) = AudioRouter.SetProcessOutputDevice(pid, targetDev);
+            Events.RouteResult(ok, targetDev, err);
+            return ok ? 0 : 1;
+        }
+        if (args.Contains("--reset-device"))
+        {
+            uint pid = ArgUint(args, "--pid");
+            if (pid == 0) pid = SpotifyLocator.FindTargetPid(out _);
+            var (ok, err) = AudioRouter.SetProcessOutputDevice(pid, null);
+            Events.RouteResult(ok, null, err);
+            return ok ? 0 : 1;
+        }
 
         bool noSmtc = args.Contains("--no-smtc");
         bool noPcm = args.Contains("--no-pcm");        // yalniz SMTC/kontrol testi
@@ -142,6 +160,15 @@ static class Program
                 catch (Exception e) { Events.Warn("komut cozulemedi: " + e.Message); continue; }
                 if (cmd?.cmd == null) continue;
                 if (cmd.cmd == "stop") { cts.Cancel(); break; }
+                if (cmd.cmd == "listDevices") { Events.Devices(AudioRouter.ListRenderDevices()); continue; }
+                if (cmd.cmd == "setOutput" || cmd.cmd == "resetOutput")
+                {
+                    uint targetPid = SpotifyLocator.FindTargetPid(out _);
+                    string? devId = cmd.cmd == "resetOutput" ? null : cmd.deviceId;
+                    var (ok, err) = AudioRouter.SetProcessOutputDevice(targetPid, devId);
+                    Events.RouteResult(ok, devId, err);
+                    continue;
+                }
                 if (smtc != null) _ = smtc.HandleAsync(cmd);
                 else Events.Warn("SMTC kapali, komut yok sayildi: " + cmd.cmd);
             }
@@ -199,5 +226,10 @@ Komutlar:  {""cmd"":""play|pause|playpause|next|previous|stop""}  {""cmd"":""see
     {
         int i = Array.IndexOf(a, name);
         return i >= 0 && i + 1 < a.Length && double.TryParse(a[i + 1], System.Globalization.CultureInfo.InvariantCulture, out double v) ? v : 0.0;
+    }
+    static string? ArgString(string[] a, string name)
+    {
+        int i = Array.IndexOf(a, name);
+        return i >= 0 && i + 1 < a.Length ? a[i + 1] : null;
     }
 }

@@ -45,6 +45,10 @@ function isAutotunePage() {
   try { return new URL(location.href).protocol === 'file:' && new URL(location.href).pathname.endsWith('/autotune.html'); } catch { return false; }
 }
 
+function isSpotifyStudioPage() {
+  try { return new URL(location.href).protocol === 'file:' && new URL(location.href).pathname.endsWith('/spotify-studio.html'); } catch { return false; }
+}
+
 if (isAutotunePage()) {
   // Hidden auto-tune window: a tiny message bridge to the main process (signalling only).
   contextBridge.exposeInMainWorld('autotuneIpc', Object.freeze({
@@ -90,6 +94,7 @@ if (isAutotunePage()) {
 } else {
 
 (() => {
+  const isSpotifyStudio = isSpotifyStudioPage();
   const wiredElements = new WeakSet();
   const graphs = new WeakMap();
   let activeContext = null;
@@ -249,8 +254,81 @@ if (isAutotunePage()) {
       spotifyState.waiting = false;
       spotifyAutoPlayPending = false;
       spotifyNextTime = 0;
+    } else if (ev.type === 'devices' && Array.isArray(ev.devices)) {
+      spotifyState.devices = ev.devices;
+      if (isSpotifyStudio) renderSpotifyDevices();
+    } else if (ev.type === 'routeResult') {
+      spotifyState.routeResult = ev;
+      if (isSpotifyStudio) syncSpotifyRouteStatus();
     }
+    if (isSpotifyStudio) syncSpotifyCompanionUi();
   });
+
+  function syncSpotifyCompanionUi() {
+    const badge = document.getElementById('sp-status-badge');
+    const stText = document.getElementById('sp-status-text');
+    const titleEl = document.getElementById('sp-track-title');
+    const artistEl = document.getElementById('sp-track-artist');
+    const modeEl = document.getElementById('sp-audio-mode');
+    const rmsEl = document.getElementById('sp-audio-rms');
+    if (badge && stText) {
+      badge.classList.toggle('connected', Boolean(spotifyState.ready));
+      badge.classList.toggle('error', Boolean(spotifyState.error));
+      if (spotifyState.error) stText.textContent = 'Hata: ' + spotifyState.error;
+      else if (spotifyState.ready) stText.textContent = `Bağlı (PID ${spotifyState.pid || '?'})`;
+      else if (spotifyState.waiting) stText.textContent = 'Spotify çalma bekleniyor...';
+      else stText.textContent = 'Spotify bekleniyor...';
+    }
+    if (titleEl && spotifyState.title) titleEl.textContent = spotifyState.title;
+    if (artistEl && (spotifyState.artist || spotifyState.album)) {
+      artistEl.textContent = [spotifyState.artist, spotifyState.album].filter(Boolean).join(' — ');
+    }
+    if (modeEl) {
+      const m = spotifyGraph?.mode || 'bypass';
+      modeEl.textContent = m === 'stems'
+        ? 'Ses çıkışı: Stems (işlenmiş, gerçek çıkışa aktarılıyor)'
+        : 'Ses çıkışı: Bypass (efekt kapalı, gerçek çıkışa aktarılıyor)';
+    }
+    if (rmsEl) {
+      rmsEl.textContent = Number.isFinite(spotifyState.rmsDb) ? `Seviye: ${spotifyState.rmsDb.toFixed(1)} dBFS` : 'Seviye: -- dBFS';
+    }
+  }
+
+  function renderSpotifyDevices() {
+    const sel = document.getElementById('sp-device-select');
+    if (!sel || !Array.isArray(spotifyState.devices)) return;
+    const prev = sel.value;
+    while (sel.firstChild) sel.removeChild(sel.firstChild);
+    for (const d of spotifyState.devices) {
+      const opt = document.createElement('option');
+      opt.value = d.id;
+      opt.textContent = d.name + (d.isDefault ? ' (Varsayılan)' : '');
+      sel.appendChild(opt);
+    }
+    if (prev && spotifyState.devices.some((d) => d.id === prev)) {
+      sel.value = prev;
+    } else {
+      const spdif = spotifyState.devices.find((d) => /sp-?df|spdif|digital/i.test(d.name) && !d.isDefault);
+      const nonDef = spotifyState.devices.find((d) => !d.isDefault);
+      if (spdif) sel.value = spdif.id;
+      else if (nonDef) sel.value = nonDef.id;
+    }
+  }
+
+  function syncSpotifyRouteStatus() {
+    const el = document.getElementById('sp-route-status');
+    const guide = document.getElementById('sp-manual-guide');
+    const r = spotifyState.routeResult;
+    if (!el || !r) return;
+    if (r.ok) {
+      el.textContent = r.deviceId ? 'Otomatik yönlendirme uygulandı.' : 'Spotify çıkışı Windows varsayılanına geri alındı.';
+      el.style.color = '#7fe39f';
+    } else {
+      el.textContent = 'Otomatik yönlendirme bu Windows sürümünde desteklenmedi — aşağıdaki elle yönlendirme adımlarını kullanın.';
+      el.style.color = '#f0b265';
+      if (guide) guide.style.borderColor = 'rgba(240, 178, 101, 0.7)';
+    }
+  }
 
   let spotifySwitching = false;
   async function setSpotifyActive(enable, opts = {}) {
@@ -3507,14 +3585,18 @@ if (isAutotunePage()) {
       studioBuildLibrary(ui);
       studioBuildLyrics(ui);
       studioBuildNowPlaying(ui);
-      studioBuildTopMeters(ui); studioBuildGeq(ui);
-      const CHORDS_ENABLED = false; // experimental chord detection: code kept intact, switched off (no box, no analysis, no audio tap); set true to bring it back
-      if (CHORDS_ENABLED) studioBuildChords(ui);
+      if (!isSpotifyStudio) {
+        studioBuildTopMeters(ui); studioBuildGeq(ui);
+        const CHORDS_ENABLED = false; // experimental chord detection: code kept intact, switched off (no box, no analysis, no audio tap); set true to bring it back
+        if (CHORDS_ENABLED) studioBuildChords(ui);
+      }
       studioBuildWinButtons(ui);
-      studioBuildBrand(ui); studioBgFx();
-      studioBuildSteamPanel(ui);
-      studioSparks();
-      studioBuildChains(ui);
+      if (!isSpotifyStudio) {
+        studioBuildBrand(ui); studioBgFx();
+        studioBuildSteamPanel(ui);
+        studioSparks();
+        studioBuildChains(ui);
+      }
       // bundled fonts (OFL): Oswald = headings, Barlow Condensed = song/playlist names + studio labels, Barlow = body text
       const LAT = 'U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD';
       const LEX = 'U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF';
@@ -3697,7 +3779,11 @@ if (isAutotunePage()) {
         ytmusic-nav-bar ytmusic-search-box { position: relative; left: clamp(0px, calc(560px - 33vw), 130px); width: min(480px, calc(100vw - 940px)) !important; min-width: 240px; }
       `;
       root.append(style, ui);
-      try { const gs = document.createElement('style'); gs.textContent = 'ytmusic-player-bar { opacity: 0 !important; pointer-events: none !important; }' + skinCss; (document.head || document.documentElement).appendChild(gs); } catch {} // our own bar replaces the native one (kept alive: its buttons are still clicked programmatically)
+      if (!isSpotifyStudio) {
+        try { const gs = document.createElement('style'); gs.textContent = 'ytmusic-player-bar { opacity: 0 !important; pointer-events: none !important; }' + skinCss; (document.head || document.documentElement).appendChild(gs); } catch {} // our own bar replaces the native one (kept alive: its buttons are still clicked programmatically)
+      } else {
+        try { const gs = document.createElement('style'); gs.textContent = fontCss; (document.head || document.documentElement).appendChild(gs); } catch {}
+      }
       studio.host = host; studio.root = root;
       studio.statusEls = [...root.querySelectorAll('.status span')];
       root.querySelector('.tab').addEventListener('click', () => studioSetOpen(!studio.open));
@@ -3793,9 +3879,28 @@ if (isAutotunePage()) {
       [[180,1374,640,1410],[1968,1376,2182,1412],[3488,1378,3712,1410],[4035,1378,4198,1414]].forEach((r,i)=>stPlace(statusEls[i],...r));
       applyOutput();
       document.documentElement.appendChild(host);
-      let wasOpen = false;
-      try { wasOpen = localStorage.getItem('ytm-poc-drawer-open') === '1'; } catch {}
+      let wasOpen = isSpotifyStudio;
+      if (!isSpotifyStudio) {
+        try { wasOpen = localStorage.getItem('ytm-poc-drawer-open') === '1'; } catch {}
+      }
       studioSetOpen(wasOpen);
+      if (isSpotifyStudio) {
+        const btnLyr = document.getElementById('sp-btn-lyrics');
+        if (btnLyr) btnLyr.addEventListener('click', () => studio.lyrOpen?.());
+        const btnSt = document.getElementById('sp-btn-studio');
+        if (btnSt) btnSt.addEventListener('click', () => studioSetOpen(!studio.open));
+        const btnApply = document.getElementById('sp-route-apply');
+        if (btnApply) btnApply.addEventListener('click', () => {
+          const sel = document.getElementById('sp-device-select');
+          if (sel?.value) spotifyCmd({ cmd: 'setOutput', deviceId: sel.value });
+        });
+        const btnReset = document.getElementById('sp-route-reset');
+        if (btnReset) btnReset.addEventListener('click', () => spotifyCmd({ cmd: 'resetOutput' }));
+        setSpotifyActive(true).then((ok) => {
+          if (ok) spotifyCmd({ cmd: 'listDevices' });
+          syncSpotifyCompanionUi();
+        });
+      }
     } catch (error) {
       log('capture_error', { state: 'studio_drawer_failed', error: String(error?.message || error).slice(0, 180) });
       studio.failed = (studio.failed || 0) + 1;

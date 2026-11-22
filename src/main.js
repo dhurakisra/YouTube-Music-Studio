@@ -1,8 +1,9 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, Menu, globalShortcut, session, utilityProcess, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, Tray, Notification, globalShortcut, session, utilityProcess, dialog, shell } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
+const { createSpotifyWatcher } = require('./spotify-watcher');
 
 const YTM_URL = 'https://music.youtube.com/';
 const PARTITION = process.env.POC_PARTITION || 'persist:ytm-poc';
@@ -24,6 +25,12 @@ const ALLOWED_EVENTS = new Set([
 ]);
 
 let mainWindow;
+let spotifyWindow;
+let tray;
+let spotifyWatcher;
+let isCompanionMode = false;
+let isQuitting = false;
+let closingSpotifyForExit = false;
 let pcmBridgeWindow;
 let autotuneWindow;
 let autotuneReady = false;
@@ -69,10 +76,20 @@ function isTrustedSender(event) {
   }
 }
 
+function isSpotifyStudioUrl(rawUrl) {
+  try {
+    const u = new URL(rawUrl);
+    return u.protocol === 'file:' && u.pathname.endsWith('/spotify-studio.html');
+  } catch { return false; }
+}
+
 function isTrustedYtmSender(event) {
   const frame = event.senderFrame;
   if (!frame || frame !== event.sender.mainFrame) return false;
-  try { return new URL(frame.url).origin === 'https://music.youtube.com'; } catch { return false; }
+  try {
+    const u = new URL(frame.url);
+    return u.origin === 'https://music.youtube.com' || (u.protocol === 'file:' && u.pathname.endsWith('/spotify-studio.html'));
+  } catch { return false; }
 }
 
 ipcMain.on('poc:log', (event, level, name, data) => {
@@ -397,7 +414,10 @@ ipcMain.on('poc:stem-stop', (event) => {
 });
 
 const { createSpotifyHelper } = require('./spotify-helper');
-const spotifyHelper = createSpotifyHelper({ appendLog, getMainWindow: () => mainWindow });
+const spotifyHelper = createSpotifyHelper({
+  appendLog,
+  getMainWindow: () => (spotifyWindow && !spotifyWindow.isDestroyed() ? spotifyWindow : mainWindow),
+});
 
 ipcMain.handle('poc:spotify-start', (event) => {
   if (!isTrustedYtmSender(event)) return { ok: false, error: 'untrusted sender' };
@@ -479,14 +499,24 @@ function sendToAutotune(msg) {
   if (autotuneReady) autotuneWindow.webContents.send('poc:at-msg', msg); else autotuneQueue.push(msg);
 }
 
+function ensureDefaultSessionMediaPerms() {
+  if (autotunePermsSet) return;
+  autotunePermsSet = true;
+  const isAllowed = (url) => /\/(?:autotune|spotify-studio)\.html$/.test(String(url || '').split(/[?#]/)[0]);
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback, details) => {
+    if (permission !== 'media') return callback(false);
+    const types = details?.mediaTypes || [];
+    callback(isAllowed(details?.requestingUrl) && !types.includes('video'));
+  });
+  session.defaultSession.setPermissionCheckHandler((_wc, permission, origin, details) => {
+    if (permission !== 'media') return false;
+    return isAllowed(details?.requestingUrl || origin) && details?.mediaType !== 'video';
+  });
+}
+
 function createAutotuneWindow() {
   closeAutotuneWindow();
-  if (!autotunePermsSet) { // the hidden window needs the microphone; nothing else on the default session gets any permission
-    autotunePermsSet = true;
-    const isLab = (url) => /\/autotune\.html$/.test(String(url || '').split(/[?#]/)[0]);
-    session.defaultSession.setPermissionRequestHandler((_wc, permission, callback, details) => callback(permission === 'media' && isLab(details?.requestingUrl)));
-    session.defaultSession.setPermissionCheckHandler((_wc, permission, origin, details) => permission === 'media' && isLab(details?.requestingUrl || origin));
-  }
+  ensureDefaultSessionMediaPerms();
   autotuneWindow = new BrowserWindow({
     show: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true, backgroundThrottling: false },
@@ -495,10 +525,12 @@ function createAutotuneWindow() {
 }
 
 ipcMain.on('poc:win', (event, cmd) => {
-  if (!isTrustedYtmSender(event) || !mainWindow || mainWindow.isDestroyed()) return;
-  if (cmd === 'min') mainWindow.minimize();
-  else if (cmd === 'max') { if (mainWindow.isMaximized()) mainWindow.unmaximize(); else mainWindow.maximize(); }
-  else if (cmd === 'close') mainWindow.close();
+  if (!isTrustedYtmSender(event)) return;
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed()) return;
+  if (cmd === 'min') win.minimize();
+  else if (cmd === 'max') { if (win.isMaximized()) win.unmaximize(); else win.maximize(); }
+  else if (cmd === 'close') win.close();
 });
 
 ipcMain.on('poc:at-to-lab', (event, raw) => {
@@ -521,7 +553,8 @@ ipcMain.on('poc:at-from-lab', (event, raw) => {
   }
   if (!['offer', 'ice', 'status', 'error'].includes(msg.t)) return;
   if (msg.t === 'error') appendLog('stem_diag', { kind: 'autotune_error', error: msg.error });
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('poc:at-msg', msg);
+  const targetWin = (spotifyWindow && !spotifyWindow.isDestroyed()) ? spotifyWindow : mainWindow;
+  if (targetWin && !targetWin.isDestroyed()) targetWin.webContents.send('poc:at-msg', msg);
 });
 
 function sendCommand(command) {
@@ -529,6 +562,172 @@ function sendCommand(command) {
   if (mainWindow.webContents.getURL().startsWith(YTM_URL)) {
     mainWindow.webContents.send('poc:command', command);
   }
+}
+
+function notifySpotifyStudioClosedUnexpectedly(reason = 'closed') {
+  const title = 'Spotify Studio kapandı';
+  const body = reason === 'crashed'
+    ? 'Spotify Studio beklenmedik şekilde kapandı. Spotify sesi boş bir cihaza (SP-DF) yönlendirilmişse ses gelmeyebilir; tray ikonundan yeniden açabilirsiniz.'
+    : 'Spotify hâlâ çalışıyor. Spotify sesi boş bir cihaza (SP-DF) yönlendirilmişse ses gelmeyebilir; tray ikonundan yeniden açın veya Volume mixer\'dan çıkışı geri alın.';
+  appendLog('spotify_error', { state: 'studio_closed_unexpectedly', error: reason });
+  try {
+    if (tray && !tray.isDestroyed() && typeof tray.displayBalloon === 'function') {
+      tray.displayBalloon({ title, content: body, iconType: 'warning' });
+    } else if (Notification.isSupported()) {
+      new Notification({ title, body }).show();
+    }
+  } catch {}
+}
+
+function getLoginItemArgs() {
+  return app.isPackaged ? ['--spotify-companion'] : [path.resolve(__dirname, '..'), '--spotify-companion'];
+}
+
+function isAutoStartEnabled() {
+  try {
+    return Boolean(app.getLoginItemSettings({ path: process.execPath, args: getLoginItemArgs() }).openAtLogin);
+  } catch { return false; }
+}
+
+function setAutoStartEnabled(enable) {
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: Boolean(enable),
+      path: process.execPath,
+      args: getLoginItemArgs(),
+    });
+  } catch (error) {
+    appendLog('spotify_error', { state: 'autostart_failed', error: String(error?.message || error).slice(0, 160) });
+  }
+}
+
+function updateTrayMenu() {
+  if (!tray || tray.isDestroyed()) return;
+  const spRunning = Boolean(spotifyWatcher?.isRunning());
+  const studioOpen = Boolean(spotifyWindow && !spotifyWindow.isDestroyed());
+  const menu = Menu.buildFromTemplate([
+    { label: spRunning ? 'Spotify: Çalışıyor' : 'Spotify: Bekleniyor', enabled: false },
+    { type: 'separator' },
+    {
+      label: studioOpen ? 'Spotify Studio\'yu Göster' : 'Spotify Studio\'yu Aç',
+      click: () => {
+        if (spotifyWindow && !spotifyWindow.isDestroyed()) {
+          if (spotifyWindow.isMinimized()) spotifyWindow.restore();
+          spotifyWindow.show();
+          spotifyWindow.focus();
+        } else {
+          createSpotifyStudioWindow();
+        }
+      },
+    },
+    {
+      label: 'YouTube Music Studio\'yu Aç',
+      click: () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.show();
+          mainWindow.focus();
+        } else {
+          createWindow();
+        }
+      },
+    },
+    { type: 'separator' },
+    {
+      label: 'Windows açılışında başlat',
+      type: 'checkbox',
+      checked: isAutoStartEnabled(),
+      click: (item) => {
+        setAutoStartEnabled(item.checked);
+        updateTrayMenu();
+      },
+    },
+    { type: 'separator' },
+    {
+      label: 'Çıkış',
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+  tray.setContextMenu(menu);
+  tray.setToolTip(spRunning ? 'Spotify Studio (Spotify aktif)' : 'Spotify Studio (Spotify bekleniyor)');
+}
+
+function setupCompanionTray() {
+  if (tray && !tray.isDestroyed()) return;
+  tray = new Tray(path.join(__dirname, '..', 'build', 'icon.png'));
+  tray.on('double-click', () => {
+    if (spotifyWindow && !spotifyWindow.isDestroyed()) {
+      if (spotifyWindow.isMinimized()) spotifyWindow.restore();
+      spotifyWindow.show();
+      spotifyWindow.focus();
+    } else {
+      createSpotifyStudioWindow();
+    }
+  });
+  updateTrayMenu();
+}
+
+function createSpotifyStudioWindow() {
+  if (spotifyWindow && !spotifyWindow.isDestroyed()) {
+    if (spotifyWindow.isMinimized()) spotifyWindow.restore();
+    spotifyWindow.show();
+    spotifyWindow.focus();
+    return spotifyWindow;
+  }
+  ensureDefaultSessionMediaPerms();
+  closingSpotifyForExit = false;
+  spotifyWindow = new BrowserWindow({
+    width: 1280,
+    height: 820,
+    minWidth: 900,
+    minHeight: 620,
+    autoHideMenuBar: true,
+    icon: path.join(__dirname, '..', 'build', 'icon.png'),
+    titleBarStyle: 'hidden',
+    backgroundColor: '#0e0906',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+      webSecurity: true,
+      backgroundThrottling: false,
+    },
+  });
+
+  spotifyWindow.webContents.on('did-finish-load', () => {
+    if (!isSpotifyStudioUrl(spotifyWindow.webContents.getURL())) return;
+    appendLog('page_loaded', { state: 'spotify-studio-loaded' });
+    smokePageLoaded = true;
+    if (app.commandLine.hasSwitch('smoke')) app.quit();
+  });
+
+  spotifyWindow.webContents.on('render-process-gone', (_event, details) => {
+    if (!isQuitting && !closingSpotifyForExit && spotifyWatcher?.isRunning()) {
+      notifySpotifyStudioClosedUnexpectedly('crashed');
+    }
+    appendLog('spotify_error', { state: 'renderer_gone', error: String(details?.reason || 'unknown') });
+  });
+
+  spotifyWindow.on('closed', () => {
+    const wasExpected = isQuitting || closingSpotifyForExit;
+    closingSpotifyForExit = false;
+    spotifyWindow = undefined;
+    spotifyHelper.stop();
+    stopStemProcess();
+    closeAutotuneWindow();
+    updateTrayMenu();
+    if (!wasExpected && spotifyWatcher?.isRunning()) {
+      notifySpotifyStudioClosedUnexpectedly('closed');
+    }
+  });
+
+  spotifyWindow.loadFile(path.join(__dirname, 'spotify-studio.html'));
+  updateTrayMenu();
+  return spotifyWindow;
 }
 
 function createWindow() {
@@ -671,7 +870,33 @@ app.whenReady().then(() => {
     }, 30_000);
   }
   createPcmBridgeWindow();
-  createWindow();
+  isCompanionMode = app.commandLine.hasSwitch('spotify-companion');
+  const openSpotifyDirect = app.commandLine.hasSwitch('spotify-studio');
+  if (isCompanionMode) {
+    setupCompanionTray();
+    spotifyWatcher = createSpotifyWatcher({
+      intervalMs: 2000,
+      onStart: () => {
+        appendLog('spotify_started', { state: 'process_detected' });
+        createSpotifyStudioWindow();
+        updateTrayMenu();
+      },
+      onStop: () => {
+        appendLog('spotify_stopped', { state: 'process_exited' });
+        if (spotifyWindow && !spotifyWindow.isDestroyed()) {
+          closingSpotifyForExit = true;
+          spotifyWindow.close();
+        }
+        updateTrayMenu();
+      },
+      onStatusChange: () => updateTrayMenu(),
+    });
+    spotifyWatcher.start();
+  } else if (openSpotifyDirect) {
+    createSpotifyStudioWindow();
+  } else {
+    createWindow();
+  }
   try { require('./updater').setupUpdater(() => mainWindow, appendLog); } catch (error) { appendLog('updater_error', { state: 'setup_failed', error: String(error.message).slice(0, 120) }); }
 
   const template = [{
@@ -694,12 +919,16 @@ app.whenReady().then(() => {
 });
 
 app.on('will-quit', () => {
+  isQuitting = true;
   if (smokeTimer) clearTimeout(smokeTimer);
   if (metricsTimer) clearInterval(metricsTimer);
+  if (spotifyWatcher) spotifyWatcher.stop();
   globalShortcut.unregisterAll();
   spotifyHelper.stop();
   stopStemProcess();
 });
 
-app.on('window-all-closed', () => app.quit());
+app.on('window-all-closed', () => {
+  if (!isCompanionMode) app.quit();
+});
 

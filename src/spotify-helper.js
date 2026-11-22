@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const BLOCK_FRAMES = 4096;
-const ALLOWED_CMDS = new Set(['play', 'pause', 'playpause', 'next', 'previous', 'seek', 'stop']);
+const ALLOWED_CMDS = new Set(['play', 'pause', 'playpause', 'next', 'previous', 'seek', 'stop', 'listDevices', 'setOutput', 'resetOutput']);
 
 function findHelperExe() {
   const candidates = [];
@@ -188,6 +188,9 @@ function createSpotifyHelper({ appendLog, getMainWindow }) {
     if (raw.cmd === 'seek') {
       if (!Number.isFinite(raw.positionMs) || raw.positionMs < 0) return { ok: false, error: 'invalid positionMs' };
       clean.positionMs = Math.round(raw.positionMs);
+    } else if (raw.cmd === 'setOutput') {
+      if (typeof raw.deviceId !== 'string' || !raw.deviceId.trim() || raw.deviceId.length > 260) return { ok: false, error: 'invalid deviceId' };
+      clean.deviceId = raw.deviceId.trim();
     }
     try {
       child.stdin.write(`${JSON.stringify(clean)}\n`);

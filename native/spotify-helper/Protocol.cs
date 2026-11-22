@@ -45,6 +45,12 @@ static class Events
 
     public static void CaptureStats(double rmsDb, long frames) =>
         Emit(new { type = "captureStats", rmsDb, frames });
+
+    public static void Devices(List<AudioRouter.RenderDeviceInfo> devices) =>
+        Emit(new { type = "devices", devices });
+
+    public static void RouteResult(bool ok, string? deviceId, string? error) =>
+        Emit(new { type = "routeResult", ok, deviceId, error });
 }
 
 /// <summary>Electron'dan gelen stdin komutu.</summary>
@@ -52,4 +58,5 @@ sealed class Command
 {
     public string? cmd { get; set; }
     public long? positionMs { get; set; }
+    public string? deviceId { get; set; }
 }
