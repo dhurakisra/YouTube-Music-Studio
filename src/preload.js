@@ -215,10 +215,15 @@ if (isAutotunePage()) {
       spotifyState.waiting = false;
       spotifyState.running = true;
       spotifyState.pid = ev.pid || 0;
+      if (typeof ev.deviceName === 'string' && ev.deviceName) spotifyState.deviceName = ev.deviceName;
+      if (typeof ev.deviceId === 'string' && ev.deviceId) spotifyState.deviceId = ev.deviceId;
       spotifyState.error = '';
       if (spotifyState.active && studio.infoEls) {
         for (const el of studio.infoEls) el.textContent = 'SPOTIFY CONNECTED';
       }
+    } else if (ev.type === 'spotifyDevice') {
+      spotifyState.deviceName = typeof ev.deviceName === 'string' ? ev.deviceName : '';
+      spotifyState.deviceId = typeof ev.deviceId === 'string' ? ev.deviceId : '';
     } else if (ev.type === 'waiting') {
       spotifyState.waiting = true;
       spotifyState.ready = false;
@@ -264,6 +269,9 @@ if (isAutotunePage()) {
     if (isSpotifyStudio) syncSpotifyCompanionUi();
   });
 
+  let studioMutedByUser = false;
+  let studioSinkLabel = 'Windows Varsayılanı';
+
   function syncSpotifyCompanionUi() {
     const badge = document.getElementById('sp-status-badge');
     const stText = document.getElementById('sp-status-text');
@@ -271,6 +279,9 @@ if (isAutotunePage()) {
     const artistEl = document.getElementById('sp-track-artist');
     const modeEl = document.getElementById('sp-audio-mode');
     const rmsEl = document.getElementById('sp-audio-rms');
+    const spDevEl = document.getElementById('sp-spotify-device');
+    const routeSt = document.getElementById('sp-route-status');
+    const guide = document.getElementById('sp-manual-guide');
     if (badge && stText) {
       badge.classList.toggle('connected', Boolean(spotifyState.ready));
       badge.classList.toggle('error', Boolean(spotifyState.error));
@@ -285,50 +296,104 @@ if (isAutotunePage()) {
     }
     if (modeEl) {
       const m = spotifyGraph?.mode || 'bypass';
-      modeEl.textContent = m === 'stems'
-        ? 'Ses çıkışı: Stems (işlenmiş, gerçek çıkışa aktarılıyor)'
-        : 'Ses çıkışı: Bypass (efekt kapalı, gerçek çıkışa aktarılıyor)';
+      const muteNote = studioMutedByUser ? ' [SUSTURULDU]' : '';
+      modeEl.textContent = (m === 'stems'
+        ? 'Ses çıkışı: Stems (işlenmiş)'
+        : 'Ses çıkışı: Bypass (efekt kapalı, canlı aktarım)') + muteNote;
     }
     if (rmsEl) {
       rmsEl.textContent = Number.isFinite(spotifyState.rmsDb) ? `Seviye: ${spotifyState.rmsDb.toFixed(1)} dBFS` : 'Seviye: -- dBFS';
     }
-  }
-
-  function renderSpotifyDevices() {
-    const sel = document.getElementById('sp-device-select');
-    if (!sel || !Array.isArray(spotifyState.devices)) return;
-    const prev = sel.value;
-    while (sel.firstChild) sel.removeChild(sel.firstChild);
-    for (const d of spotifyState.devices) {
-      const opt = document.createElement('option');
-      opt.value = d.id;
-      opt.textContent = d.name + (d.isDefault ? ' (Varsayılan)' : '');
-      sel.appendChild(opt);
+    if (spDevEl) {
+      spDevEl.textContent = spotifyState.deviceName || (spotifyState.ready ? 'Bilinmiyor' : 'Spotify çalma bekleniyor...');
     }
-    if (prev && spotifyState.devices.some((d) => d.id === prev)) {
-      sel.value = prev;
-    } else {
-      const spdif = spotifyState.devices.find((d) => /sp-?df|spdif|digital/i.test(d.name) && !d.isDefault);
-      const nonDef = spotifyState.devices.find((d) => !d.isDefault);
-      if (spdif) sel.value = spdif.id;
-      else if (nonDef) sel.value = nonDef.id;
+    if (routeSt && spotifyState.deviceName) {
+      const norm = (s) => String(s || '').toLowerCase().replace(/^default\s*-\s*/i, '').trim();
+      const spNorm = norm(spotifyState.deviceName);
+      const stNorm = norm(studioSinkLabel);
+      const sameDevice = stNorm && spNorm && (stNorm.includes(spNorm) || spNorm.includes(stNorm));
+      if (sameDevice) {
+        routeSt.textContent = '⚠️ Spotify ve Studio AYNI çıkışta! Çift ses/yankı olmaması için Spotify çıkışını boş bir cihaza (örn. SPDIF L/R) alın.';
+        routeSt.style.color = '#f0b265';
+        if (guide) guide.style.borderColor = 'rgba(240, 178, 101, 0.75)';
+      } else {
+        routeSt.textContent = '✅ Spotify ve Studio farklı çıkışlarda — çift ses yok, duyduğunuz ses Studio\'dan geliyor.';
+        routeSt.style.color = '#7fe39f';
+        if (guide) guide.style.borderColor = 'rgba(127, 227, 159, 0.35)';
+      }
     }
   }
 
-  function syncSpotifyRouteStatus() {
-    const el = document.getElementById('sp-route-status');
-    const guide = document.getElementById('sp-manual-guide');
-    const r = spotifyState.routeResult;
-    if (!el || !r) return;
-    if (r.ok) {
-      el.textContent = r.deviceId ? 'Otomatik yönlendirme uygulandı.' : 'Spotify çıkışı Windows varsayılanına geri alındı.';
-      el.style.color = '#7fe39f';
-    } else {
-      el.textContent = 'Otomatik yönlendirme bu Windows sürümünde desteklenmedi — aşağıdaki elle yönlendirme adımlarını kullanın.';
-      el.style.color = '#f0b265';
-      if (guide) guide.style.borderColor = 'rgba(240, 178, 101, 0.7)';
+  async function initStudioOutputControls() {
+    const sinkSel = document.getElementById('sp-studio-sink');
+    const testBtn = document.getElementById('sp-test-tone');
+    const muteBtn = document.getElementById('sp-studio-mute');
+    const applySink = async (sinkId, label) => {
+      studioSinkLabel = label || 'Windows Varsayılanı';
+      try { localStorage.setItem('ytm-poc-studio-sink', sinkId || ''); } catch {}
+      const { context } = ensureSpotifyGraph();
+      if (typeof context.setSinkId === 'function') {
+        try { await context.setSinkId(sinkId || ''); } catch {}
+      }
+      syncSpotifyCompanionUi();
+    };
+    if (sinkSel && navigator.mediaDevices?.enumerateDevices) {
+      try {
+        const all = await navigator.mediaDevices.enumerateDevices();
+        const outs = all.filter((d) => d.kind === 'audiooutput');
+        while (sinkSel.firstChild) sinkSel.removeChild(sinkSel.firstChild);
+        const defDev = outs.find((d) => d.deviceId === 'default');
+        for (const d of outs) {
+          const opt = document.createElement('option');
+          opt.value = d.deviceId === 'default' ? '' : d.deviceId;
+          opt.textContent = d.label || (d.deviceId === 'default' ? 'Windows Varsayılanı' : d.deviceId);
+          sinkSel.appendChild(opt);
+        }
+        let saved = '';
+        try { saved = localStorage.getItem('ytm-poc-studio-sink') || ''; } catch {}
+        if (saved && [...sinkSel.options].some((o) => o.value === saved)) sinkSel.value = saved;
+        const selOpt = sinkSel.selectedOptions[0];
+        await applySink(sinkSel.value, selOpt?.textContent || defDev?.label || 'Windows Varsayılanı');
+        sinkSel.addEventListener('change', () => {
+          const opt = sinkSel.selectedOptions[0];
+          applySink(sinkSel.value, opt?.textContent || 'Windows Varsayılanı');
+        });
+      } catch {}
+    }
+    if (testBtn) {
+      testBtn.addEventListener('click', async () => {
+        const { context } = ensureSpotifyGraph();
+        await context.resume().catch(() => {});
+        const now = context.currentTime;
+        const osc = context.createOscillator();
+        const g = context.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(440, now);
+        osc.frequency.setValueAtTime(660, now + 0.14);
+        g.gain.setValueAtTime(0.001, now);
+        g.gain.exponentialRampToValueAtTime(0.18, now + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+        osc.connect(g);
+        g.connect(context.destination);
+        osc.start(now);
+        osc.stop(now + 0.34);
+      });
+    }
+    if (muteBtn) {
+      muteBtn.addEventListener('click', () => {
+        studioMutedByUser = !studioMutedByUser;
+        if (spotifyInputGain && activeContext) {
+          spotifyInputGain.gain.setTargetAtTime(studioMutedByUser ? 0 : 1, activeContext.currentTime, 0.02);
+        }
+        muteBtn.textContent = studioMutedByUser ? 'Studio Sesi Aç' : 'Studio Sustur';
+        muteBtn.style.borderColor = studioMutedByUser ? 'rgba(240, 178, 101, 0.8)' : '';
+        syncSpotifyCompanionUi();
+      });
     }
   }
+
+  function renderSpotifyDevices() {}
+  function syncSpotifyRouteStatus() {}
 
   let spotifySwitching = false;
   async function setSpotifyActive(enable, opts = {}) {
@@ -1902,7 +1967,15 @@ if (isAutotunePage()) {
     const setKey = (v) => { tuneState.semis = Math.max(-8, Math.min(8, v)); show(); stemNodes?.pitch?.route?.(); masterEq?.mixPitch?.route(); };
     const setTempo = (v) => { tuneState.tempo = Math.max(0.5, Math.min(1.5, Math.round(v * 100) / 100)); show(); applyTempo(); };
     const keyRow = h('div', 'tunerow'); keyRow.append(h('span', 'tunelbl', 'KEY'), step('\u2212', () => setKey(tuneState.semis - 1)), keyV, step('+', () => setKey(tuneState.semis + 1)));
-    const tempoRow = h('div', 'tunerow'); tempoRow.append(h('span', 'tunelbl', 'TEMPO'), step('\u2212', () => setTempo(tuneState.tempo - 0.05)), tempoV, step('+', () => setTempo(tuneState.tempo + 0.05)));
+    const tempoRow = h('div', 'tunerow');
+    const tDec = step('\u2212', () => setTempo(tuneState.tempo - 0.05));
+    const tInc = step('+', () => setTempo(tuneState.tempo + 0.05));
+    tempoRow.append(h('span', 'tunelbl', 'TEMPO'), tDec, tempoV, tInc);
+    if (isSpotifyStudio) {
+      tDec.disabled = true; tInc.disabled = true;
+      tempoRow.style.opacity = '0.45';
+      tempoRow.title = 'Canlı Spotify akışında TEMPO değiştirilemez (gerçek zamanlı giriş hızlandırılamaz; yalnızca KEY aktiftir).';
+    }
     const reset = h('button', 'btn', 'RESET', { type: 'button', 'aria-label': 'Reset key and tempo' });
     reset.addEventListener('click', () => { setKey(0); setTempo(1); });
     const note = h('div', 'eqinfo', 'KEY IN SEMITONES');
@@ -3889,15 +3962,8 @@ if (isAutotunePage()) {
         if (btnLyr) btnLyr.addEventListener('click', () => studio.lyrOpen?.());
         const btnSt = document.getElementById('sp-btn-studio');
         if (btnSt) btnSt.addEventListener('click', () => studioSetOpen(!studio.open));
-        const btnApply = document.getElementById('sp-route-apply');
-        if (btnApply) btnApply.addEventListener('click', () => {
-          const sel = document.getElementById('sp-device-select');
-          if (sel?.value) spotifyCmd({ cmd: 'setOutput', deviceId: sel.value });
-        });
-        const btnReset = document.getElementById('sp-route-reset');
-        if (btnReset) btnReset.addEventListener('click', () => spotifyCmd({ cmd: 'resetOutput' }));
-        setSpotifyActive(true).then((ok) => {
-          if (ok) spotifyCmd({ cmd: 'listDevices' });
+        initStudioOutputControls();
+        setSpotifyActive(true).then(() => {
           syncSpotifyCompanionUi();
         });
       }

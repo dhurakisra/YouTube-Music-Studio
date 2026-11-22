@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self' blob: data:;" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Spotify Studio — Companion</title>
   <style>
@@ -211,17 +211,22 @@
       </div>
 
       <div class="sp-card">
-        <h2>Çıkış Yönlendirme (Çift Sesi Önleme)</h2>
-        <div id="sp-route-controls" class="sp-route-row">
-          <select id="sp-device-select" class="sp-select" aria-label="Spotify çıkış cihazı">
-            <option value="">Cihazlar yükleniyor...</option>
-          </select>
-          <button id="sp-route-apply" class="sp-btn" type="button">Yönlendir</button>
-          <button id="sp-route-reset" class="sp-btn secondary" type="button">Geri Al</button>
+        <h2>Ses Çıkışları &amp; Yönlendirme</h2>
+        <div class="sp-route-row">
+          <span style="font-size:12px;color:#d8a55a;min-width:96px;">Spotify çıkışı:</span>
+          <strong id="sp-spotify-device" style="font-size:13px;color:#fff3df;">Algılanıyor...</strong>
         </div>
-        <div id="sp-route-status" class="sp-route-status">Spotify sesi boş bir cihaza yönlendirildiğinde çift ses olmaz; Studio sesi gerçek çıkışa verir.</div>
+        <div class="sp-route-row">
+          <span style="font-size:12px;color:#d8a55a;min-width:96px;">Studio çıkışı:</span>
+          <select id="sp-studio-sink" class="sp-select" aria-label="Studio ses çıkış cihazı">
+            <option value="">Windows Varsayılanı</option>
+          </select>
+          <button id="sp-test-tone" class="sp-btn" type="button" title="Studio çıkışından kısa bir test sesi çalar">Test Sesi</button>
+          <button id="sp-studio-mute" class="sp-btn secondary" type="button" title="Studio sesini geçici susturur; müzik hâlâ duyuluyorsa ses doğrudan Spotify'dan geliyordur">Studio Sustur</button>
+        </div>
+        <div id="sp-route-status" class="sp-route-status">Spotify ve Studio farklı cihazlarda olduğunda çift ses olmaz.</div>
         <div id="sp-manual-guide" class="sp-manual-guide">
-          <strong>Elle yönlendirme:</strong> Windows'ta <strong>Settings &gt; System &gt; Sound &gt; Volume mixer</strong> açın → <strong>Spotify</strong> altında <strong>Output device</strong> olarak dinlemediğiniz boş bir cihazı (örn. <strong>SP-DF</strong>) seçin.
+          <strong>Çift sesi önlemek için:</strong> Windows'ta <strong>Settings &gt; System &gt; Sound &gt; Volume mixer</strong> açın → <strong>Spotify</strong> altında <strong>Output device</strong> olarak dinlemediğiniz boş bir cihazı (örn. <strong>SPDIF L/R</strong>) seçin. Değişiklik sonrası Spotify'da 1 kez <strong>Duraklat → Oynat</strong> yapın.
         </div>
       </div>
     </div>

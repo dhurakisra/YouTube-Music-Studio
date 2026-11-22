@@ -81,9 +81,11 @@ static class Program
             {
                 uint pid = explicitPid;
                 string how = "--pid ile verildi";
+                string devId = "";
+                string devName = "";
                 if (pid == 0)
                 {
-                    pid = SpotifyLocator.FindAudioSessionPid(out how);
+                    pid = SpotifyLocator.FindAudioSessionPid(out how, out devId, out devName);
                     if (pid == 0)
                     {
                         if (!waitingNotified)
@@ -97,12 +99,13 @@ static class Program
                 }
                 waitingNotified = false;
                 Events.Info($"hedef Spotify PID={pid} ({how})");
-                Events.Ready((int)pid, LoopbackCapture.SampleRate, LoopbackCapture.Channels);
+                Events.Ready((int)pid, LoopbackCapture.SampleRate, LoopbackCapture.Channels, devId, devName);
 
                 using var capCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
                 if (explicitPid == 0)
                 {
                     uint trackedPid = pid;
+                    string lastDevId = devId;
                     _ = Task.Run(async () =>
                     {
                         while (!capCts.IsCancellationRequested)
@@ -114,7 +117,12 @@ static class Program
                                 capCts.Cancel();
                                 break;
                             }
-                            uint currentPid = SpotifyLocator.FindAudioSessionPid(out _);
+                            uint currentPid = SpotifyLocator.FindAudioSessionPid(out _, out string curDevId, out string curDevName);
+                            if (!string.IsNullOrEmpty(curDevId) && !string.Equals(curDevId, lastDevId, StringComparison.OrdinalIgnoreCase))
+                            {
+                                lastDevId = curDevId;
+                                Events.SpotifyDevice(curDevId, curDevName);
+                            }
                             if (currentPid != 0 && currentPid != trackedPid)
                             {
                                 Events.Info($"ses oturumu PID degisti ({trackedPid} -> {currentPid}), yeniden baglaniliyor");

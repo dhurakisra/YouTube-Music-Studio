@@ -10,16 +10,23 @@ namespace SpotifyHelper;
 /// </summary>
 static class SpotifyLocator
 {
-    /// <summary>Yalnizca gercek ses oturumuna sahip Spotify PID'ini dondurur (tum aktif render cihazlarini tarar).
+    public static uint FindAudioSessionPid(out string how) =>
+        FindAudioSessionPid(out how, out _, out _);
+
+    /// <summary>Yalnizca gercek ses oturumuna sahip Spotify PID'ini ve aktif cikis cihazini dondurur (tum aktif render cihazlarini tarar).
     /// Aktif calan oturumu onceliklendirir. Oturum yoksa 0 dondurur.</summary>
-    public static uint FindAudioSessionPid(out string how)
+    public static uint FindAudioSessionPid(out string how, out string deviceId, out string deviceName)
     {
         how = "";
+        deviceId = "";
+        deviceName = "";
         var procs = Process.GetProcessesByName("Spotify");
         if (procs.Length == 0) { how = "Spotify sureci bulunamadi"; return 0; }
         var pids = procs.Select(p => p.Id).ToHashSet();
 
         uint fallbackSessionPid = 0;
+        string fallbackDevId = "";
+        string fallbackDevName = "";
         try
         {
             using var en = new MMDeviceEnumerator();
@@ -38,10 +45,17 @@ static class SpotifyLocator
                         if (!pids.Contains(pid)) continue;
                         if (s.State == NAudio.CoreAudioApi.Interfaces.AudioSessionState.AudioSessionStateActive)
                         {
+                            deviceId = dev.ID;
+                            deviceName = dev.FriendlyName;
                             how = $"aktif ses oturumu ({dev.FriendlyName})";
                             return (uint)pid;
                         }
-                        if (fallbackSessionPid == 0) fallbackSessionPid = (uint)pid;
+                        if (fallbackSessionPid == 0)
+                        {
+                            fallbackSessionPid = (uint)pid;
+                            fallbackDevId = dev.ID;
+                            fallbackDevName = dev.FriendlyName;
+                        }
                     }
                 }
                 catch { /* cihaz erisilemez olabilir, sonraki cihaza gec */ }
@@ -51,7 +65,9 @@ static class SpotifyLocator
 
         if (fallbackSessionPid != 0)
         {
-            how = "ses oturumu olan PID";
+            deviceId = fallbackDevId;
+            deviceName = fallbackDevName;
+            how = string.IsNullOrEmpty(fallbackDevName) ? "ses oturumu olan PID" : $"ses oturumu ({fallbackDevName})";
             return fallbackSessionPid;
         }
         how = "ses oturumu henuz yok";

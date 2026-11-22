@@ -23,8 +23,11 @@ static class Events
         lock (_lock) { _err.Write(bytes, 0, bytes.Length); _err.Flush(); }
     }
 
-    public static void Ready(int pid, int sampleRate, int channels) =>
-        Emit(new { type = "ready", pid, sampleRate, channels, format = "f32le" });
+    public static void Ready(int pid, int sampleRate, int channels, string? deviceId = null, string? deviceName = null) =>
+        Emit(new { type = "ready", pid, sampleRate, channels, format = "f32le", deviceId, deviceName });
+
+    public static void SpotifyDevice(string? deviceId, string? deviceName) =>
+        Emit(new { type = "spotifyDevice", deviceId, deviceName });
 
     public static void Waiting(string reason) =>
         Emit(new { type = "waiting", reason });
