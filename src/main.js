@@ -1,9 +1,13 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, Menu, Tray, Notification, globalShortcut, session, utilityProcess, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, Tray, Notification, globalShortcut, session, utilityProcess, dialog, shell, protocol } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createSpotifyWatcher } = require('./spotify-watcher');
+
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'studio', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } },
+]);
 
 const YTM_URL = 'https://music.youtube.com/';
 const PARTITION = process.env.POC_PARTITION || 'persist:ytm-poc';
@@ -70,7 +74,7 @@ function isTrustedSender(event) {
   if (!frame || frame !== event.sender.mainFrame) return false;
   try {
     const url = new URL(frame.url);
-    return url.origin === 'https://music.youtube.com' || url.protocol === 'file:';
+    return url.origin === 'https://music.youtube.com' || url.protocol === 'file:' || url.protocol === 'studio:';
   } catch {
     return false;
   }
@@ -79,7 +83,8 @@ function isTrustedSender(event) {
 function isSpotifyStudioUrl(rawUrl) {
   try {
     const u = new URL(rawUrl);
-    return u.protocol === 'file:' && u.pathname.endsWith('/spotify-studio.html');
+    return (u.protocol === 'studio:' && u.pathname.endsWith('/spotify-studio.html'))
+      || (u.protocol === 'file:' && u.pathname.endsWith('/spotify-studio.html'));
   } catch { return false; }
 }
 
@@ -88,7 +93,7 @@ function isTrustedYtmSender(event) {
   if (!frame || frame !== event.sender.mainFrame) return false;
   try {
     const u = new URL(frame.url);
-    return u.origin === 'https://music.youtube.com' || (u.protocol === 'file:' && u.pathname.endsWith('/spotify-studio.html'));
+    return u.origin === 'https://music.youtube.com' || isSpotifyStudioUrl(frame.url);
   } catch { return false; }
 }
 
@@ -725,7 +730,7 @@ function createSpotifyStudioWindow() {
     }
   });
 
-  spotifyWindow.loadFile(path.join(__dirname, 'spotify-studio.html'));
+  spotifyWindow.loadURL('studio://app/spotify-studio.html');
   updateTrayMenu();
   return spotifyWindow;
 }
@@ -859,6 +864,14 @@ app.commandLine.appendSwitch('disable-features', 'WebRtcHideLocalIpsWithMdns');
 
 app.whenReady().then(() => {
   app.setName('YTM Audio POC');
+  protocol.handle('studio', (request) => {
+    const u = new URL(request.url);
+    if (u.hostname === 'app' && u.pathname === '/spotify-studio.html') {
+      const html = fs.readFileSync(path.join(__dirname, 'spotify-studio.html'), 'utf8');
+      return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    }
+    return new Response('Not found', { status: 404 });
+  });
   app.setPath('userData', process.env.YTM_POC_USERDATA || path.join(app.getPath('appData'), 'YTM-Audio-POC')); // YTM_POC_USERDATA: dev aid, e.g. a signed-out profile
   appendLog('app_started', { state: 'ready' });
   writeAppMetrics();

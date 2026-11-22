@@ -16,7 +16,7 @@ const allowedCommandTypes = new Set(['capture:show-button', 'capture:toggle', 'c
 function trustedMainFrame() {
   try {
     const u = new URL(location.href);
-    return window === window.top && (u.origin === 'https://music.youtube.com' || u.protocol === 'file:');
+    return window === window.top && (u.origin === 'https://music.youtube.com' || u.protocol === 'file:' || u.protocol === 'studio:');
   } catch { return false; }
 }
 
@@ -46,7 +46,10 @@ function isAutotunePage() {
 }
 
 function isSpotifyStudioPage() {
-  try { return new URL(location.href).protocol === 'file:' && new URL(location.href).pathname.endsWith('/spotify-studio.html'); } catch { return false; }
+  try {
+    const u = new URL(location.href);
+    return (u.protocol === 'studio:' || u.protocol === 'file:') && u.pathname.endsWith('/spotify-studio.html');
+  } catch { return false; }
 }
 
 if (isAutotunePage()) {
@@ -302,7 +305,18 @@ if (isAutotunePage()) {
         : 'Ses çıkışı: Bypass (efekt kapalı, canlı aktarım)') + muteNote;
     }
     if (rmsEl) {
-      rmsEl.textContent = Number.isFinite(spotifyState.rmsDb) ? `Seviye: ${spotifyState.rmsDb.toFixed(1)} dBFS` : 'Seviye: -- dBFS';
+      const ctxState = activeContext?.state || 'none';
+      let outStr = '--';
+      if (masterEq?.anL) {
+        const buf = new Float32Array(masterEq.anL.fftSize);
+        masterEq.anL.getFloatTimeDomainData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i += 1) sum += buf[i] * buf[i];
+        const rms = Math.sqrt(sum / buf.length);
+        outStr = rms > 1e-6 ? `${(20 * Math.log10(rms)).toFixed(1)} dBFS` : '-inf';
+      }
+      const inStr = Number.isFinite(spotifyState.rmsDb) ? `${spotifyState.rmsDb.toFixed(1)} dBFS` : '--';
+      rmsEl.textContent = `Giriş: ${inStr} | Çıkış (${ctxState}): ${outStr}`;
     }
     if (spDevEl) {
       spDevEl.textContent = spotifyState.deviceName || (spotifyState.ready ? 'Bilinmiyor' : 'Spotify çalma bekleniyor...');
@@ -3963,6 +3977,7 @@ if (isAutotunePage()) {
         const btnSt = document.getElementById('sp-btn-studio');
         if (btnSt) btnSt.addEventListener('click', () => studioSetOpen(!studio.open));
         initStudioOutputControls();
+        setInterval(syncSpotifyCompanionUi, 500);
         setSpotifyActive(true).then(() => {
           syncSpotifyCompanionUi();
         });
