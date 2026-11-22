@@ -123,12 +123,13 @@ if (isAutotunePage()) {
   let stemNodes = null;
   let stemPlayer = null;
   const spotifyState = {
-    active: false, running: false, ready: false, pid: 0,
+    active: false, running: false, ready: false, waiting: false, pid: 0,
     title: '', artist: '', album: '',
     status: 'Stopped', canPlay: false, canPause: false, canNext: false, canPrevious: false, canSeek: false,
     positionMs: 0, durationMs: 0, updatedAtUnixMs: 0,
     rmsDb: null, error: '',
   };
+  let spotifyAutoPlayPending = false;
   let spotifyGraph = null;
   let spotifyInputGain = null;
   let spotifyPcmPort = null;
@@ -206,9 +207,19 @@ if (isAutotunePage()) {
     if (!ev || typeof ev !== 'object') return;
     if (ev.type === 'ready') {
       spotifyState.ready = true;
+      spotifyState.waiting = false;
       spotifyState.running = true;
       spotifyState.pid = ev.pid || 0;
       spotifyState.error = '';
+      if (spotifyState.active && studio.infoEls) {
+        for (const el of studio.infoEls) el.textContent = 'SPOTIFY CONNECTED';
+      }
+    } else if (ev.type === 'waiting') {
+      spotifyState.waiting = true;
+      spotifyState.ready = false;
+      if (spotifyState.active && studio.infoEls) {
+        for (const el of studio.infoEls) el.textContent = 'SPOTIFY: waiting for playback';
+      }
     } else if (ev.type === 'metadata') {
       spotifyState.title = ev.title || '';
       spotifyState.artist = ev.artist || '';
@@ -224,6 +235,10 @@ if (isAutotunePage()) {
       spotifyState.canNext = Boolean(ev.canNext);
       spotifyState.canPrevious = Boolean(ev.canPrevious);
       spotifyState.canSeek = Boolean(ev.canSeek);
+      if (spotifyAutoPlayPending && spotifyState.active) {
+        spotifyAutoPlayPending = false;
+        if (spotifyState.status !== 'Playing') spotifyCmd({ cmd: 'play' });
+      }
     } else if (ev.type === 'captureStats') {
       spotifyState.rmsDb = Number.isFinite(ev.rmsDb) ? ev.rmsDb : null;
     } else if (ev.type === 'error') {
@@ -231,6 +246,8 @@ if (isAutotunePage()) {
     } else if (ev.type === 'stopped') {
       spotifyState.running = false;
       spotifyState.ready = false;
+      spotifyState.waiting = false;
+      spotifyAutoPlayPending = false;
       spotifyNextTime = 0;
     }
   });
@@ -248,7 +265,9 @@ if (isAutotunePage()) {
         const { context } = ensureSpotifyGraph();
         await context.resume().catch(() => {});
         spotifyState.active = true;
+        spotifyState.waiting = false;
         spotifyState.error = '';
+        spotifyAutoPlayPending = true;
         spotifyNextTime = 0;
         studioEngaged = true;
         const res = await ipcRenderer.invoke('poc:spotify-start');
@@ -267,6 +286,8 @@ if (isAutotunePage()) {
       const wasRunning = spotifyState.running;
       spotifyState.active = false;
       spotifyState.ready = false;
+      spotifyState.waiting = false;
+      spotifyAutoPlayPending = false;
       spotifyNextTime = 0;
       if (spotifyPcmPort) { try { spotifyPcmPort.close(); } catch {} spotifyPcmPort = null; }
       if (studio.infoEls) {
