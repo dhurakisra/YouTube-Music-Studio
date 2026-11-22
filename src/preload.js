@@ -412,7 +412,7 @@ if (isAutotunePage()) {
     adv.append(row('MODEL', modelSelect), row('MODE', modeSelect), row('GAIN', gainSlider), row('BUFFER', sessionEls.bufSlider, sessionEls.bufValue), row('', button));
     const advToggle = h('button', 'advtoggle', 'ADVANCED \u25BE', { type: 'button' });
     advToggle.addEventListener('click', () => { const o = adv.classList.toggle('open'); advToggle.classList.toggle('on', o); advToggle.textContent = o ? 'ADVANCED \u25B4' : 'ADVANCED \u25BE'; });
-    const spotBtn = h('button', 'btn bigbtn solo', 'SPOTIFY: OFF', { type: 'button', 'aria-label': 'Toggle Spotify audio source' });
+    const spotBtn = h('button', 'btn bigbtn solo st-spotify', 'SPOTIFY: OFF', { type: 'button', 'aria-label': 'Toggle Spotify audio source' });
     spotBtn.title = 'Capture audio from the Spotify desktop app instead of YouTube Music (WASAPI loopback + SMTC controls).';
     spotBtn.addEventListener('click', async () => {
       if (busy || rec.saving || takePrep) return;
@@ -3153,7 +3153,7 @@ if (isAutotunePage()) {
        START KARAOKE keeps live text (it changes) on the KARAOKE plate with the text cleared. */
     .skin .section.session > .bigbtn, .skin .section.session > .advtoggle { border:0 !important; border-image:none !important; padding:0 !important;
       background:transparent center / 100% 100% no-repeat !important; filter:none !important; box-shadow:none !important; }
-    .skin .section.session > .bigbtn:not(.startk), .skin .section.session > .advtoggle { color:transparent !important; -webkit-text-fill-color:transparent !important; text-shadow:none !important; font-size:0 !important; }
+    .skin .section.session > .bigbtn:not(.startk):not(.st-spotify), .skin .section.session > .advtoggle { color:transparent !important; -webkit-text-fill-color:transparent !important; text-shadow:none !important; font-size:0 !important; }
     .skin .section.session > .bigbtn::before { content:none !important; }
     .skin .section.session > .st-listen { background-image:${T('sk-st-ses-listen-off.png')} !important; }
     .skin .section.session > .st-listen.on { background-image:${T('sk-st-ses-listen-on.png')} !important; }
@@ -3166,6 +3166,11 @@ if (isAutotunePage()) {
       color:#2a1a0c !important; -webkit-text-fill-color:#2a1a0c !important; text-shadow:0 1px 1px #fff4 !important; }
     .skin .section.session > .startk.on { background-image:${T('sk-st-ses-start-on.png')} !important;
       color:#ffd98a !important; -webkit-text-fill-color:#ffd98a !important; text-shadow:0 0 6px #ffb347, 0 0 2px #ff9a2a !important; }
+    .skin .section.session > .st-spotify { background-image:${T('sk-st-ses-start-off.png')} !important; box-sizing:border-box !important; padding:0 calc(18 / 4344 * 100cqw) 0 calc(56 / 4344 * 100cqw) !important;
+      justify-content:center !important; white-space:nowrap; overflow:hidden; font-size:clamp(9px,.58cqw,16px) !important; letter-spacing:.04em;
+      color:#2a1a0c !important; -webkit-text-fill-color:#2a1a0c !important; text-shadow:0 1px 1px #fff4 !important; }
+    .skin .section.session > .st-spotify.on { background-image:${T('sk-st-ses-start-on.png')} !important;
+      color:#c8ffd4 !important; -webkit-text-fill-color:#c8ffd4 !important; text-shadow:0 0 8px #1db954, 0 0 2px #80ff9e !important; }
     .skin .section.session > .advtoggle { background-image:${T('sk-st-ses-adv-off.png')} !important; }
     .skin .section.session > .advtoggle.on { background-image:${T('sk-st-ses-adv-on.png')} !important; }
     .skin .section.session > .bigbtn:active, .skin .section.session > .advtoggle:active { transform:translateY(1px); }
@@ -3658,7 +3663,7 @@ if (isAutotunePage()) {
       studioBuildTune(tuneSection);
       for (const n of ['top', 'right', 'big']) sessSection.appendChild(h('div', 'st-wheel sg-' + n)).appendChild(h('i')); // big last = on top, its tooth gaps show the other gears
       { // gears: LISTEN lit = 1 gear turns, LISTEN WITH STEMS = 2, KARAOKE = 3
-        const sessModes = [...sessSection.querySelectorAll(':scope > .bigbtn')];
+        const sessModes = [...sessSection.querySelectorAll(':scope > .bigbtn:not(.st-spotify)')];
         const count = (b) => (b.classList.contains('stemb') ? 2 : b.classList.contains('recbig') ? 3 : 1);
         const sessSync = () => { const n = Math.max(0, ...sessModes.filter((b) => b.classList.contains('on') && !b.classList.contains('startk')).map(count)); for (let i = 1; i <= 3; i++) sessSection.classList.toggle('sess-g' + i, n >= i); };
         sessModes.forEach((b) => new MutationObserver(sessSync).observe(b, { attributes: true, attributeFilter: ['class'] })); sessSync();
@@ -3677,7 +3682,8 @@ if (isAutotunePage()) {
       const qa = (root, selector) => [...root.querySelectorAll(selector)];
       const sessBtns = qa(sessSection, ':scope > .btn');
       stPlace(sessBtns[0],108,178,465,250); stPlace(sessBtns[1],108,285,465,358); stPlace(sessBtns[2],108,392,465,467); stPlace(sessBtns[3],108,392,465,467);
-      stPlace(q(sessSection,'.advtoggle'),158,508,408,568); stPlace(q(sessSection,'.sessinfo'),108,572,465,618);
+      stPlace(q(sessSection,'.st-spotify'),108,470,465,526);
+      stPlace(q(sessSection,'.advtoggle'),158,526,408,578); stPlace(q(sessSection,'.sessinfo'),108,580,465,616);
       // Advanced controls stay on the session plate as an overlay, preserving their existing events.
       const adv=q(sessSection,'.adv'); if(adv){ adv.classList.add('st-adv'); stPlace(adv,108,178,465,467); }
       const tuneRows=qa(tuneSection,'.tunerow');
