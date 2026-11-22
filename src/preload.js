@@ -235,40 +235,64 @@ if (isAutotunePage()) {
     }
   });
 
-  async function setSpotifyActive(enable) {
-    if (enable === spotifyState.active) return true;
-    if (enable) {
-      if (captureActive) stopCapture();
-      const m = findMedia();
-      if (m && !m.paused) { try { m.pause(); } catch {} }
-      const { context } = ensureSpotifyGraph();
-      await context.resume().catch(() => {});
-      spotifyState.active = true;
-      spotifyState.error = '';
-      spotifyNextTime = 0;
-      studioEngaged = true;
-      const res = await ipcRenderer.invoke('poc:spotify-start');
-      if (!res?.ok) {
-        spotifyState.active = false;
-        spotifyState.error = res?.error || 'Failed to start Spotify helper';
+  let spotifySwitching = false;
+  async function setSpotifyActive(enable, opts = {}) {
+    if (enable === spotifyState.active || spotifySwitching) return true;
+    spotifySwitching = true;
+    try {
+      if (enable) {
+        if (captureActive) stopCapture();
+        for (const m of document.querySelectorAll('video, audio')) {
+          if (!m.paused) { try { m.pause(); } catch {} }
+        }
+        const { context } = ensureSpotifyGraph();
+        await context.resume().catch(() => {});
+        spotifyState.active = true;
+        spotifyState.error = '';
+        spotifyNextTime = 0;
+        studioEngaged = true;
+        const res = await ipcRenderer.invoke('poc:spotify-start');
+        if (!res?.ok) {
+          spotifyState.active = false;
+          spotifyState.error = res?.error || 'Failed to start Spotify helper';
+          captureModeChanged();
+          return false;
+        }
+        spotifyState.running = true;
+        setMode('bypass', false, spotifyGraph);
         captureModeChanged();
-        return false;
+        return true;
       }
-      spotifyState.running = true;
-      setMode('bypass', false, spotifyGraph);
+      if (captureActive) stopCapture();
+      const wasRunning = spotifyState.running;
+      spotifyState.active = false;
+      spotifyState.ready = false;
+      spotifyNextTime = 0;
+      if (spotifyPcmPort) { try { spotifyPcmPort.close(); } catch {} spotifyPcmPort = null; }
+      if (studio.infoEls) {
+        for (const el of studio.infoEls) if (/^SPOTIFY/.test(el.textContent || '')) el.textContent = '';
+      }
+      if (opts.pauseSpotify && wasRunning) {
+        await spotifyCmd({ cmd: 'pause' });
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      spotifyState.running = false;
+      await ipcRenderer.invoke('poc:spotify-stop').catch(() => {});
       captureModeChanged();
       return true;
+    } finally {
+      spotifySwitching = false;
     }
-    if (captureActive) stopCapture();
-    spotifyState.active = false;
-    spotifyState.running = false;
-    spotifyState.ready = false;
-    spotifyNextTime = 0;
-    if (spotifyPcmPort) { try { spotifyPcmPort.close(); } catch {} spotifyPcmPort = null; }
-    await ipcRenderer.invoke('poc:spotify-stop').catch(() => {});
-    captureModeChanged();
-    return true;
   }
+
+  // Single active source: if the user starts playing a YTM track while Spotify is active, pause Spotify via SMTC and switch Spotify OFF.
+  document.addEventListener('play', (ev) => {
+    if (!spotifyState.active) return;
+    const t = ev.target;
+    if (t && (t === findMedia() || (typeof t.matches === 'function' && t.matches('video, audio')))) {
+      setSpotifyActive(false, { pauseSpotify: true });
+    }
+  }, true);
 
   function log(event, data = {}) {
     if (!trustedMainFrame() || !allowedLogEvents.has(event)) return;
