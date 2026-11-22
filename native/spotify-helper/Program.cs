@@ -24,21 +24,13 @@ static class Program
 
         bool noSmtc = args.Contains("--no-smtc");
         bool noPcm = args.Contains("--no-pcm");        // yalniz SMTC/kontrol testi
-        uint pid = ArgUint(args, "--pid");
+        uint explicitPid = ArgUint(args, "--pid");
         double seconds = ArgDouble(args, "--seconds"); // >0 ise bu kadar yakalayip cikar (self-test)
-
-        if (pid == 0)
-        {
-            pid = SpotifyLocator.FindTargetPid(out string how);
-            if (pid == 0) { Events.Error("Spotify bulunamadi (acik mi?)"); return 1; }
-            Events.Info($"hedef Spotify PID={pid} ({how})");
-        }
-        else Events.Info($"hedef Spotify PID={pid} (--pid ile verildi)");
 
         var cts = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
 
-        // --- SMTC: bilgi yayini + kontrol (arka planda; ana thread yakalamaya ayrilir) ---
+        // --- SMTC: bilgi yayini + kontrol (arka planda; PID beklenirken de play/pause calisir) ---
         SmtcController? smtc = noSmtc ? null : new SmtcController();
         if (smtc != null)
         {
@@ -61,19 +53,75 @@ static class Program
         if (seconds > 0)
             _ = Task.Delay(TimeSpan.FromSeconds(seconds)).ContinueWith(_ => cts.Cancel(), TaskScheduler.Default);
 
-        Events.Ready((int)pid, LoopbackCapture.SampleRate, LoopbackCapture.Channels);
-
-        // --- yakalama: ANA thread'de, PCM'i stdout'a ak ---
+        // --- yakalama dongusu: ANA thread'de, ses oturumlu PID yoksa bekler, degisirse yeniden baglanir ---
         Stream stdout = noPcm ? Stream.Null : Console.OpenStandardOutput();
-        var capture = new LoopbackCapture(pid);
         int exit = 0;
+        bool waitingNotified = false;
         try
         {
-            capture.Run(cts.Token,
-                (buf, n) => { if (!noPcm) { stdout.Write(buf, 0, n); stdout.Flush(); } },
-                (rmsDb, frames) => Events.CaptureStats(rmsDb, frames));
+            while (!cts.IsCancellationRequested)
+            {
+                uint pid = explicitPid;
+                string how = "--pid ile verildi";
+                if (pid == 0)
+                {
+                    pid = SpotifyLocator.FindAudioSessionPid(out how);
+                    if (pid == 0)
+                    {
+                        if (!waitingNotified)
+                        {
+                            Events.Waiting("waiting for playback");
+                            waitingNotified = true;
+                        }
+                        try { Task.Delay(500, cts.Token).Wait(); } catch { break; }
+                        continue;
+                    }
+                }
+                waitingNotified = false;
+                Events.Info($"hedef Spotify PID={pid} ({how})");
+                Events.Ready((int)pid, LoopbackCapture.SampleRate, LoopbackCapture.Channels);
+
+                using var capCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+                if (explicitPid == 0)
+                {
+                    uint trackedPid = pid;
+                    _ = Task.Run(async () =>
+                    {
+                        while (!capCts.IsCancellationRequested)
+                        {
+                            try { await Task.Delay(1500, capCts.Token); } catch (OperationCanceledException) { break; }
+                            if (!SpotifyLocator.IsProcessAlive(trackedPid))
+                            {
+                                Events.Info($"hedef PID={trackedPid} kapandi, yeniden aranacak");
+                                capCts.Cancel();
+                                break;
+                            }
+                            uint currentPid = SpotifyLocator.FindAudioSessionPid(out _);
+                            if (currentPid != 0 && currentPid != trackedPid)
+                            {
+                                Events.Info($"ses oturumu PID degisti ({trackedPid} -> {currentPid}), yeniden baglaniliyor");
+                                capCts.Cancel();
+                                break;
+                            }
+                        }
+                    });
+                }
+
+                var capture = new LoopbackCapture(pid);
+                try
+                {
+                    capture.Run(capCts.Token,
+                        (buf, n) => { if (!noPcm) { stdout.Write(buf, 0, n); stdout.Flush(); } },
+                        (rmsDb, frames) => Events.CaptureStats(rmsDb, frames));
+                }
+                catch (Exception e)
+                {
+                    if (cts.IsCancellationRequested) break;
+                    Events.Warn("yakalama kesildi, yeniden baglanilacak: " + e.Message);
+                    try { Task.Delay(500, cts.Token).Wait(); } catch { break; }
+                }
+            }
         }
-        catch (Exception e) { Events.Error("yakalama hatasi: " + e.Message); exit = 2; }
         finally { cts.Cancel(); }
 
         Events.Info("kapaniyor");

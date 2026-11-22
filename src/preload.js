@@ -9,6 +9,7 @@ const allowedLogEvents = new Set([
   'drm_or_silence', 'capture_error', 'processing_state', 'latency_info',
   'pcm_worker_attempt', 'pcm_worker_blocked', 'pcm_transport_started', 'pcm_transport_stopped', 'pcm_metrics', 'pcm_port_received', 'pcm_worker_port_ready',
   'stem_jump', 'stem_buffer_changed', 'pcm_capture_mode', 'pcm_capture_error', 'stem_block_received', 'stem_transport_started', 'stem_transport_stopped', 'stem_playout', 'stem_diag',
+  'spotify_started', 'spotify_ready', 'spotify_error', 'spotify_stopped',
 ]);
 const allowedCommandTypes = new Set(['capture:show-button', 'capture:toggle', 'capture:auto-cycle']);
 
@@ -121,6 +122,198 @@ if (isAutotunePage()) {
   let modelSelect;
   let stemNodes = null;
   let stemPlayer = null;
+  const spotifyState = {
+    active: false, running: false, ready: false, waiting: false, pid: 0,
+    title: '', artist: '', album: '',
+    status: 'Stopped', canPlay: false, canPause: false, canNext: false, canPrevious: false, canSeek: false,
+    positionMs: 0, durationMs: 0, updatedAtUnixMs: 0,
+    rmsDb: null, error: '',
+  };
+  let spotifyAutoPlayPending = false;
+  let spotifyGraph = null;
+  let spotifyInputGain = null;
+  let spotifyPcmPort = null;
+  let spotifyNextTime = 0;
+
+  function spotifyCmd(cmdObj) {
+    return ipcRenderer.invoke('poc:spotify-cmd', cmdObj).catch(() => ({ ok: false }));
+  }
+
+  function ensureSpotifyGraph() {
+    if (!activeContext || activeContext.state === 'closed') activeContext = new AudioContext({ latencyHint: 'interactive' });
+    const context = activeContext;
+    if (!spotifyGraph) {
+      spotifyInputGain = context.createGain();
+      setChannelFormat(spotifyInputGain);
+      spotifyGraph = connectAudioGraph(spotifyInputGain, context, null);
+    }
+    return { context, graph: spotifyGraph };
+  }
+
+  function handleSpotifyPcm(msg) {
+    if (!spotifyState.active || !msg?.data) return;
+    const pcm = msg.data instanceof Float32Array ? msg.data : new Float32Array(msg.data);
+    const frames = msg.frames || Math.floor(pcm.length / 2);
+    const sr = msg.sampleRate || 48000;
+    if (frames <= 0) return;
+
+    if (captureActive && currentPcmTransport?.port) {
+      currentPcmTransport.port.postMessage({
+        type: 'pcm:block',
+        sequence: ++nextSequence,
+        sampleRate: sr,
+        channels: 2,
+        frames,
+        timestampEpochMs: msg.timestampEpochMs || Date.now(),
+        data: pcm,
+      });
+    }
+
+    if (captureActive && spotifyGraph?.mode === 'stems') {
+      spotifyNextTime = 0;
+      return;
+    }
+
+    const { context } = ensureSpotifyGraph();
+    if (context.state === 'suspended') context.resume().catch(() => {});
+    const buf = context.createBuffer(2, frames, sr);
+    const left = buf.getChannelData(0), right = buf.getChannelData(1);
+    for (let i = 0; i < frames; i += 1) {
+      left[i] = pcm[2 * i];
+      right[i] = pcm[2 * i + 1];
+    }
+    const now = context.currentTime;
+    if (!spotifyNextTime || spotifyNextTime < now + 0.02 || spotifyNextTime > now + 0.45) {
+      spotifyNextTime = now + 0.12;
+    }
+    const src = context.createBufferSource();
+    src.buffer = buf;
+    src.connect(spotifyInputGain);
+    src.start(spotifyNextTime);
+    spotifyNextTime += frames / sr;
+  }
+
+  ipcRenderer.on('poc:spotify-pcm-port', (event, metadata) => {
+    if (metadata?.type !== 'spotify-pcm-port' || !event.ports?.length) return;
+    if (spotifyPcmPort) { try { spotifyPcmPort.close(); } catch {} }
+    spotifyPcmPort = event.ports[0];
+    spotifyPcmPort.onmessage = (ev) => {
+      if (ev.data?.type === 'spotify:pcm') handleSpotifyPcm(ev.data);
+    };
+    spotifyPcmPort.start();
+  });
+
+  ipcRenderer.on('poc:spotify-event', (_event, ev) => {
+    if (!ev || typeof ev !== 'object') return;
+    if (ev.type === 'ready') {
+      spotifyState.ready = true;
+      spotifyState.waiting = false;
+      spotifyState.running = true;
+      spotifyState.pid = ev.pid || 0;
+      spotifyState.error = '';
+      if (spotifyState.active && studio.infoEls) {
+        for (const el of studio.infoEls) el.textContent = 'SPOTIFY CONNECTED';
+      }
+    } else if (ev.type === 'waiting') {
+      spotifyState.waiting = true;
+      spotifyState.ready = false;
+      if (spotifyState.active && studio.infoEls) {
+        for (const el of studio.infoEls) el.textContent = 'SPOTIFY: waiting for playback';
+      }
+    } else if (ev.type === 'metadata') {
+      spotifyState.title = ev.title || '';
+      spotifyState.artist = ev.artist || '';
+      spotifyState.album = ev.album || '';
+    } else if (ev.type === 'timeline') {
+      spotifyState.positionMs = Number(ev.positionMs) || 0;
+      spotifyState.durationMs = Number(ev.durationMs) || 0;
+      spotifyState.updatedAtUnixMs = Number(ev.updatedAtUnixMs) || Date.now();
+    } else if (ev.type === 'playback') {
+      spotifyState.status = ev.status || 'Stopped';
+      spotifyState.canPlay = Boolean(ev.canPlay);
+      spotifyState.canPause = Boolean(ev.canPause);
+      spotifyState.canNext = Boolean(ev.canNext);
+      spotifyState.canPrevious = Boolean(ev.canPrevious);
+      spotifyState.canSeek = Boolean(ev.canSeek);
+      if (spotifyAutoPlayPending && spotifyState.active) {
+        spotifyAutoPlayPending = false;
+        if (spotifyState.status !== 'Playing') spotifyCmd({ cmd: 'play' });
+      }
+    } else if (ev.type === 'captureStats') {
+      spotifyState.rmsDb = Number.isFinite(ev.rmsDb) ? ev.rmsDb : null;
+    } else if (ev.type === 'error') {
+      spotifyState.error = String(ev.msg || 'Spotify helper error');
+    } else if (ev.type === 'stopped') {
+      spotifyState.running = false;
+      spotifyState.ready = false;
+      spotifyState.waiting = false;
+      spotifyAutoPlayPending = false;
+      spotifyNextTime = 0;
+    }
+  });
+
+  let spotifySwitching = false;
+  async function setSpotifyActive(enable, opts = {}) {
+    if (enable === spotifyState.active || spotifySwitching) return true;
+    spotifySwitching = true;
+    try {
+      if (enable) {
+        if (captureActive) stopCapture();
+        for (const m of document.querySelectorAll('video, audio')) {
+          if (!m.paused) { try { m.pause(); } catch {} }
+        }
+        const { context } = ensureSpotifyGraph();
+        await context.resume().catch(() => {});
+        spotifyState.active = true;
+        spotifyState.waiting = false;
+        spotifyState.error = '';
+        spotifyAutoPlayPending = true;
+        spotifyNextTime = 0;
+        studioEngaged = true;
+        const res = await ipcRenderer.invoke('poc:spotify-start');
+        if (!res?.ok) {
+          spotifyState.active = false;
+          spotifyState.error = res?.error || 'Failed to start Spotify helper';
+          captureModeChanged();
+          return false;
+        }
+        spotifyState.running = true;
+        setMode('bypass', false, spotifyGraph);
+        captureModeChanged();
+        return true;
+      }
+      if (captureActive) stopCapture();
+      const wasRunning = spotifyState.running;
+      spotifyState.active = false;
+      spotifyState.ready = false;
+      spotifyState.waiting = false;
+      spotifyAutoPlayPending = false;
+      spotifyNextTime = 0;
+      if (spotifyPcmPort) { try { spotifyPcmPort.close(); } catch {} spotifyPcmPort = null; }
+      if (studio.infoEls) {
+        for (const el of studio.infoEls) if (/^SPOTIFY/.test(el.textContent || '')) el.textContent = '';
+      }
+      if (opts.pauseSpotify && wasRunning) {
+        await spotifyCmd({ cmd: 'pause' });
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      spotifyState.running = false;
+      await ipcRenderer.invoke('poc:spotify-stop').catch(() => {});
+      captureModeChanged();
+      return true;
+    } finally {
+      spotifySwitching = false;
+    }
+  }
+
+  // Single active source: if the user starts playing a YTM track while Spotify is active, pause Spotify via SMTC and switch Spotify OFF.
+  document.addEventListener('play', (ev) => {
+    if (!spotifyState.active) return;
+    const t = ev.target;
+    if (t && (t === findMedia() || (typeof t.matches === 'function' && t.matches('video, audio')))) {
+      setSpotifyActive(false, { pauseSpotify: true });
+    }
+  }, true);
 
   function log(event, data = {}) {
     if (!trustedMainFrame() || !allowedLogEvents.has(event)) return;
@@ -150,9 +343,27 @@ if (isAutotunePage()) {
       }).catch(() => { ytmClock.dur = 0; });
     } catch { ytmClock.dur = 0; }
   }, 400);
-  function songDur(m) { return ytmClock.dur > 0 ? ytmClock.dur : (m && Number.isFinite(m.duration) ? m.duration : 0); }
-  function songPos(m) { return m ? Math.max(0, m.currentTime - (ytmClock.dur > 0 ? ytmClock.delta : 0)) : 0; }
+  function songDur(m) {
+    if (spotifyState.active) return spotifyState.durationMs > 0 ? spotifyState.durationMs / 1000 : 0;
+    return ytmClock.dur > 0 ? ytmClock.dur : (m && Number.isFinite(m.duration) ? m.duration : 0);
+  }
+  function songPos(m) {
+    if (spotifyState.active) {
+      const elapsed = spotifyState.status === 'Playing' && spotifyState.updatedAtUnixMs ? Math.max(0, Date.now() - spotifyState.updatedAtUnixMs) : 0;
+      const posS = (spotifyState.positionMs + elapsed) / 1000;
+      const durS = spotifyState.durationMs > 0 ? spotifyState.durationMs / 1000 : 0;
+      return durS > 0 ? Math.min(Math.max(0, posS), durS) : Math.max(0, posS);
+    }
+    return m ? Math.max(0, m.currentTime - (ytmClock.dur > 0 ? ytmClock.delta : 0)) : 0;
+  }
   function songSeek(t) {
+    if (spotifyState.active) {
+      const ms = Math.max(0, Math.round(Number(t) * 1000));
+      spotifyState.positionMs = ms;
+      spotifyState.updatedAtUnixMs = Date.now();
+      spotifyCmd({ cmd: 'seek', positionMs: ms });
+      return;
+    }
     const m = findMedia();
     if (ytmClock.dur > 0) {
       try { webFrame.executeJavaScript('(function(){var p=document.getElementById("movie_player");if(p&&p.seekTo)p.seekTo(' + Number(t) + ',true)})()'); return; } catch {}
@@ -246,6 +457,17 @@ if (isAutotunePage()) {
     adv.append(row('MODEL', modelSelect), row('MODE', modeSelect), row('GAIN', gainSlider), row('BUFFER', sessionEls.bufSlider, sessionEls.bufValue), row('', button));
     const advToggle = h('button', 'advtoggle', 'ADVANCED \u25BE', { type: 'button' });
     advToggle.addEventListener('click', () => { const o = adv.classList.toggle('open'); advToggle.classList.toggle('on', o); advToggle.textContent = o ? 'ADVANCED \u25B4' : 'ADVANCED \u25BE'; });
+    const spotBtn = h('button', 'btn bigbtn solo st-spotify', 'SPOTIFY: OFF', { type: 'button', 'aria-label': 'Toggle Spotify audio source' });
+    spotBtn.title = 'Capture audio from the Spotify desktop app instead of YouTube Music (WASAPI loopback + SMTC controls).';
+    spotBtn.addEventListener('click', async () => {
+      if (busy || rec.saving || takePrep) return;
+      busy = true;
+      try {
+        const ok = await setSpotifyActive(!spotifyState.active);
+        if (!ok && spotifyState.error) info.textContent = 'SPOTIFY: ' + spotifyState.error.slice(0, 60);
+        else info.textContent = spotifyState.active ? 'SPOTIFY CONNECTED' : '';
+      } finally { busy = false; }
+    });
     const stemBtn = h('button', 'btn bigbtn solo stemb', 'LISTEN WITH STEMS', { type: 'button', 'aria-label': 'Listen with system separation' });
     stemBtn.classList.add('st-stems');
     stemBtn.title = 'Splits the song into vocals, drums, bass and other so you can mix them live (Mixer), change the key and more. It needs about 10 seconds of buffering before you hear anything. Leave it off to listen to YouTube Music as usual, in real time.';
@@ -306,8 +528,11 @@ if (isAutotunePage()) {
       const running = rec.active || takePrep;
       startBtn.classList.toggle('on', running); startBtn.setAttribute('aria-pressed', String(running));
       startBtn.textContent = rec.active ? 'STOP & SAVE' : rec.saving ? 'SAVING...' : takePrep ? 'BUFFERING...' : 'START KARAOKE';
+      spotBtn.classList.toggle('on', spotifyState.active);
+      spotBtn.setAttribute('aria-pressed', String(spotifyState.active));
+      spotBtn.textContent = spotifyState.active ? (spotifyState.ready ? 'SPOTIFY: ON' : 'SPOTIFY: ...') : 'SPOTIFY: OFF';
     }, 300);
-    sec.append(listenBtn, stemBtn, karaokeBtn, startBtn, info, advToggle, adv);
+    sec.append(listenBtn, stemBtn, karaokeBtn, startBtn, spotBtn, info, advToggle, adv);
     // Centred notice (top middle of the window) so the wait is impossible to miss; it follows the status text and disappears when buffering is over.
     const toast = h('div', 'toastc');
     const toastTitle = h('div', 'toasttitle'), toastSub = h('div', 'toastsub');
@@ -1636,9 +1861,12 @@ if (isAutotunePage()) {
     info.append(title, artist, bar, ticks, times);
     const q = (sel) => document.querySelector('ytmusic-player-bar ' + sel);
     const mk = (text, label, fn, cls) => { const b = h('button', 'btn npbtn' + (cls ? ' ' + cls : ''), text, { type: 'button', 'aria-label': label }); b.addEventListener('click', fn); return b; };
-    const prev = mk('\u23EE', 'Previous song', () => q('.previous-button')?.click());
-    const playBtn = mk('\u25B6', 'Play or pause', () => { const pb = q('.play-pause-button'); if (pb) pb.click(); else { const m = findMedia(); if (m) { if (m.paused) m.play()?.catch?.(() => {}); else m.pause(); } } }, 'solo');
-    const next = mk('\u23ED', 'Next song', () => q('.next-button')?.click());
+    const prev = mk('\u23EE', 'Previous song', () => { if (spotifyState.active) { spotifyCmd({ cmd: 'previous' }); return; } q('.previous-button')?.click(); });
+    const playBtn = mk('\u25B6', 'Play or pause', () => {
+      if (spotifyState.active) { spotifyCmd({ cmd: spotifyState.status === 'Playing' ? 'pause' : 'play' }); return; }
+      const pb = q('.play-pause-button'); if (pb) pb.click(); else { const m = findMedia(); if (m) { if (m.paused) m.play()?.catch?.(() => {}); else m.pause(); } }
+    }, 'solo');
+    const next = mk('\u23ED', 'Next song', () => { if (spotifyState.active) { spotifyCmd({ cmd: 'next' }); return; } q('.next-button')?.click(); });
     const shuf = mk('', 'Shuffle', () => q('.shuffle')?.click(), 'shuf');
     const rpt = mk('', 'Repeat', () => q('.repeat')?.click(), 'rpt');
     const ctl = h('div', 'npctl'); ctl.append(shuf, prev, playBtn, next, rpt);
@@ -1654,7 +1882,7 @@ if (isAutotunePage()) {
       const W = bar.clientWidth, H = bar.clientHeight + 24; if (!W) return;
       const dpr = window.devicePixelRatio || 1;
       if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
-      const ans = studio.vuAns, m = findMedia(), live = !!(ans && m && !m.paused);
+      const ans = studio.vuAns, m = findMedia(), live = !!(ans && (spotifyState.active ? spotifyState.status === 'Playing' : (m && !m.paused)));
       const step = 4, n = Math.floor(W / step);
       if (!lv || lv.length !== n) lv = new Float32Array(n);
       if (live) {
@@ -1695,6 +1923,20 @@ if (isAutotunePage()) {
     studio.npEl = win; studio.npHome = studio.consoleEl;
     let lastArt = '';
     setInterval(() => {
+      if (spotifyState.active) {
+        title.textContent = spotifyState.title || 'Spotify';
+        const sub = spotifyState.artist || (spotifyState.error || (spotifyState.ready ? 'Spotify (PID ' + spotifyState.pid + ')' : 'Connecting to Spotify...'));
+        artist.textContent = spotifyState.rmsDb !== null && spotifyState.artist ? spotifyState.artist + ' \u00B7 Spotify' : sub;
+        if (lastArt) { lastArt = ''; art.removeAttribute('src'); art.style.visibility = 'hidden'; }
+        const playing = spotifyState.status === 'Playing';
+        playBtn.textContent = playing ? '\u275A\u275A' : '\u25B6'; playBtn.classList.toggle('on', playing);
+        const sd = songDur(null), sp = Math.min(songPos(null), sd || 0);
+        const dur = sd > 0 ? Math.round(sd) : 0;
+        if (dur !== tickDur) buildTicks(dur);
+        if (sd > 0) { fill.style.width = (sp / sd * 100) + '%'; times.textContent = fmtTime(sp) + ' / ' + fmtTime(sd); }
+        else { fill.style.width = '0%'; times.textContent = spotifyState.status || ''; }
+        return;
+      }
       const md = navigator.mediaSession?.metadata;
       title.textContent = md?.title || '\u2014'; artist.textContent = md?.artist || '';
       const src = md?.artwork?.length ? md.artwork[md.artwork.length - 1].src : '';
@@ -2224,7 +2466,9 @@ if (isAutotunePage()) {
     setInterval(() => {
       const md = navigator.mediaSession?.metadata;
       const media = findMedia();
-      const song = md?.title ? { artist: md.artist || '', title: md.title, album: md.album || '' } : null;
+      const song = spotifyState.active
+        ? (spotifyState.title ? { artist: spotifyState.artist || '', title: spotifyState.title, album: spotifyState.album || '' } : null)
+        : (md?.title ? { artist: md.artist || '', title: md.title, album: md.album || '' } : null);
       if (!song) { if (lyrState.key) { lyrState.key = ''; titleEl.textContent = ''; artistEl.textContent = ''; albumEl.textContent = ''; lyrState.data = null; lyrState.status = 'Play a song to see its lyrics.'; renderLines(); } return; }
       const key = [song.artist, song.title].join('|');
       const retry = lyrState.data?.error && Date.now() > lyrState.retryAt;
@@ -2234,11 +2478,12 @@ if (isAutotunePage()) {
         load(song, media);
         return;
       }
-      if (!open || !media || !lyrState.lines.length) return;
+      if (!open || (!media && !spotifyState.active) || !lyrState.lines.length) return;
       const stems = captureActive && modeSelect?.value === 'stems' && stemPlayer; // only while stems are really playing; plain listening = no buffer
       const bufS = stems ? (stemPlayer.delayEstimateMs || 10000) / 1000 : 0; // the measured stem buffer: lyrics follow what is heard
       if (Math.abs(bufS - (lyrState.bufS || 0)) > 0.05) { lyrState.bufS = bufS; showOff(); }
-      const now = songPos(media) - bufS * (media.playbackRate || 1) + lyrState.offset; // the buffer is real seconds; the lyric clock runs in song seconds, which pass at the tempo rate
+      const rate = spotifyState.active ? 1 : (media?.playbackRate || 1);
+      const now = songPos(media) - bufS * rate + lyrState.offset; // the buffer is real seconds; the lyric clock runs in song seconds, which pass at the tempo rate
       let idx = -1;
       for (let i = 0; i < lyrState.lines.length && lyrState.lines[i].t <= now; i += 1) idx = i;
       const hd = lyrState.hold;
@@ -2291,7 +2536,10 @@ if (isAutotunePage()) {
     if (captureActive || modelSelect.value === 'htdemucs') return;
     modelSelect.value = 'htdemucs'; modelSelect.dispatchEvent(new Event('change'));
   }
-  function startMusic() { const m = findMedia(); if (m?.paused) { try { m.play()?.catch?.(() => {}); } catch {} } }
+  function startMusic() {
+    if (spotifyState.active) { if (spotifyState.status !== 'Playing') spotifyCmd({ cmd: 'play' }); return; }
+    const m = findMedia(); if (m?.paused) { try { m.play()?.catch?.(() => {}); } catch {} }
+  }
   async function endKaraokeRun() { // after a saved take: mic and stems off, music paused; the mode stays armed for the next take
     karaokeOff();
     if (captureActive) stopCapture();
@@ -2950,7 +3198,7 @@ if (isAutotunePage()) {
        START KARAOKE keeps live text (it changes) on the KARAOKE plate with the text cleared. */
     .skin .section.session > .bigbtn, .skin .section.session > .advtoggle { border:0 !important; border-image:none !important; padding:0 !important;
       background:transparent center / 100% 100% no-repeat !important; filter:none !important; box-shadow:none !important; }
-    .skin .section.session > .bigbtn:not(.startk), .skin .section.session > .advtoggle { color:transparent !important; -webkit-text-fill-color:transparent !important; text-shadow:none !important; font-size:0 !important; }
+    .skin .section.session > .bigbtn:not(.startk):not(.st-spotify), .skin .section.session > .advtoggle { color:transparent !important; -webkit-text-fill-color:transparent !important; text-shadow:none !important; font-size:0 !important; }
     .skin .section.session > .bigbtn::before { content:none !important; }
     .skin .section.session > .st-listen { background-image:${T('sk-st-ses-listen-off.png')} !important; }
     .skin .section.session > .st-listen.on { background-image:${T('sk-st-ses-listen-on.png')} !important; }
@@ -2963,6 +3211,11 @@ if (isAutotunePage()) {
       color:#2a1a0c !important; -webkit-text-fill-color:#2a1a0c !important; text-shadow:0 1px 1px #fff4 !important; }
     .skin .section.session > .startk.on { background-image:${T('sk-st-ses-start-on.png')} !important;
       color:#ffd98a !important; -webkit-text-fill-color:#ffd98a !important; text-shadow:0 0 6px #ffb347, 0 0 2px #ff9a2a !important; }
+    .skin .section.session > .st-spotify { background-image:${T('sk-st-ses-start-off.png')} !important; box-sizing:border-box !important; padding:0 calc(18 / 4344 * 100cqw) 0 calc(56 / 4344 * 100cqw) !important;
+      justify-content:center !important; white-space:nowrap; overflow:hidden; font-size:clamp(9px,.58cqw,16px) !important; letter-spacing:.04em;
+      color:#2a1a0c !important; -webkit-text-fill-color:#2a1a0c !important; text-shadow:0 1px 1px #fff4 !important; }
+    .skin .section.session > .st-spotify.on { background-image:${T('sk-st-ses-start-on.png')} !important;
+      color:#c8ffd4 !important; -webkit-text-fill-color:#c8ffd4 !important; text-shadow:0 0 8px #1db954, 0 0 2px #80ff9e !important; }
     .skin .section.session > .advtoggle { background-image:${T('sk-st-ses-adv-off.png')} !important; }
     .skin .section.session > .advtoggle.on { background-image:${T('sk-st-ses-adv-on.png')} !important; }
     .skin .section.session > .bigbtn:active, .skin .section.session > .advtoggle:active { transform:translateY(1px); }
@@ -3455,7 +3708,7 @@ if (isAutotunePage()) {
       studioBuildTune(tuneSection);
       for (const n of ['top', 'right', 'big']) sessSection.appendChild(h('div', 'st-wheel sg-' + n)).appendChild(h('i')); // big last = on top, its tooth gaps show the other gears
       { // gears: LISTEN lit = 1 gear turns, LISTEN WITH STEMS = 2, KARAOKE = 3
-        const sessModes = [...sessSection.querySelectorAll(':scope > .bigbtn')];
+        const sessModes = [...sessSection.querySelectorAll(':scope > .bigbtn:not(.st-spotify)')];
         const count = (b) => (b.classList.contains('stemb') ? 2 : b.classList.contains('recbig') ? 3 : 1);
         const sessSync = () => { const n = Math.max(0, ...sessModes.filter((b) => b.classList.contains('on') && !b.classList.contains('startk')).map(count)); for (let i = 1; i <= 3; i++) sessSection.classList.toggle('sess-g' + i, n >= i); };
         sessModes.forEach((b) => new MutationObserver(sessSync).observe(b, { attributes: true, attributeFilter: ['class'] })); sessSync();
@@ -3474,7 +3727,8 @@ if (isAutotunePage()) {
       const qa = (root, selector) => [...root.querySelectorAll(selector)];
       const sessBtns = qa(sessSection, ':scope > .btn');
       stPlace(sessBtns[0],108,178,465,250); stPlace(sessBtns[1],108,285,465,358); stPlace(sessBtns[2],108,392,465,467); stPlace(sessBtns[3],108,392,465,467);
-      stPlace(q(sessSection,'.advtoggle'),158,508,408,568); stPlace(q(sessSection,'.sessinfo'),108,572,465,618);
+      stPlace(q(sessSection,'.st-spotify'),108,470,465,526);
+      stPlace(q(sessSection,'.advtoggle'),158,526,408,578); stPlace(q(sessSection,'.sessinfo'),108,580,465,616);
       // Advanced controls stay on the session plate as an overlay, preserving their existing events.
       const adv=q(sessSection,'.adv'); if(adv){ adv.classList.add('st-adv'); stPlace(adv,108,178,465,467); }
       const tuneRows=qa(tuneSection,'.tunerow');
@@ -3560,6 +3814,31 @@ if (isAutotunePage()) {
     ipcRenderer.send('poc:stem-model', modelSelect?.value || 'umx-hq');
     log('capture_start_requested', { state: 'requested' });
     try {
+      if (spotifyState.active) {
+        const { context, graph } = ensureSpotifyGraph();
+        return context.resume().then(async () => {
+          if (!spotifyState.running) {
+            const res = await ipcRenderer.invoke('poc:spotify-start');
+            if (!res?.ok) return false;
+            spotifyState.running = true;
+          }
+          setMode(graph.mode, false, graph);
+          setUserGain(Number(gainSlider?.value || 0), graph);
+          if (modelSelect) modelSelect.disabled = true;
+          nextSequence = 0;
+          currentPcmTransport = await openPcmTransport();
+          if (modeSelect) modeSelect.disabled = false;
+          if (gainSlider) gainSlider.disabled = false;
+          captureActive = true;
+          captureModeChanged();
+          log('capture_started', { sampleRate: context.sampleRate, state: 'capturing-spotify' });
+          if (button) button.textContent = 'STOP';
+          return true;
+        }).catch((error) => {
+          log('capture_error', { state: 'failed', error: String(error?.message || error).slice(0, 180) });
+          return false;
+        }).finally(() => { captureStarting = false; });
+      }
       const media = findMedia();
       if (!media) {
         log('media_element_missing', { state: 'waiting' });
@@ -3616,9 +3895,9 @@ if (isAutotunePage()) {
     }
     closePcmTransport();
     // Capture off => no processing: force the dry path but remember the selected mode for restart.
-    for (const media of document.querySelectorAll('audio, video')) {
-      const graph = graphs.get(media);
-      if (!graph) continue;
+    const graphsToReset = [...document.querySelectorAll('audio, video')].map((media) => graphs.get(media)).filter(Boolean);
+    if (spotifyGraph) graphsToReset.push(spotifyGraph);
+    for (const graph of graphsToReset) {
       const now = activeContext?.currentTime || 0;
       graph.dryGain.gain.setTargetAtTime(1, now, 0.02);
       graph.wetGain.gain.setTargetAtTime(0, now, 0.02);
@@ -4729,6 +5008,7 @@ if (isAutotunePage()) {
   function setMode(mode, shouldLog = true, onlyGraph = null) {
     const selected = mode === 'processed' || mode === 'stems' ? mode : 'bypass';
     const graphsToUpdate = onlyGraph ? [onlyGraph] : [...document.querySelectorAll('audio, video')].map((media) => graphs.get(media)).filter(Boolean);
+    if (!onlyGraph && spotifyState.active && spotifyGraph && !graphsToUpdate.includes(spotifyGraph)) graphsToUpdate.push(spotifyGraph);
     const context = activeContext;
     const now = context?.currentTime || 0;
     const theta = selected === 'processed' ? Math.PI / 2 : 0;
@@ -4750,6 +5030,7 @@ if (isAutotunePage()) {
     const safeDb = Math.max(-24, Math.min(6, Number.isFinite(db) ? db : 0));
     const linear = 10 ** (safeDb / 20);
     const graphsToUpdate = onlyGraph ? [onlyGraph] : [...document.querySelectorAll('audio, video')].map((media) => graphs.get(media)).filter(Boolean);
+    if (!onlyGraph && spotifyState.active && spotifyGraph && !graphsToUpdate.includes(spotifyGraph)) graphsToUpdate.push(spotifyGraph);
     for (const graph of graphsToUpdate) graph.userGain.gain.setTargetAtTime(linear, activeContext.currentTime, 0.02);
   }
 
