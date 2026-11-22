@@ -300,8 +300,9 @@ if (isAutotunePage()) {
     if (modeEl) {
       const m = spotifyGraph?.mode || 'bypass';
       const muteNote = studioMutedByUser ? ' [SUSTURULDU]' : '';
+      const delayS = m === 'stems' && stemPlayer?.delayEstimateMs ? ` (~${(stemPlayer.delayEstimateMs / 1000).toFixed(1)} sn tampon)` : (m === 'stems' ? ' (~10 sn tampon hazırlanıyor...)' : '');
       modeEl.textContent = (m === 'stems'
-        ? 'Ses çıkışı: Stems (işlenmiş)'
+        ? `Ses çıkışı: Stems${delayS}`
         : 'Ses çıkışı: Bypass (efekt kapalı, canlı aktarım)') + muteNote;
     }
     if (rmsEl) {
@@ -413,6 +414,16 @@ if (isAutotunePage()) {
 
   function renderSpotifyDevices() {}
   function syncSpotifyRouteStatus() {}
+
+  ipcRenderer.on('poc:stem-error', (_event, errMsg) => {
+    const shortErr = String(errMsg || 'Stem hatası').split('\n')[0].slice(0, 140);
+    if (spotifyState.active && spotifyGraph) setMode('bypass', false, spotifyGraph);
+    if (studio.infoEls) for (const el of studio.infoEls) el.textContent = 'STEM HATA: ' + shortErr;
+    if (isSpotifyStudio) {
+      const modeEl = document.getElementById('sp-audio-mode');
+      if (modeEl) { modeEl.textContent = 'Stem hatası (Bypass\'a dönüldü): ' + shortErr; modeEl.style.color = '#ff7b7b'; }
+    }
+  });
 
   let spotifySwitching = false;
   async function setSpotifyActive(enable, opts = {}) {

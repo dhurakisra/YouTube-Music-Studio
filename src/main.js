@@ -379,7 +379,14 @@ function ensureStemProcess() {
     if (message.type === 'stem:debug') appendLog('stem_debug', message.info || {});
     if (message.type === 'stem:port-attached') appendLog('stem_port_ready', { state: 'ready' });
     if (message.type === 'stem:first-input') appendLog('stem_input_started', { sampleRate: message.sampleRate, frames: message.frames });
-    if (message.type === 'stem:error') appendLog('stem_process_error', { state: 'failed', error: String(message.error || 'Stem process error').slice(0, 500) });
+    if (message.type === 'stem:error') {
+      const errText = String(message.error || 'Stem process error').slice(0, 500);
+      appendLog('stem_process_error', { state: 'failed', error: errText });
+      const targetWin = (spotifyWindow && !spotifyWindow.isDestroyed()) ? spotifyWindow : mainWindow;
+      if (targetWin && !targetWin.isDestroyed()) {
+        try { targetWin.webContents.send('poc:stem-error', errText); } catch {}
+      }
+    }
     if (message.type === 'stem:metrics' && message.metrics && typeof message.metrics === 'object') {
       latestStemMetrics = message.metrics;
       appendLog('stem_metrics', message.metrics);
