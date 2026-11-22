@@ -2724,6 +2724,10 @@ if (isAutotunePage()) {
   async function endKaraokeRun() { // after a saved take: mic and stems off, music paused; the mode stays armed for the next take
     karaokeOff();
     if (captureActive) stopCapture();
+    if (spotifyState.active) {
+      if (spotifyState.status === 'Playing') spotifyCmd({ cmd: 'pause' });
+      return;
+    }
     const m = findMedia(); if (m && !m.paused) { try { m.pause(); } catch {} }
   }
   // START KARAOKE / REC: set everything up, wait out the stem buffer with a visible countdown, then record from the top of the song.
@@ -2732,7 +2736,11 @@ if (isAutotunePage()) {
     if (rec.active) { await stopTake(info); await endKaraokeRun(); return; }
     takePrep = true;
     let started = false;
-    const bus = () => [...document.querySelectorAll('audio, video')].map((m) => graphs.get(m)).filter(Boolean);
+    const bus = () => {
+      const list = [...document.querySelectorAll('audio, video')].map((m) => graphs.get(m)).filter(Boolean);
+      if (spotifyState.active && spotifyGraph && !list.includes(spotifyGraph)) list.push(spotifyGraph);
+      return list;
+    };
     try {
       if (!karaoke) {
         ensureHt();
@@ -2747,8 +2755,21 @@ if (isAutotunePage()) {
       if (!stemPlayer || !karaoke) { if (karaoke) { info.textContent = 'STEMS DID NOT START'; await endKaraokeRun(); } return; }
       // Take from the top of the song: mute the stems, restart the song, and open them again exactly when the fresh audio reaches the output (the stems run ~10 s behind) -- recording starts at that moment.
       for (const g of bus()) g.stemBus.gain.setTargetAtTime(0, activeContext.currentTime, 0.02);
-      const media = findMedia();
-      if (media) { songSeek(0); if (media.paused) { try { media.play()?.catch?.(() => {}); } catch {} } }
+      if (spotifyState.active) {
+        info.textContent = 'BAŞA SARILIYOR...';
+        await spotifyCmd({ cmd: 'seek', positionMs: 0 });
+        if (spotifyState.status !== 'Playing') await spotifyCmd({ cmd: 'play' });
+        await sleepMs(450);
+        // Fallback: if Spotify ignored SMTC seek(0) while >3 s into the track, 'previous' restarts the current song from 0:00.
+        if (spotifyState.positionMs > 3000) {
+          await spotifyCmd({ cmd: 'previous' });
+          await sleepMs(350);
+          if (spotifyState.status !== 'Playing') await spotifyCmd({ cmd: 'play' });
+        }
+      } else {
+        const media = findMedia();
+        if (media) { songSeek(0); if (media.paused) { try { media.play()?.catch?.(() => {}); } catch {} } }
+      }
       const tEnd = Date.now() + Math.max(3000, Math.round(stemPlayer.delayEstimateMs || 10000));
       for (;;) {
         const left = Math.ceil((tEnd - Date.now()) / 1000);
