@@ -10,7 +10,30 @@ const parentPort = process.parentPort || require('electron').parentPort;
 const ort = require('onnxruntime-node');
 
 const SAMPLE_RATE = 44100;
-const MODELS_DIR = (process.resourcesPath && require('node:fs').existsSync(path.join(process.resourcesPath, 'models'))) ? path.join(process.resourcesPath, 'models') : path.join(__dirname, '..', 'models'); // installed app: models ship in resources/
+function resolveModelsDir() {
+  const candidates = [];
+  if (process.env.YTM_MODELS_DIR) candidates.push(process.env.YTM_MODELS_DIR);
+  if (process.resourcesPath) candidates.push(path.join(process.resourcesPath, 'models'));
+  const repoRoot = path.join(__dirname, '..');
+  candidates.push(path.join(repoRoot, 'models'));
+  // Git worktree fallback: .git file points to <mainRepo>/.git/worktrees/<name>
+  try {
+    const dotGit = path.join(repoRoot, '.git');
+    if (fs.existsSync(dotGit) && fs.statSync(dotGit).isFile()) {
+      const m = fs.readFileSync(dotGit, 'utf8').match(/^gitdir:\s*(.+)$/m);
+      if (m) {
+        const gitDir = path.resolve(repoRoot, m[1].trim());
+        const mainRepo = path.resolve(gitDir, '..', '..', '..');
+        candidates.push(path.join(mainRepo, 'models'));
+      }
+    }
+  } catch {}
+  for (const dir of candidates) {
+    try { if (dir && fs.existsSync(dir)) return dir; } catch {}
+  }
+  return path.join(repoRoot, 'models');
+}
+const MODELS_DIR = resolveModelsDir();
 const MODEL_PROFILES = {
   'umx-hq': { file: path.join(MODELS_DIR, 'umx-hq-vocals.onnx'), windowFrames: SAMPLE_RATE * 2, kind: 'umx' },
   passthrough: { file: null, windowFrames: 343980, kind: 'pass' }, // diagnostic: no model, input goes out as 'vocal'

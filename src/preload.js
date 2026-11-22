@@ -16,7 +16,7 @@ const allowedCommandTypes = new Set(['capture:show-button', 'capture:toggle', 'c
 function trustedMainFrame() {
   try {
     const u = new URL(location.href);
-    return window === window.top && (u.origin === 'https://music.youtube.com' || u.protocol === 'file:');
+    return window === window.top && (u.origin === 'https://music.youtube.com' || u.protocol === 'file:' || u.protocol === 'studio:');
   } catch { return false; }
 }
 
@@ -43,6 +43,13 @@ function isPcmBridgePage() {
 
 function isAutotunePage() {
   try { return new URL(location.href).protocol === 'file:' && new URL(location.href).pathname.endsWith('/autotune.html'); } catch { return false; }
+}
+
+function isSpotifyStudioPage() {
+  try {
+    const u = new URL(location.href);
+    return (u.protocol === 'studio:' || u.protocol === 'file:') && u.pathname.endsWith('/spotify-studio.html');
+  } catch { return false; }
 }
 
 if (isAutotunePage()) {
@@ -90,6 +97,7 @@ if (isAutotunePage()) {
 } else {
 
 (() => {
+  const isSpotifyStudio = isSpotifyStudioPage();
   const wiredElements = new WeakSet();
   const graphs = new WeakMap();
   let activeContext = null;
@@ -210,10 +218,15 @@ if (isAutotunePage()) {
       spotifyState.waiting = false;
       spotifyState.running = true;
       spotifyState.pid = ev.pid || 0;
+      if (typeof ev.deviceName === 'string' && ev.deviceName) spotifyState.deviceName = ev.deviceName;
+      if (typeof ev.deviceId === 'string' && ev.deviceId) spotifyState.deviceId = ev.deviceId;
       spotifyState.error = '';
       if (spotifyState.active && studio.infoEls) {
         for (const el of studio.infoEls) el.textContent = 'SPOTIFY CONNECTED';
       }
+    } else if (ev.type === 'spotifyDevice') {
+      spotifyState.deviceName = typeof ev.deviceName === 'string' ? ev.deviceName : '';
+      spotifyState.deviceId = typeof ev.deviceId === 'string' ? ev.deviceId : '';
     } else if (ev.type === 'waiting') {
       spotifyState.waiting = true;
       spotifyState.ready = false;
@@ -249,6 +262,166 @@ if (isAutotunePage()) {
       spotifyState.waiting = false;
       spotifyAutoPlayPending = false;
       spotifyNextTime = 0;
+    } else if (ev.type === 'devices' && Array.isArray(ev.devices)) {
+      spotifyState.devices = ev.devices;
+      if (isSpotifyStudio) renderSpotifyDevices();
+    } else if (ev.type === 'routeResult') {
+      spotifyState.routeResult = ev;
+      if (isSpotifyStudio) syncSpotifyRouteStatus();
+    }
+    if (isSpotifyStudio) syncSpotifyCompanionUi();
+  });
+
+  let studioMutedByUser = false;
+  let studioSinkLabel = 'Windows Varsayılanı';
+
+  function syncSpotifyCompanionUi() {
+    const badge = document.getElementById('sp-status-badge');
+    const stText = document.getElementById('sp-status-text');
+    const titleEl = document.getElementById('sp-track-title');
+    const artistEl = document.getElementById('sp-track-artist');
+    const modeEl = document.getElementById('sp-audio-mode');
+    const rmsEl = document.getElementById('sp-audio-rms');
+    const spDevEl = document.getElementById('sp-spotify-device');
+    const routeSt = document.getElementById('sp-route-status');
+    const guide = document.getElementById('sp-manual-guide');
+    if (badge && stText) {
+      badge.classList.toggle('connected', Boolean(spotifyState.ready));
+      badge.classList.toggle('error', Boolean(spotifyState.error));
+      if (spotifyState.error) stText.textContent = 'Hata: ' + spotifyState.error;
+      else if (spotifyState.ready) stText.textContent = `Bağlı (PID ${spotifyState.pid || '?'})`;
+      else if (spotifyState.waiting) stText.textContent = 'Spotify çalma bekleniyor...';
+      else stText.textContent = 'Spotify bekleniyor...';
+    }
+    if (titleEl && spotifyState.title) titleEl.textContent = spotifyState.title;
+    if (artistEl && (spotifyState.artist || spotifyState.album)) {
+      artistEl.textContent = [spotifyState.artist, spotifyState.album].filter(Boolean).join(' — ');
+    }
+    if (modeEl) {
+      const m = spotifyGraph?.mode || 'bypass';
+      const muteNote = studioMutedByUser ? ' [SUSTURULDU]' : '';
+      const delayS = m === 'stems' && stemPlayer?.delayEstimateMs ? ` (~${(stemPlayer.delayEstimateMs / 1000).toFixed(1)} sn tampon)` : (m === 'stems' ? ' (~10 sn tampon hazırlanıyor...)' : '');
+      modeEl.textContent = (m === 'stems'
+        ? `Ses çıkışı: Stems${delayS}`
+        : 'Ses çıkışı: Bypass (efekt kapalı, canlı aktarım)') + muteNote;
+    }
+    if (rmsEl) {
+      const ctxState = activeContext?.state || 'none';
+      let outStr = '--';
+      if (masterEq?.anL) {
+        const buf = new Float32Array(masterEq.anL.fftSize);
+        masterEq.anL.getFloatTimeDomainData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i += 1) sum += buf[i] * buf[i];
+        const rms = Math.sqrt(sum / buf.length);
+        outStr = rms > 1e-6 ? `${(20 * Math.log10(rms)).toFixed(1)} dBFS` : '-inf';
+      }
+      const inStr = Number.isFinite(spotifyState.rmsDb) ? `${spotifyState.rmsDb.toFixed(1)} dBFS` : '--';
+      rmsEl.textContent = `Giriş: ${inStr} | Çıkış (${ctxState}): ${outStr}`;
+    }
+    if (spDevEl) {
+      spDevEl.textContent = spotifyState.deviceName || (spotifyState.ready ? 'Bilinmiyor' : 'Spotify çalma bekleniyor...');
+    }
+    if (routeSt) {
+      const norm = (s) => String(s || '').toLowerCase().replace(/^default\s*-\s*/i, '').trim();
+      const spNorm = norm(spotifyState.deviceName);
+      const stNorm = norm(studioSinkLabel);
+      const studioOnSpdif = /sp-?df|spdif|digital output/i.test(studioSinkLabel || '');
+      const sameDevice = stNorm && spNorm && (stNorm.includes(spNorm) || spNorm.includes(stNorm));
+      if (studioOnSpdif) {
+        routeSt.textContent = '⚠️ Studio çıkışı SPDIF/boş bir cihaza ayarlı! Studio\'nun işlenmiş sesini (EQ/KEY) duyabilmek için Studio çıkışını Windows Varsayılanı / gerçek hoparlörünüze alın.';
+        routeSt.style.color = '#ff7b7b';
+        if (guide) guide.style.borderColor = 'rgba(255, 123, 123, 0.8)';
+      } else if (sameDevice) {
+        routeSt.textContent = '⚠️ Spotify ve Studio AYNI çıkışta (çift ses riski)! Adım 1: Windows Volume mixer\'da Spotify\'ı SPDIF\'e alın; Studio gerçek hoparlörde kalsın.';
+        routeSt.style.color = '#f0b265';
+        if (guide) guide.style.borderColor = 'rgba(240, 178, 101, 0.75)';
+      } else if (spotifyState.deviceName) {
+        routeSt.textContent = `✅ Doğru kurulum — Spotify: ${spotifyState.deviceName} | Studio: ${studioSinkLabel}`;
+        routeSt.style.color = '#7fe39f';
+        if (guide) guide.style.borderColor = 'rgba(127, 227, 159, 0.35)';
+      }
+    }
+  }
+
+  async function initStudioOutputControls() {
+    const sinkSel = document.getElementById('sp-studio-sink');
+    const testBtn = document.getElementById('sp-test-tone');
+    const muteBtn = document.getElementById('sp-studio-mute');
+    const applySink = async (sinkId, label) => {
+      studioSinkLabel = label || 'Windows Varsayılanı';
+      try { localStorage.setItem('ytm-poc-studio-sink', sinkId || ''); } catch {}
+      const { context } = ensureSpotifyGraph();
+      if (typeof context.setSinkId === 'function') {
+        try { await context.setSinkId(sinkId || ''); } catch {}
+      }
+      syncSpotifyCompanionUi();
+    };
+    if (sinkSel && navigator.mediaDevices?.enumerateDevices) {
+      try {
+        const all = await navigator.mediaDevices.enumerateDevices();
+        const outs = all.filter((d) => d.kind === 'audiooutput');
+        while (sinkSel.firstChild) sinkSel.removeChild(sinkSel.firstChild);
+        const defDev = outs.find((d) => d.deviceId === 'default');
+        for (const d of outs) {
+          const opt = document.createElement('option');
+          opt.value = d.deviceId === 'default' ? '' : d.deviceId;
+          opt.textContent = d.label || (d.deviceId === 'default' ? 'Windows Varsayılanı' : d.deviceId);
+          sinkSel.appendChild(opt);
+        }
+        let saved = '';
+        try { saved = localStorage.getItem('ytm-poc-studio-sink') || ''; } catch {}
+        if (saved && [...sinkSel.options].some((o) => o.value === saved)) sinkSel.value = saved;
+        const selOpt = sinkSel.selectedOptions[0];
+        await applySink(sinkSel.value, selOpt?.textContent || defDev?.label || 'Windows Varsayılanı');
+        sinkSel.addEventListener('change', () => {
+          const opt = sinkSel.selectedOptions[0];
+          applySink(sinkSel.value, opt?.textContent || 'Windows Varsayılanı');
+        });
+      } catch {}
+    }
+    if (testBtn) {
+      testBtn.addEventListener('click', async () => {
+        const { context } = ensureSpotifyGraph();
+        await context.resume().catch(() => {});
+        const now = context.currentTime;
+        const osc = context.createOscillator();
+        const g = context.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(440, now);
+        osc.frequency.setValueAtTime(660, now + 0.14);
+        g.gain.setValueAtTime(0.001, now);
+        g.gain.exponentialRampToValueAtTime(0.18, now + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+        osc.connect(g);
+        g.connect(context.destination);
+        osc.start(now);
+        osc.stop(now + 0.34);
+      });
+    }
+    if (muteBtn) {
+      muteBtn.addEventListener('click', () => {
+        studioMutedByUser = !studioMutedByUser;
+        if (spotifyInputGain && activeContext) {
+          spotifyInputGain.gain.setTargetAtTime(studioMutedByUser ? 0 : 1, activeContext.currentTime, 0.02);
+        }
+        muteBtn.textContent = studioMutedByUser ? 'Studio Sesi Aç' : 'Studio Sustur';
+        muteBtn.style.borderColor = studioMutedByUser ? 'rgba(240, 178, 101, 0.8)' : '';
+        syncSpotifyCompanionUi();
+      });
+    }
+  }
+
+  function renderSpotifyDevices() {}
+  function syncSpotifyRouteStatus() {}
+
+  ipcRenderer.on('poc:stem-error', (_event, errMsg) => {
+    const shortErr = String(errMsg || 'Stem hatası').split('\n')[0].slice(0, 140);
+    if (spotifyState.active && spotifyGraph) setMode('bypass', false, spotifyGraph);
+    if (studio.infoEls) for (const el of studio.infoEls) el.textContent = 'STEM HATA: ' + shortErr;
+    if (isSpotifyStudio) {
+      const modeEl = document.getElementById('sp-audio-mode');
+      if (modeEl) { modeEl.textContent = 'Stem hatası (Bypass\'a dönüldü): ' + shortErr; modeEl.style.color = '#ff7b7b'; }
     }
   });
 
@@ -1824,7 +1997,15 @@ if (isAutotunePage()) {
     const setKey = (v) => { tuneState.semis = Math.max(-8, Math.min(8, v)); show(); stemNodes?.pitch?.route?.(); masterEq?.mixPitch?.route(); };
     const setTempo = (v) => { tuneState.tempo = Math.max(0.5, Math.min(1.5, Math.round(v * 100) / 100)); show(); applyTempo(); };
     const keyRow = h('div', 'tunerow'); keyRow.append(h('span', 'tunelbl', 'KEY'), step('\u2212', () => setKey(tuneState.semis - 1)), keyV, step('+', () => setKey(tuneState.semis + 1)));
-    const tempoRow = h('div', 'tunerow'); tempoRow.append(h('span', 'tunelbl', 'TEMPO'), step('\u2212', () => setTempo(tuneState.tempo - 0.05)), tempoV, step('+', () => setTempo(tuneState.tempo + 0.05)));
+    const tempoRow = h('div', 'tunerow');
+    const tDec = step('\u2212', () => setTempo(tuneState.tempo - 0.05));
+    const tInc = step('+', () => setTempo(tuneState.tempo + 0.05));
+    tempoRow.append(h('span', 'tunelbl', 'TEMPO'), tDec, tempoV, tInc);
+    if (isSpotifyStudio) {
+      tDec.disabled = true; tInc.disabled = true;
+      tempoRow.style.opacity = '0.45';
+      tempoRow.title = 'Canlı Spotify akışında TEMPO değiştirilemez (gerçek zamanlı giriş hızlandırılamaz; yalnızca KEY aktiftir).';
+    }
     const reset = h('button', 'btn', 'RESET', { type: 'button', 'aria-label': 'Reset key and tempo' });
     reset.addEventListener('click', () => { setKey(0); setTempo(1); });
     const note = h('div', 'eqinfo', 'KEY IN SEMITONES');
@@ -2543,6 +2724,10 @@ if (isAutotunePage()) {
   async function endKaraokeRun() { // after a saved take: mic and stems off, music paused; the mode stays armed for the next take
     karaokeOff();
     if (captureActive) stopCapture();
+    if (spotifyState.active) {
+      if (spotifyState.status === 'Playing') spotifyCmd({ cmd: 'pause' });
+      return;
+    }
     const m = findMedia(); if (m && !m.paused) { try { m.pause(); } catch {} }
   }
   // START KARAOKE / REC: set everything up, wait out the stem buffer with a visible countdown, then record from the top of the song.
@@ -2551,7 +2736,11 @@ if (isAutotunePage()) {
     if (rec.active) { await stopTake(info); await endKaraokeRun(); return; }
     takePrep = true;
     let started = false;
-    const bus = () => [...document.querySelectorAll('audio, video')].map((m) => graphs.get(m)).filter(Boolean);
+    const bus = () => {
+      const list = [...document.querySelectorAll('audio, video')].map((m) => graphs.get(m)).filter(Boolean);
+      if (spotifyState.active && spotifyGraph && !list.includes(spotifyGraph)) list.push(spotifyGraph);
+      return list;
+    };
     try {
       if (!karaoke) {
         ensureHt();
@@ -2566,8 +2755,21 @@ if (isAutotunePage()) {
       if (!stemPlayer || !karaoke) { if (karaoke) { info.textContent = 'STEMS DID NOT START'; await endKaraokeRun(); } return; }
       // Take from the top of the song: mute the stems, restart the song, and open them again exactly when the fresh audio reaches the output (the stems run ~10 s behind) -- recording starts at that moment.
       for (const g of bus()) g.stemBus.gain.setTargetAtTime(0, activeContext.currentTime, 0.02);
-      const media = findMedia();
-      if (media) { songSeek(0); if (media.paused) { try { media.play()?.catch?.(() => {}); } catch {} } }
+      if (spotifyState.active) {
+        info.textContent = 'BAŞA SARILIYOR...';
+        await spotifyCmd({ cmd: 'seek', positionMs: 0 });
+        if (spotifyState.status !== 'Playing') await spotifyCmd({ cmd: 'play' });
+        await sleepMs(450);
+        // Fallback: if Spotify ignored SMTC seek(0) while >3 s into the track, 'previous' restarts the current song from 0:00.
+        if (spotifyState.positionMs > 3000) {
+          await spotifyCmd({ cmd: 'previous' });
+          await sleepMs(350);
+          if (spotifyState.status !== 'Playing') await spotifyCmd({ cmd: 'play' });
+        }
+      } else {
+        const media = findMedia();
+        if (media) { songSeek(0); if (media.paused) { try { media.play()?.catch?.(() => {}); } catch {} } }
+      }
       const tEnd = Date.now() + Math.max(3000, Math.round(stemPlayer.delayEstimateMs || 10000));
       for (;;) {
         const left = Math.ceil((tEnd - Date.now()) / 1000);
@@ -2993,8 +3195,12 @@ if (isAutotunePage()) {
     .skin .strip .btn.micfx.on { border-image:${T('sk-st-amber.png')} 28 fill / calc(28 / 4344 * 100cqw) stretch; }
     .skin.m-listen .btn.micfx { display:flex; align-items:center; justify-content:center; }
     .skin .expbtn, .skin .offrow { z-index:3; border:calc(30 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-cream.png')} 30 fill / calc(30 / 4344 * 100cqw) stretch; background:none; color:#422c16; font:600 .7cqw 'Barlow Condensed',sans-serif; }
-    .skin .offrow { display:flex; align-items:center; gap:calc(2 / 4344 * 100cqw); padding:0 calc(3 / 4344 * 100cqw); }
-    .skin .offlbl { font:600 .55cqw 'Barlow Condensed',sans-serif; color:#ead9b2; }
+    .skin .offrow { display:flex; align-items:center; justify-content:center; gap:4px; padding:3px 7px; border:1px solid #c9954c !important; border-image:none !important; border-radius:6px; background:linear-gradient(180deg,#2a1b10,#160d07) !important; color:#fff0d4 !important; font:600 clamp(10px,.72cqw,13px)/1 'Barlow Condensed','Segoe UI',sans-serif !important; min-height:26px; height:auto !important; width:auto !important; min-width:max-content; box-shadow:0 3px 10px #000b; z-index:20; }
+    .skin .offrow .offlbl { font:600 clamp(10px,.68cqw,12px)/1 'Barlow Condensed','Segoe UI',sans-serif !important; color:#ffdf9e !important; letter-spacing:.06em; white-space:nowrap; }
+    .skin .offrow .offin { width:46px; min-width:42px; height:20px; padding:0 3px; text-align:center; background:#120a06 !important; color:#fff5e0 !important; border:1px solid #c9954c !important; border-radius:4px; font:600 12px/1 'Oswald','Segoe UI',sans-serif !important; }
+    .skin .offrow .offstep { min-width:22px; height:20px; padding:0 5px; border:1px solid #c9954c !important; border-radius:4px; background:linear-gradient(180deg,#6a4622,#3e2611) !important; color:#fff0d4 !important; font:700 13px/1 'Oswald',sans-serif !important; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; }
+    .skin .offrow .offstep:hover:not(:disabled) { filter:brightness(1.18); }
+    .skin .offrow .offstep:disabled { opacity:.4; cursor:not-allowed; }
     .skin .eq-screen { position:absolute; border-radius:0; background:#15130d; box-shadow:inset 0 0 0 2px #50391e, inset 0 0 18px #000; }
     .skin .section.eq .switches { position:absolute; inset:0; margin:0; display:block; }
     .skin .section.eq .btn { display:flex; align-items:center; justify-content:center; border:calc(30 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-cream.png')} 30 fill / calc(30 / 4344 * 100cqw) stretch; background:none; color:#422c16; font:600 .9cqw 'Barlow Condensed',sans-serif; }
@@ -3273,7 +3479,7 @@ if (isAutotunePage()) {
     .skin .strip .btns .btn:disabled { opacity:1; }
     .skin .strip .name { font-size:.5cqw; line-height:1; white-space:nowrap; }
     .skin .strip .btn.micfx { font-size:.6cqw; line-height:1; white-space:nowrap; padding:0; }
-    .skin .expbtn, .skin .offrow { font-size:.38cqw; line-height:1; white-space:nowrap; padding:0; }
+    .skin .expbtn { font-size:.38cqw; line-height:1; white-space:nowrap; padding:0; }
     .skin .eqrow .sel, .skin .st-chainbar .sel, .skin .st-chain-module .sel, .skin .sel {
       box-sizing:border-box; min-width:0; padding:0 calc(62 / 4344 * 100cqw) 0 calc(20 / 4344 * 100cqw);
       appearance:none; -webkit-appearance:none; white-space:nowrap; overflow:hidden; text-overflow:clip;
@@ -3471,17 +3677,26 @@ if (isAutotunePage()) {
       });
       section.appendChild(expBtn);
       const offRow = h('div', 'offrow');
-      offRow.title = 'Mic delay compensation: how many ms the mic layer was recorded late. Measured automatically at REC time; fine-tune by ear (raise it if the voice still trails the music).';
+      offRow.title = 'Mikrofon gecikme telafisi (ms): +/- ile 5 ms (Shift: 25 ms, Alt: 1 ms) kaydırın. Ses müzikten geç geliyorsa artırın.';
+      const offDec = h('button', 'offstep', '\u2212', { type: 'button', 'aria-label': 'Decrease mic shift' });
       const offIn = h('input', 'txt offin', null, { type: 'number', min: '-500', max: '500', step: '5', 'aria-label': 'Mic delay compensation in milliseconds' });
+      const offInc = h('button', 'offstep', '+', { type: 'button', 'aria-label': 'Increase mic shift' });
       for (const k of ['keydown', 'keyup', 'keypress']) offIn.addEventListener(k, (ev) => ev.stopPropagation());
-      offRow.append(h('span', 'offlbl', 'MIC SHIFT'), offIn, h('span', 'offlbl', 'ms'));
-      studio.syncOffset = () => { offIn.value = String(libPlayer.micOffsetMs || 0); offIn.disabled = !libPlayer.mix || !libPlayer.mix.keys.some(isMicLayer); };
-      offIn.addEventListener('change', () => {
-        const v = Math.max(-500, Math.min(500, Math.round(Number(offIn.value) || 0)));
+      offRow.append(h('span', 'offlbl', 'MIC SHIFT'), offDec, offIn, h('span', 'offlbl', 'ms'), offInc);
+      const applyOff = (raw) => {
+        const v = Math.max(-500, Math.min(500, Math.round(Number(raw) || 0)));
         libPlayer.micOffsetMs = v; offIn.value = String(v);
         if (libPlayer.id) ipcRenderer.invoke('poc:rec-set-offset', libPlayer.id, v).then(() => recRefresh()).catch(() => {});
         if (libPlayer.playing) libStartAt(libPos()); // re-time the running mix
-      });
+      };
+      studio.syncOffset = () => {
+        const dis = !libPlayer.mix || !libPlayer.mix.keys.some(isMicLayer);
+        offIn.value = String(libPlayer.micOffsetMs || 0);
+        offIn.disabled = dis; offDec.disabled = dis; offInc.disabled = dis;
+      };
+      offDec.addEventListener('click', (ev) => applyOff((libPlayer.micOffsetMs || 0) - (ev.shiftKey ? 25 : ev.altKey ? 1 : 5)));
+      offInc.addEventListener('click', (ev) => applyOff((libPlayer.micOffsetMs || 0) + (ev.shiftKey ? 25 : ev.altKey ? 1 : 5)));
+      offIn.addEventListener('change', () => applyOff(offIn.value));
       section.appendChild(offRow);
       studio.syncOffset();
       syncExp();
@@ -3507,14 +3722,18 @@ if (isAutotunePage()) {
       studioBuildLibrary(ui);
       studioBuildLyrics(ui);
       studioBuildNowPlaying(ui);
-      studioBuildTopMeters(ui); studioBuildGeq(ui);
-      const CHORDS_ENABLED = false; // experimental chord detection: code kept intact, switched off (no box, no analysis, no audio tap); set true to bring it back
-      if (CHORDS_ENABLED) studioBuildChords(ui);
+      if (!isSpotifyStudio) {
+        studioBuildTopMeters(ui); studioBuildGeq(ui);
+        const CHORDS_ENABLED = false; // experimental chord detection: code kept intact, switched off (no box, no analysis, no audio tap); set true to bring it back
+        if (CHORDS_ENABLED) studioBuildChords(ui);
+      }
       studioBuildWinButtons(ui);
-      studioBuildBrand(ui); studioBgFx();
-      studioBuildSteamPanel(ui);
-      studioSparks();
-      studioBuildChains(ui);
+      if (!isSpotifyStudio) {
+        studioBuildBrand(ui); studioBgFx();
+        studioBuildSteamPanel(ui);
+        studioSparks();
+        studioBuildChains(ui);
+      }
       // bundled fonts (OFL): Oswald = headings, Barlow Condensed = song/playlist names + studio labels, Barlow = body text
       const LAT = 'U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD';
       const LEX = 'U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF';
@@ -3697,7 +3916,11 @@ if (isAutotunePage()) {
         ytmusic-nav-bar ytmusic-search-box { position: relative; left: clamp(0px, calc(560px - 33vw), 130px); width: min(480px, calc(100vw - 940px)) !important; min-width: 240px; }
       `;
       root.append(style, ui);
-      try { const gs = document.createElement('style'); gs.textContent = 'ytmusic-player-bar { opacity: 0 !important; pointer-events: none !important; }' + skinCss; (document.head || document.documentElement).appendChild(gs); } catch {} // our own bar replaces the native one (kept alive: its buttons are still clicked programmatically)
+      if (!isSpotifyStudio) {
+        try { const gs = document.createElement('style'); gs.textContent = 'ytmusic-player-bar { opacity: 0 !important; pointer-events: none !important; }' + skinCss; (document.head || document.documentElement).appendChild(gs); } catch {} // our own bar replaces the native one (kept alive: its buttons are still clicked programmatically)
+      } else {
+        try { const gs = document.createElement('style'); gs.textContent = fontCss; (document.head || document.documentElement).appendChild(gs); } catch {}
+      }
       studio.host = host; studio.root = root;
       studio.statusEls = [...root.querySelectorAll('.status span')];
       root.querySelector('.tab').addEventListener('click', () => studioSetOpen(!studio.open));
@@ -3793,9 +4016,22 @@ if (isAutotunePage()) {
       [[180,1374,640,1410],[1968,1376,2182,1412],[3488,1378,3712,1410],[4035,1378,4198,1414]].forEach((r,i)=>stPlace(statusEls[i],...r));
       applyOutput();
       document.documentElement.appendChild(host);
-      let wasOpen = false;
-      try { wasOpen = localStorage.getItem('ytm-poc-drawer-open') === '1'; } catch {}
+      let wasOpen = isSpotifyStudio;
+      if (!isSpotifyStudio) {
+        try { wasOpen = localStorage.getItem('ytm-poc-drawer-open') === '1'; } catch {}
+      }
       studioSetOpen(wasOpen);
+      if (isSpotifyStudio) {
+        const btnLyr = document.getElementById('sp-btn-lyrics');
+        if (btnLyr) btnLyr.addEventListener('click', () => studio.lyrOpen?.());
+        const btnSt = document.getElementById('sp-btn-studio');
+        if (btnSt) btnSt.addEventListener('click', () => studioSetOpen(!studio.open));
+        initStudioOutputControls();
+        setInterval(syncSpotifyCompanionUi, 500);
+        setSpotifyActive(true).then(() => {
+          syncSpotifyCompanionUi();
+        });
+      }
     } catch (error) {
       log('capture_error', { state: 'studio_drawer_failed', error: String(error?.message || error).slice(0, 180) });
       studio.failed = (studio.failed || 0) + 1;

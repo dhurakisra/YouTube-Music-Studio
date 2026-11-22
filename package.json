@@ -6,6 +6,8 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
+    "start:spotify": "electron . --spotify-companion",
+    "start:spotify-window": "electron . --spotify-studio",
     "smoke": "electron . --smoke",
     "start:a": "electron src/main-a.js",
     "dist": "electron-builder --win nsis --publish never",
