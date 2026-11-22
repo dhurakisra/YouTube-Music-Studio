@@ -26,6 +26,9 @@ static class Events
     public static void Ready(int pid, int sampleRate, int channels) =>
         Emit(new { type = "ready", pid, sampleRate, channels, format = "f32le" });
 
+    public static void Waiting(string reason) =>
+        Emit(new { type = "waiting", reason });
+
     public static void Log(string level, string msg) => Emit(new { type = "log", level, msg });
     public static void Info(string msg) => Log("info", msg);
     public static void Warn(string msg) => Log("warn", msg);

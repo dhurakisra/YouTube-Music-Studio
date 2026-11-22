@@ -10,31 +10,73 @@ namespace SpotifyHelper;
 /// </summary>
 static class SpotifyLocator
 {
-    /// <summary>Ses oturumu olan Spotify PID'ini dondurur; yoksa pencere basligi olan ilk Spotify'i,
-    /// o da yoksa herhangi bir Spotify PID'ini dener. Hicbiri yoksa 0.</summary>
-    public static uint FindTargetPid(out string how)
+    /// <summary>Yalnizca gercek ses oturumuna sahip Spotify PID'ini dondurur (tum aktif render cihazlarini tarar).
+    /// Aktif calan oturumu onceliklendirir. Oturum yoksa 0 dondurur.</summary>
+    public static uint FindAudioSessionPid(out string how)
     {
         how = "";
         var procs = Process.GetProcessesByName("Spotify");
         if (procs.Length == 0) { how = "Spotify sureci bulunamadi"; return 0; }
         var pids = procs.Select(p => p.Id).ToHashSet();
 
-        // 1) Varsayilan render cihazindaki ses oturumlarina bak: hangi Spotify PID'inin oturumu varsa odur.
+        uint fallbackSessionPid = 0;
         try
         {
             using var en = new MMDeviceEnumerator();
-            var dev = en.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-            var mgr = dev.AudioSessionManager;
-            mgr.RefreshSessions();
-            var sessions = mgr.Sessions;
-            for (int i = 0; i < sessions.Count; i++)
+            var devices = en.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
+            foreach (var dev in devices)
             {
-                var s = sessions[i];
-                int pid = (int)s.GetProcessID;
-                if (pids.Contains(pid)) { how = "ses oturumu olan PID"; return (uint)pid; }
+                try
+                {
+                    var mgr = dev.AudioSessionManager;
+                    mgr.RefreshSessions();
+                    var sessions = mgr.Sessions;
+                    for (int i = 0; i < sessions.Count; i++)
+                    {
+                        var s = sessions[i];
+                        int pid = (int)s.GetProcessID;
+                        if (!pids.Contains(pid)) continue;
+                        if (s.State == NAudio.CoreAudioApi.Interfaces.AudioSessionState.AudioSessionStateActive)
+                        {
+                            how = $"aktif ses oturumu ({dev.FriendlyName})";
+                            return (uint)pid;
+                        }
+                        if (fallbackSessionPid == 0) fallbackSessionPid = (uint)pid;
+                    }
+                }
+                catch { /* cihaz erisilemez olabilir, sonraki cihaza gec */ }
             }
         }
         catch (Exception e) { Events.Warn("ses oturumu taramasi basarisiz: " + e.Message); }
+
+        if (fallbackSessionPid != 0)
+        {
+            how = "ses oturumu olan PID";
+            return fallbackSessionPid;
+        }
+        how = "ses oturumu henuz yok";
+        return 0;
+    }
+
+    public static bool IsProcessAlive(uint pid)
+    {
+        try
+        {
+            using var p = Process.GetProcessById((int)pid);
+            return !p.HasExited;
+        }
+        catch { return false; }
+    }
+
+    /// <summary>Ses oturumu olan Spotify PID'ini dondurur; yoksa pencere basligi olan ilk Spotify'i,
+    /// o da yoksa herhangi bir Spotify PID'ini dener. Hicbiri yoksa 0.</summary>
+    public static uint FindTargetPid(out string how)
+    {
+        uint sessionPid = FindAudioSessionPid(out how);
+        if (sessionPid != 0) return sessionPid;
+
+        var procs = Process.GetProcessesByName("Spotify");
+        if (procs.Length == 0) { how = "Spotify sureci bulunamadi"; return 0; }
 
         // 2) Pencere basligi olan ilk Spotify (muzik henuz hic calmamis, oturum yok ama hedef bu).
         foreach (var p in procs)
