@@ -321,17 +321,22 @@ if (isAutotunePage()) {
     if (spDevEl) {
       spDevEl.textContent = spotifyState.deviceName || (spotifyState.ready ? 'Bilinmiyor' : 'Spotify çalma bekleniyor...');
     }
-    if (routeSt && spotifyState.deviceName) {
+    if (routeSt) {
       const norm = (s) => String(s || '').toLowerCase().replace(/^default\s*-\s*/i, '').trim();
       const spNorm = norm(spotifyState.deviceName);
       const stNorm = norm(studioSinkLabel);
+      const studioOnSpdif = /sp-?df|spdif|digital output/i.test(studioSinkLabel || '');
       const sameDevice = stNorm && spNorm && (stNorm.includes(spNorm) || spNorm.includes(stNorm));
-      if (sameDevice) {
-        routeSt.textContent = '⚠️ Spotify ve Studio AYNI çıkışta! Çift ses/yankı olmaması için Spotify çıkışını boş bir cihaza (örn. SPDIF L/R) alın.';
+      if (studioOnSpdif) {
+        routeSt.textContent = '⚠️ Studio çıkışı SPDIF/boş bir cihaza ayarlı! Studio\'nun işlenmiş sesini (EQ/KEY) duyabilmek için Studio çıkışını Windows Varsayılanı / gerçek hoparlörünüze alın.';
+        routeSt.style.color = '#ff7b7b';
+        if (guide) guide.style.borderColor = 'rgba(255, 123, 123, 0.8)';
+      } else if (sameDevice) {
+        routeSt.textContent = '⚠️ Spotify ve Studio AYNI çıkışta (çift ses riski)! Adım 1: Windows Volume mixer\'da Spotify\'ı SPDIF\'e alın; Studio gerçek hoparlörde kalsın.';
         routeSt.style.color = '#f0b265';
         if (guide) guide.style.borderColor = 'rgba(240, 178, 101, 0.75)';
-      } else {
-        routeSt.textContent = '✅ Spotify ve Studio farklı çıkışlarda — çift ses yok, duyduğunuz ses Studio\'dan geliyor.';
+      } else if (spotifyState.deviceName) {
+        routeSt.textContent = `✅ Doğru kurulum — Spotify: ${spotifyState.deviceName} | Studio: ${studioSinkLabel}`;
         routeSt.style.color = '#7fe39f';
         if (guide) guide.style.borderColor = 'rgba(127, 227, 159, 0.35)';
       }

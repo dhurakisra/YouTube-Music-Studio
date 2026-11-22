@@ -211,22 +211,23 @@
       </div>
 
       <div class="sp-card">
-        <h2>Ses Çıkışları &amp; Yönlendirme</h2>
+        <h2>Ses Çıkışları (2 Adımlı Kurulum)</h2>
         <div class="sp-route-row">
-          <span style="font-size:12px;color:#d8a55a;min-width:96px;">Spotify çıkışı:</span>
+          <span style="font-size:12px;color:#d8a55a;min-width:190px;">Spotify çıkışı (Windows'ta ayarla):</span>
           <strong id="sp-spotify-device" style="font-size:13px;color:#fff3df;">Algılanıyor...</strong>
         </div>
         <div class="sp-route-row">
-          <span style="font-size:12px;color:#d8a55a;min-width:96px;">Studio çıkışı:</span>
-          <select id="sp-studio-sink" class="sp-select" aria-label="Studio ses çıkış cihazı">
-            <option value="">Windows Varsayılanı</option>
+          <span style="font-size:12px;color:#d8a55a;min-width:190px;">Studio çıkışı (gerçek hoparlör):</span>
+          <select id="sp-studio-sink" class="sp-select" aria-label="Studio ses çıkış cihazı (gerçek hoparlör/kulaklık)">
+            <option value="">Windows Varsayılanı (Önerilen)</option>
           </select>
-          <button id="sp-test-tone" class="sp-btn" type="button" title="Studio çıkışından kısa bir test sesi çalar">Test Sesi</button>
+          <button id="sp-test-tone" class="sp-btn" type="button" title="Studio çıkışından kısa bir test sesi çalar — bunu duymalısınız">Test Sesi</button>
           <button id="sp-studio-mute" class="sp-btn secondary" type="button" title="Studio sesini geçici susturur; müzik hâlâ duyuluyorsa ses doğrudan Spotify'dan geliyordur">Studio Sustur</button>
         </div>
-        <div id="sp-route-status" class="sp-route-status">Spotify ve Studio farklı cihazlarda olduğunda çift ses olmaz.</div>
+        <div id="sp-route-status" class="sp-route-status">Doğru kurulum: Spotify = SPDIF (sessiz), Studio = gerçek hoparlör (Windows Varsayılanı).</div>
         <div id="sp-manual-guide" class="sp-manual-guide">
-          <strong>Çift sesi önlemek için:</strong> Windows'ta <strong>Settings &gt; System &gt; Sound &gt; Volume mixer</strong> açın → <strong>Spotify</strong> altında <strong>Output device</strong> olarak dinlemediğiniz boş bir cihazı (örn. <strong>SPDIF L/R</strong>) seçin. Değişiklik sonrası Spotify'da 1 kez <strong>Duraklat → Oynat</strong> yapın.
+          <strong>Adım 1:</strong> Windows'ta <strong>Settings &gt; System &gt; Sound &gt; Volume mixer</strong> → <strong>Spotify</strong> çıkışını boş bir cihaza (<strong>SPDIF L/R</strong>) alın (sonra Spotify'da 1 kez Duraklat → Oynat).<br />
+          <strong>Adım 2:</strong> Yukarıda <strong>Studio çıkışı</strong> olarak gerçek hoparlör/kulaklığınızı (<strong>Windows Varsayılanı</strong>) seçin ve <strong>Test Sesi</strong> ile duyduğunuzu doğrulayın.
         </div>
       </div>
     </div>
