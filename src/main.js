@@ -20,6 +20,7 @@ const ALLOWED_EVENTS = new Set([
   'stem_jump', 'stem_buffer_changed', 'pcm_capture_mode', 'pcm_capture_error', 'stem_process_started', 'stem_process_ready', 'stem_process_error', 'stem_metrics', 'stem_process_stopped',
   'stem_block_received', 'stem_transport_started', 'stem_transport_stopped', 'stem_model_selected', 'stem_model_selection_rejected',
   'stem_window', 'stem_port_ready', 'stem_input_started', 'stem_playout', 'stem_diag',
+  'spotify_started', 'spotify_ready', 'spotify_error', 'spotify_stopped',
 ]);
 
 let mainWindow;
@@ -395,6 +396,24 @@ ipcMain.on('poc:stem-stop', (event) => {
   stopStemProcess();
 });
 
+const { createSpotifyHelper } = require('./spotify-helper');
+const spotifyHelper = createSpotifyHelper({ appendLog, getMainWindow: () => mainWindow });
+
+ipcMain.handle('poc:spotify-start', (event) => {
+  if (!isTrustedYtmSender(event)) return { ok: false, error: 'untrusted sender' };
+  return spotifyHelper.start();
+});
+
+ipcMain.handle('poc:spotify-stop', (event) => {
+  if (!isTrustedYtmSender(event)) return { ok: false, error: 'untrusted sender' };
+  return spotifyHelper.stop();
+});
+
+ipcMain.handle('poc:spotify-cmd', (event, cmd) => {
+  if (!isTrustedYtmSender(event)) return { ok: false, error: 'untrusted sender' };
+  return spotifyHelper.sendCommand(cmd);
+});
+
 ipcMain.on('poc:pcm-metrics', (event, metrics) => {
   if ((!isTrustedBridgeSender(event) && !isTrustedYtmSender(event)) || !metrics || typeof metrics !== 'object') return;
   const fields = safeData(metrics);
@@ -555,6 +574,7 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = undefined;
+    spotifyHelper.stop();
     if (pcmBridgeWindow && !pcmBridgeWindow.isDestroyed()) pcmBridgeWindow.close();
     closeAutotuneWindow();
   });
@@ -677,6 +697,7 @@ app.on('will-quit', () => {
   if (smokeTimer) clearTimeout(smokeTimer);
   if (metricsTimer) clearInterval(metricsTimer);
   globalShortcut.unregisterAll();
+  spotifyHelper.stop();
   stopStemProcess();
 });
 
