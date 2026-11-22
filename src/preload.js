@@ -3174,8 +3174,12 @@ if (isAutotunePage()) {
     .skin .strip .btn.micfx.on { border-image:${T('sk-st-amber.png')} 28 fill / calc(28 / 4344 * 100cqw) stretch; }
     .skin.m-listen .btn.micfx { display:flex; align-items:center; justify-content:center; }
     .skin .expbtn, .skin .offrow { z-index:3; border:calc(30 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-cream.png')} 30 fill / calc(30 / 4344 * 100cqw) stretch; background:none; color:#422c16; font:600 .7cqw 'Barlow Condensed',sans-serif; }
-    .skin .offrow { display:flex; align-items:center; gap:calc(2 / 4344 * 100cqw); padding:0 calc(3 / 4344 * 100cqw); }
-    .skin .offlbl { font:600 .55cqw 'Barlow Condensed',sans-serif; color:#ead9b2; }
+    .skin .offrow { display:flex; align-items:center; justify-content:center; gap:4px; padding:3px 7px; border:1px solid #c9954c !important; border-image:none !important; border-radius:6px; background:linear-gradient(180deg,#2a1b10,#160d07) !important; color:#fff0d4 !important; font:600 clamp(10px,.72cqw,13px)/1 'Barlow Condensed','Segoe UI',sans-serif !important; min-height:26px; height:auto !important; width:auto !important; min-width:max-content; box-shadow:0 3px 10px #000b; z-index:20; }
+    .skin .offrow .offlbl { font:600 clamp(10px,.68cqw,12px)/1 'Barlow Condensed','Segoe UI',sans-serif !important; color:#ffdf9e !important; letter-spacing:.06em; white-space:nowrap; }
+    .skin .offrow .offin { width:46px; min-width:42px; height:20px; padding:0 3px; text-align:center; background:#120a06 !important; color:#fff5e0 !important; border:1px solid #c9954c !important; border-radius:4px; font:600 12px/1 'Oswald','Segoe UI',sans-serif !important; }
+    .skin .offrow .offstep { min-width:22px; height:20px; padding:0 5px; border:1px solid #c9954c !important; border-radius:4px; background:linear-gradient(180deg,#6a4622,#3e2611) !important; color:#fff0d4 !important; font:700 13px/1 'Oswald',sans-serif !important; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; }
+    .skin .offrow .offstep:hover:not(:disabled) { filter:brightness(1.18); }
+    .skin .offrow .offstep:disabled { opacity:.4; cursor:not-allowed; }
     .skin .eq-screen { position:absolute; border-radius:0; background:#15130d; box-shadow:inset 0 0 0 2px #50391e, inset 0 0 18px #000; }
     .skin .section.eq .switches { position:absolute; inset:0; margin:0; display:block; }
     .skin .section.eq .btn { display:flex; align-items:center; justify-content:center; border:calc(30 / 4344 * 100cqw) solid transparent; border-image:${T('sk-st-cream.png')} 30 fill / calc(30 / 4344 * 100cqw) stretch; background:none; color:#422c16; font:600 .9cqw 'Barlow Condensed',sans-serif; }
@@ -3454,7 +3458,7 @@ if (isAutotunePage()) {
     .skin .strip .btns .btn:disabled { opacity:1; }
     .skin .strip .name { font-size:.5cqw; line-height:1; white-space:nowrap; }
     .skin .strip .btn.micfx { font-size:.6cqw; line-height:1; white-space:nowrap; padding:0; }
-    .skin .expbtn, .skin .offrow { font-size:.38cqw; line-height:1; white-space:nowrap; padding:0; }
+    .skin .expbtn { font-size:.38cqw; line-height:1; white-space:nowrap; padding:0; }
     .skin .eqrow .sel, .skin .st-chainbar .sel, .skin .st-chain-module .sel, .skin .sel {
       box-sizing:border-box; min-width:0; padding:0 calc(62 / 4344 * 100cqw) 0 calc(20 / 4344 * 100cqw);
       appearance:none; -webkit-appearance:none; white-space:nowrap; overflow:hidden; text-overflow:clip;
@@ -3652,17 +3656,26 @@ if (isAutotunePage()) {
       });
       section.appendChild(expBtn);
       const offRow = h('div', 'offrow');
-      offRow.title = 'Mic delay compensation: how many ms the mic layer was recorded late. Measured automatically at REC time; fine-tune by ear (raise it if the voice still trails the music).';
+      offRow.title = 'Mikrofon gecikme telafisi (ms): +/- ile 5 ms (Shift: 25 ms, Alt: 1 ms) kaydırın. Ses müzikten geç geliyorsa artırın.';
+      const offDec = h('button', 'offstep', '\u2212', { type: 'button', 'aria-label': 'Decrease mic shift' });
       const offIn = h('input', 'txt offin', null, { type: 'number', min: '-500', max: '500', step: '5', 'aria-label': 'Mic delay compensation in milliseconds' });
+      const offInc = h('button', 'offstep', '+', { type: 'button', 'aria-label': 'Increase mic shift' });
       for (const k of ['keydown', 'keyup', 'keypress']) offIn.addEventListener(k, (ev) => ev.stopPropagation());
-      offRow.append(h('span', 'offlbl', 'MIC SHIFT'), offIn, h('span', 'offlbl', 'ms'));
-      studio.syncOffset = () => { offIn.value = String(libPlayer.micOffsetMs || 0); offIn.disabled = !libPlayer.mix || !libPlayer.mix.keys.some(isMicLayer); };
-      offIn.addEventListener('change', () => {
-        const v = Math.max(-500, Math.min(500, Math.round(Number(offIn.value) || 0)));
+      offRow.append(h('span', 'offlbl', 'MIC SHIFT'), offDec, offIn, h('span', 'offlbl', 'ms'), offInc);
+      const applyOff = (raw) => {
+        const v = Math.max(-500, Math.min(500, Math.round(Number(raw) || 0)));
         libPlayer.micOffsetMs = v; offIn.value = String(v);
         if (libPlayer.id) ipcRenderer.invoke('poc:rec-set-offset', libPlayer.id, v).then(() => recRefresh()).catch(() => {});
         if (libPlayer.playing) libStartAt(libPos()); // re-time the running mix
-      });
+      };
+      studio.syncOffset = () => {
+        const dis = !libPlayer.mix || !libPlayer.mix.keys.some(isMicLayer);
+        offIn.value = String(libPlayer.micOffsetMs || 0);
+        offIn.disabled = dis; offDec.disabled = dis; offInc.disabled = dis;
+      };
+      offDec.addEventListener('click', (ev) => applyOff((libPlayer.micOffsetMs || 0) - (ev.shiftKey ? 25 : ev.altKey ? 1 : 5)));
+      offInc.addEventListener('click', (ev) => applyOff((libPlayer.micOffsetMs || 0) + (ev.shiftKey ? 25 : ev.altKey ? 1 : 5)));
+      offIn.addEventListener('change', () => applyOff(offIn.value));
       section.appendChild(offRow);
       studio.syncOffset();
       syncExp();
